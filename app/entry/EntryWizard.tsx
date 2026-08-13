@@ -161,15 +161,34 @@ export function EntryWizard({
 
   function chooseLanguage(next: EventLanguage) {
     setLanguage(next);
+    const newType = types.find((t) => t.id === typeId) ?? null;
     // Open with exactly the rows the contest requires — a 7-member group event
     // should not make the user press Add six times.
-    const required = types.find((t) => t.id === typeId)?.min_participants ?? 1;
-    setParticipantIds((prev) => {
-      const filled = prev.filter((id) => id !== UNSET);
-      const rows = [...filled];
-      while (rows.length < required) rows.push(UNSET);
-      return rows.length === 0 ? [UNSET] : rows;
-    });
+    const required = newType?.min_participants ?? 1;
+    const newMaxParticipants = newType?.max_participants ?? null;
+
+    // Switching to a smaller contest must not leave unsatisfiable rows
+    // behind — clamp down to the new max (keeping the earliest picks)
+    // before padding back up to the new min. Computed from current state
+    // directly (not inside the setter) so the coach clamp below can use
+    // the resulting count without depending on updater-callback timing.
+    let filledParticipants = participantIds.filter((id) => id !== UNSET);
+    if (newMaxParticipants !== null && filledParticipants.length > newMaxParticipants) {
+      filledParticipants = filledParticipants.slice(0, newMaxParticipants);
+    }
+    const participantRows = [...filledParticipants];
+    while (participantRows.length < required) participantRows.push(UNSET);
+    setParticipantIds(participantRows.length === 0 ? [UNSET] : participantRows);
+
+    const newCategory: EventCategory = newType?.category ?? category ?? "individual";
+    const newParticipantCount = Math.max(participantRows.length, 1);
+    const newMaxCoaches = maxCoachesFor(newCategory, newParticipantCount);
+    const filledCoaches = coachIds.filter((id) => id !== UNSET);
+    if (filledCoaches.length > newMaxCoaches) {
+      const trimmed = filledCoaches.slice(0, Math.max(newMaxCoaches, 1));
+      setCoachIds(trimmed.length === 0 ? [UNSET] : trimmed);
+    }
+
     setStep(5);
   }
 
