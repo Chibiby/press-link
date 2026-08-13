@@ -948,8 +948,9 @@ Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Write the seed script**
 
-Create `scripts/seed/events.ts`:
+Create `scripts/seed/events.ts`. Note the `isDirectRun` guard at the bottom — `seedEvents` is exported for `scripts/seed/index.ts` (Task 7) to import and call, but this file also needs to run standalone in Step 6 below, and an exported function with no invocation does nothing when you `tsx` the file directly:
 ```ts
+import { fileURLToPath } from "node:url";
 import { createAdminClient } from "../../lib/supabase/admin";
 import { EVENTS_CATALOG } from "../../lib/events-catalog";
 
@@ -970,6 +971,14 @@ export async function seedEvents() {
     throw new Error(`Failed to seed events: ${error.message}`);
   }
   console.log(`Seeded ${EVENTS_CATALOG.length} events.`);
+}
+
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isDirectRun) {
+  seedEvents().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 }
 ```
 
@@ -1108,8 +1117,9 @@ Expected: PASS, 3 tests.
 
 - [ ] **Step 5: Write the seed script that reads the real spreadsheet**
 
-Create `scripts/seed/districts-schools.ts`:
+Create `scripts/seed/districts-schools.ts` (same `isDirectRun` guard pattern as `scripts/seed/events.ts` in Task 5 — needed because Step 6 below runs this file standalone):
 ```ts
+import { fileURLToPath } from "node:url";
 import * as XLSX from "xlsx";
 import { createAdminClient } from "../../lib/supabase/admin";
 import { transformSchoolRows, type RawSchoolRow } from "./districts-schools.transform";
@@ -1163,6 +1173,14 @@ export async function seedDistrictsAndSchools() {
   }
 
   console.log(`Seeded ${districtNames.length} districts and ${schools.length} schools.`);
+}
+
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isDirectRun) {
+  seedDistrictsAndSchools().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 }
 ```
 
