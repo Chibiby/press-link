@@ -37,8 +37,7 @@ import {
 function participantSummary(entry: EntryRow): string {
   const [first, ...rest] = entry.participants;
   if (!first) return "—";
-  const name = [first.first_name, first.last_name].filter(Boolean).join(" ");
-  return rest.length > 0 ? `${name} +${rest.length}` : name;
+  return rest.length > 0 ? `${first.full_name} +${rest.length}` : first.full_name;
 }
 
 export function EntriesTable({

@@ -5,9 +5,18 @@ import { Lock, Newspaper, Plus } from "lucide-react";
 
 import { EntriesTable } from "./EntriesTable";
 import { EntryWizard } from "./EntryWizard";
+import { PaperGateDialog } from "./PaperGateDialog";
+import { RosterPanel } from "./RosterPanel";
 import { SchoolPaperDialog } from "./SchoolPaperDialog";
-import type { EntryRow, SchoolPaperRow } from "./types";
+import type {
+  EntryRow,
+  PaperParticipation,
+  RosterCoach,
+  RosterParticipant,
+  SchoolPaperRow,
+} from "./types";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
+import { type UsageMap } from "@/lib/roster/limits";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,21 +26,36 @@ export function EntryDashboard({
   types,
   events,
   papers,
+  participants,
+  coaches,
+  usage,
+  paperParticipation,
   locked,
 }: {
   entries: EntryRow[];
   types: EventTypeRow[];
   events: EventRow[];
   papers: SchoolPaperRow[];
+  participants: RosterParticipant[];
+  coaches: RosterCoach[];
+  usage: UsageMap;
+  paperParticipation: PaperParticipation;
   locked: boolean;
 }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<EntryRow | null>(null);
-  const [paperOpen, setPaperOpen] = useState(false);
+  // null = follow the derived default; true/false = the user has taken over.
+  const [paperOpenOverride, setPaperOpenOverride] = useState<boolean | null>(null);
 
+  const paperDeclined = paperParticipation === "no";
   const missingPapers = (["english", "filipino"] as const).filter(
     (lang) => !papers.some((p) => p.language === lang)
   );
+
+  // Answering Yes should land the school straight in the form it just agreed to
+  // fill, without a second click — derived instead of set from an effect.
+  const paperOpen =
+    paperOpenOverride ?? (paperParticipation === "yes" && papers.length === 0);
 
   function openCreate() {
     setEditing(null);
@@ -43,8 +67,12 @@ export function EntryDashboard({
     setWizardOpen(true);
   }
 
+  const canCreateEntry = !locked && participants.length > 0 && coaches.length > 0;
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
+      <PaperGateDialog open={paperParticipation === "undecided"} />
+
       {locked && (
         <Alert>
           <Lock />
@@ -55,53 +83,97 @@ export function EntryDashboard({
         </Alert>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold tracking-tight">Entries</h2>
-          <p className="text-sm text-muted-foreground">
-            Every contest your school is competing in.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => setPaperOpen(true)}>
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold tracking-tight">Roster</h2>
+            <p className="text-sm text-muted-foreground">
+              Register everyone first — entries pick from this list.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            disabled={paperDeclined}
+            onClick={() => setPaperOpenOverride(true)}
+          >
             <Newspaper className="size-4" />
             School Paper
-            {missingPapers.length > 0 && (
-              <Badge
-                variant="outline"
-                className="ml-1 border-warning/40 bg-warning/15 text-warning-foreground dark:text-warning"
-              >
-                {missingPapers.length} to fill
+            {paperDeclined ? (
+              <Badge variant="outline" className="ml-1">
+                Not submitting
               </Badge>
+            ) : (
+              missingPapers.length > 0 && (
+                <Badge
+                  variant="outline"
+                  className="ml-1 border-warning/40 bg-warning/15 text-warning-foreground dark:text-warning"
+                >
+                  {missingPapers.length} to fill
+                </Badge>
+              )
             )}
           </Button>
-          <Button onClick={openCreate} disabled={locked}>
+        </div>
+
+        {paperDeclined && (
+          <Alert>
+            <Newspaper />
+            <AlertTitle>School Paper closed</AlertTitle>
+            <AlertDescription>
+              You answered that your school is not submitting a paper. The division
+              office can reopen this for you.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <RosterPanel
+          participants={participants}
+          coaches={coaches}
+          usage={usage}
+          locked={locked}
+        />
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold tracking-tight">Entries</h2>
+            <p className="text-sm text-muted-foreground">
+              {canCreateEntry
+                ? "Every contest your school is competing in."
+                : "Add at least one participant and one coach before creating an entry."}
+            </p>
+          </div>
+          <Button onClick={openCreate} disabled={!canCreateEntry}>
             <Plus className="size-4" />
             Create Entry
           </Button>
         </div>
-      </div>
 
-      <EntriesTable
-        entries={entries}
-        locked={locked}
-        onCreate={openCreate}
-        onEdit={openEdit}
-      />
+        <EntriesTable
+          entries={entries}
+          locked={locked}
+          onCreate={openCreate}
+          onEdit={openEdit}
+        />
+      </section>
 
       <EntryWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}
         types={types}
         events={events}
+        participants={participants}
+        coaches={coaches}
+        usage={usage}
         entry={editing}
       />
 
       <SchoolPaperDialog
         open={paperOpen}
-        onOpenChange={setPaperOpen}
+        onOpenChange={setPaperOpenOverride}
         papers={papers}
-        locked={locked}
+        locked={locked || paperDeclined}
       />
     </div>
   );
