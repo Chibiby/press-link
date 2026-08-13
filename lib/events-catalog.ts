@@ -2,8 +2,24 @@ export type EventCategory = "individual" | "group";
 export type EventLevel = "elementary" | "secondary";
 export type EventLanguage = "english" | "filipino";
 
+/**
+ * A contest as a school thinks of it — language-neutral. The entry wizard picks
+ * a type first, then narrows to a concrete `EventSeed` by level and language.
+ */
+export interface EventTypeSeed {
+  slug: string;
+  category: EventCategory;
+  nameEn: string;
+  nameFil: string;
+  /** Levels this contest is actually offered at. */
+  levels: readonly EventLevel[];
+  sortOrder: number;
+}
+
+/** One concrete contest slot: a type at a level in a language. */
 export interface EventSeed {
   code: string;
+  eventTypeSlug: string;
   category: EventCategory;
   level: EventLevel;
   language: EventLanguage;
@@ -11,61 +27,59 @@ export interface EventSeed {
   sortOrder: number;
 }
 
-const INDIVIDUAL_EVENTS: { slug: string; nameEn: string; nameFil: string }[] = [
-  { slug: "news-writing", nameEn: "News Writing", nameFil: "Pagsulat ng Balita" },
-  { slug: "editorial-writing", nameEn: "Editorial Writing", nameFil: "Pagsulat ng Editoryal" },
-  { slug: "column-writing", nameEn: "Column Writing", nameFil: "Pagsulat ng Kolum" },
-  { slug: "feature-writing", nameEn: "Feature Writing", nameFil: "Pagsulat ng Lathalain" },
-  { slug: "sci-tech-writing", nameEn: "Science & Technology Writing", nameFil: "Pagsulat ng Agham at Teknolohiya" },
-  { slug: "editorial-cartooning", nameEn: "Editorial Cartooning", nameFil: "Pagguhit ng Kartung Editoryal" },
-  { slug: "photojournalism", nameEn: "Photojourn", nameFil: "Pagkuha ng Larawang Pampahayagan" },
-  { slug: "sports-writing", nameEn: "Sports Writing", nameFil: "Pagsulat ng Isports" },
-  { slug: "copy-editing", nameEn: "Copy Editing & Headline Writing", nameFil: "Pagwawasto at Pag-uulo ng Balita" },
+const BOTH_LEVELS = ["elementary", "secondary"] as const;
+const SECONDARY_ONLY = ["secondary"] as const;
+const LANGUAGES = ["english", "filipino"] as const;
+
+/**
+ * Names are taken verbatim from the DSPC source workbook — do not "correct"
+ * them. Group contests and MOJO carry identical English and Filipino labels
+ * there, so `nameEn` and `nameFil` are deliberately equal for those.
+ */
+export const EVENT_TYPES: EventTypeSeed[] = [
+  // Individual
+  { slug: "news-writing", category: "individual", nameEn: "News Writing", nameFil: "Pagsulat ng Balita", levels: BOTH_LEVELS, sortOrder: 1 },
+  { slug: "editorial-writing", category: "individual", nameEn: "Editorial Writing", nameFil: "Pagsulat ng Editoryal", levels: BOTH_LEVELS, sortOrder: 2 },
+  { slug: "column-writing", category: "individual", nameEn: "Column Writing", nameFil: "Pagsulat ng Kolum", levels: BOTH_LEVELS, sortOrder: 3 },
+  { slug: "feature-writing", category: "individual", nameEn: "Feature Writing", nameFil: "Pagsulat ng Lathalain", levels: BOTH_LEVELS, sortOrder: 4 },
+  { slug: "sci-tech-writing", category: "individual", nameEn: "Science & Technology Writing", nameFil: "Pagsulat ng Agham at Teknolohiya", levels: BOTH_LEVELS, sortOrder: 5 },
+  { slug: "editorial-cartooning", category: "individual", nameEn: "Editorial Cartooning", nameFil: "Pagguhit ng Kartung Editoryal", levels: BOTH_LEVELS, sortOrder: 6 },
+  { slug: "photojournalism", category: "individual", nameEn: "Photojourn", nameFil: "Pagkuha ng Larawang Pampahayagan", levels: BOTH_LEVELS, sortOrder: 7 },
+  { slug: "sports-writing", category: "individual", nameEn: "Sports Writing", nameFil: "Pagsulat ng Isports", levels: BOTH_LEVELS, sortOrder: 8 },
+  { slug: "copy-editing", category: "individual", nameEn: "Copy Editing & Headline Writing", nameFil: "Pagwawasto at Pag-uulo ng Balita", levels: BOTH_LEVELS, sortOrder: 9 },
+  { slug: "mojo", category: "individual", nameEn: "MOJO", nameFil: "MOJO", levels: SECONDARY_ONLY, sortOrder: 10 },
+
+  // Group
+  { slug: "radio-broadcasting-regular", category: "group", nameEn: "Radio Broadcasting and Scriptwriting (Regular)", nameFil: "Radio Broadcasting and Scriptwriting (Regular)", levels: BOTH_LEVELS, sortOrder: 11 },
+  { slug: "collaborative-publishing", category: "group", nameEn: "Collaborative Publishing", nameFil: "Collaborative Publishing", levels: BOTH_LEVELS, sortOrder: 12 },
+  { slug: "radio-broadcasting-spj", category: "group", nameEn: "Radio Broadcasting and Scriptwriting (SPJ)", nameFil: "Radio Broadcasting and Scriptwriting (SPJ)", levels: BOTH_LEVELS, sortOrder: 13 },
+  { slug: "online-publishing", category: "group", nameEn: "Online Publishing", nameFil: "Online Publishing", levels: SECONDARY_ONLY, sortOrder: 14 },
+  { slug: "tv-broadcasting-regular", category: "group", nameEn: "TV Broadcasting and Scriptwriting (Regular)", nameFil: "TV Broadcasting and Scriptwriting (Regular)", levels: SECONDARY_ONLY, sortOrder: 15 },
+  { slug: "tv-broadcasting-spj", category: "group", nameEn: "TV Broadcasting and Scriptwriting (SPJ)", nameFil: "TV Broadcasting and Scriptwriting (SPJ)", levels: SECONDARY_ONLY, sortOrder: 16 },
 ];
 
-const GROUP_EVENTS_ALL_LEVELS: { slug: string; name: string }[] = [
-  { slug: "radio-broadcasting-regular", name: "Radio Broadcasting and Scriptwriting (Regular)" },
-  { slug: "collaborative-publishing", name: "Collaborative Publishing" },
-  { slug: "radio-broadcasting-spj", name: "Radio Broadcasting and Scriptwriting (SPJ)" },
-];
-
-const GROUP_EVENTS_SECONDARY_ONLY: { slug: string; name: string }[] = [
-  { slug: "online-publishing", name: "Online Publishing" },
-  { slug: "tv-broadcasting-regular", name: "TV Broadcasting and Scriptwriting (Regular)" },
-  { slug: "tv-broadcasting-spj", name: "TV Broadcasting and Scriptwriting (SPJ)" },
-];
-
-function levelTag(level: EventLevel): "elem" | "sec" {
+export function levelTag(level: EventLevel): "elem" | "sec" {
   return level === "elementary" ? "elem" : "sec";
 }
 
-function langTag(language: EventLanguage): "eng" | "fil" {
+export function langTag(language: EventLanguage): "eng" | "fil" {
   return language === "english" ? "eng" : "fil";
 }
 
-function buildIndividualEvents(): EventSeed[] {
+function buildCatalog(): EventSeed[] {
   const events: EventSeed[] = [];
   let sortOrder = 1;
 
-  for (const level of ["elementary", "secondary"] as const) {
-    for (const language of ["english", "filipino"] as const) {
-      for (const ev of INDIVIDUAL_EVENTS) {
+  for (const type of EVENT_TYPES) {
+    for (const level of type.levels) {
+      for (const language of LANGUAGES) {
         events.push({
-          code: `${ev.slug}-${levelTag(level)}-${langTag(language)}`,
-          category: "individual",
+          code: `${type.slug}-${levelTag(level)}-${langTag(language)}`,
+          eventTypeSlug: type.slug,
+          category: type.category,
           level,
           language,
-          name: language === "english" ? ev.nameEn : ev.nameFil,
-          sortOrder: sortOrder++,
-        });
-      }
-      if (level === "secondary") {
-        events.push({
-          code: `mojo-sec-${langTag(language)}`,
-          category: "individual",
-          level: "secondary",
-          language,
-          name: "MOJO",
+          name: language === "filipino" ? type.nameFil : type.nameEn,
           sortOrder: sortOrder++,
         });
       }
@@ -75,38 +89,4 @@ function buildIndividualEvents(): EventSeed[] {
   return events;
 }
 
-function buildGroupEvents(): EventSeed[] {
-  const events: EventSeed[] = [];
-  let sortOrder = 1;
-
-  for (const level of ["elementary", "secondary"] as const) {
-    for (const language of ["english", "filipino"] as const) {
-      for (const ev of GROUP_EVENTS_ALL_LEVELS) {
-        events.push({
-          code: `${ev.slug}-${levelTag(level)}-${langTag(language)}`,
-          category: "group",
-          level,
-          language,
-          name: ev.name,
-          sortOrder: sortOrder++,
-        });
-      }
-      if (level === "secondary") {
-        for (const ev of GROUP_EVENTS_SECONDARY_ONLY) {
-          events.push({
-            code: `${ev.slug}-${langTag(language)}`,
-            category: "group",
-            level: "secondary",
-            language,
-            name: ev.name,
-            sortOrder: sortOrder++,
-          });
-        }
-      }
-    }
-  }
-
-  return events;
-}
-
-export const EVENTS_CATALOG: EventSeed[] = [...buildIndividualEvents(), ...buildGroupEvents()];
+export const EVENTS_CATALOG: EventSeed[] = buildCatalog();
