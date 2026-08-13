@@ -52,8 +52,10 @@ Expected: build succeeds (default Next.js starter page compiles).
 Run:
 ```bash
 npm install @supabase/supabase-js @supabase/ssr zod
-npm install -D xlsx tsx vitest
+npm install -D tsx vitest
+npm install -D https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
 ```
+(The npm-registry `xlsx` package has two unpatched high-severity advisories — SheetJS stopped publishing patched builds there and now recommends installing directly from their own CDN, which is what the second command does. `import * as XLSX from "xlsx"` works identically either way.)
 
 - [ ] **Step 4: Add Vitest config**
 
@@ -64,9 +66,11 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
+    passWithNoTests: true,
   },
 });
 ```
+(`passWithNoTests` matters for Step 6 below — Vitest exits 1 on zero matched test files by default, which would make this step's own "no test files yet" state look like a failure.)
 
 - [ ] **Step 5: Add npm scripts**
 
@@ -86,7 +90,7 @@ Edit `package.json` `"scripts"` to:
 - [ ] **Step 6: Verify the empty test suite runs**
 
 Run: `npm run test`
-Expected: Vitest reports "No test files found" without erroring (no test files exist yet — that's expected at this step).
+Expected: `No test files found, exiting with code 0` (no test files exist yet — that's expected at this step). A warning about `vitest.config.ts` being ESM-in-CommonJS is harmless and can be ignored — it doesn't affect the exit code.
 
 - [ ] **Step 7: Add environment example and gitignore entries**
 
@@ -101,8 +105,10 @@ ADMIN_FULL_NAME=
 SCHOOL_HEADS_XLSX_PATH=
 ```
 
-Append to `.gitignore` (create-next-app already ignores `node_modules`, `.next`, `.env*.local`):
+Append to `.gitignore` (create-next-app already ignores `node_modules`, `.next`, and every `.env*` file — which means it also ignores `.env.local.example` by default, so add a negation to keep that one tracked):
 ```
+!.env.local.example
+
 seed-data/
 *.xlsx
 ```
