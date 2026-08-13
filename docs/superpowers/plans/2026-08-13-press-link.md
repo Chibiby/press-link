@@ -1641,7 +1641,7 @@ git commit -m "Add the Press Link login page"
 
 - [ ] **Step 1: Write the shared entry Server Actions file (sign-out + school paper save)**
 
-Create `app/entry/actions.ts`:
+Create `app/entry/actions.ts`. Note the explicit `Promise<{ error: string } | { success: true }>` return type on `saveSchoolPaperAction` — without it, TypeScript infers `result.error` as `string | undefined` at the call site in Step 2 below (`next build`'s type-check step fails there), because it can't fully narrow `parsed.error.issues[0]?.message ?? "Invalid input"` on its own:
 ```ts
 "use server";
 
@@ -1673,10 +1673,13 @@ export async function signOutAction() {
   redirect("/login");
 }
 
-export async function saveSchoolPaperAction(input: unknown) {
+export async function saveSchoolPaperAction(
+  input: unknown
+): Promise<{ error: string } | { success: true }> {
   const parsed = schoolPaperSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    const message = parsed.error.issues[0]?.message;
+    return { error: typeof message === "string" ? message : "Invalid input" };
   }
   const { supabase, schoolId } = await getSchoolId();
   const { data: settings } = await supabase.from("app_settings").select("submissions_locked").single();
@@ -2010,10 +2013,14 @@ git commit -m "Add entry page shell with School Paper form"
 
 Edit `app/entry/actions.ts`: add `import { entrySchema } from "@/lib/validation/entry";` alongside the file's existing imports at the top (next to the `schoolPaperSchema` import from Task 9), then append these two functions to the end of the file:
 ```ts
-export async function saveEntryAction(entryId: string | null, input: unknown) {
+export async function saveEntryAction(
+  entryId: string | null,
+  input: unknown
+): Promise<{ error: string } | { success: true }> {
   const parsed = entrySchema.safeParse(input);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    const message = parsed.error.issues[0]?.message;
+    return { error: typeof message === "string" ? message : "Invalid input" };
   }
   const { supabase, schoolId } = await getSchoolId();
   const { data: settings } = await supabase.from("app_settings").select("submissions_locked").single();
@@ -2065,7 +2072,7 @@ export async function saveEntryAction(entryId: string | null, input: unknown) {
   return { success: true as const };
 }
 
-export async function deleteEntryAction(entryId: string) {
+export async function deleteEntryAction(entryId: string): Promise<{ error: string } | { success: true }> {
   const { supabase, schoolId } = await getSchoolId();
   const { data: settings } = await supabase.from("app_settings").select("submissions_locked").single();
   if (settings?.submissions_locked) {
