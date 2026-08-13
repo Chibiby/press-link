@@ -2249,7 +2249,16 @@ export function EntryList({
             <span className="text-sm font-medium">Event</span>
             <select
               value={eventId}
-              onChange={(e) => setEventId(e.target.value)}
+              onChange={(e) => {
+                const nextEventId = e.target.value;
+                setEventId(nextEventId);
+                const nextEvent = events.find((ev) => ev.id === nextEventId);
+                if (nextEvent?.category === "group") {
+                  setParticipants((prev) => (prev.length >= 2 ? prev : [...prev, emptyParticipant()]));
+                } else {
+                  setParticipants((prev) => prev.slice(0, 1));
+                }
+              }}
               required
               className="rounded border px-3 py-2"
             >
@@ -2438,6 +2447,8 @@ Replace the `{/* Event entries section added in Task 10 */}` comment with:
 - [ ] **Step 4: Manually verify in the browser**
 
 With a school signed in at `/entry`: click "+ Add Entry", pick an individual event (e.g. News Writing / individual / elementary / english), fill in one participant + one coach, save — confirm it appears in the table with the right name/coach/timestamp. Click "+ Add Entry" again, pick a group event (e.g. Collaborative Publishing), confirm the form starts with 2 participant rows and "+ Add participant" works; try to remove down to 1 and confirm the Remove button disables at 2. Save it, confirm it lists correctly. Delete one entry and confirm it disappears. Finally, in the Supabase dashboard, manually set `app_settings.submissions_locked = true`, reload `/entry`, and confirm the lock banner shows, "+ Add Entry" and "Delete" are gone/disabled, and the School Paper Save buttons are disabled too. Set it back to `false` afterward.
+
+The "starts with 2 participant rows" part only works because of the event `<select>`'s `onChange` in Step 1 above — without the `nextEvent?.category === "group"` branch padding `participants` to 2, a freshly-picked group event would render with just the 1 row `startNew()` initializes, and the school would have to know to click "+ Add participant" once before the min-2 rule is even satisfiable. Caught this by actually driving the form end-to-end rather than just reading the code.
 
 - [ ] **Step 5: Run the full test suite once more**
 

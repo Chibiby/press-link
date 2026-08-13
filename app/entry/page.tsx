@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SchoolPaperForm, type ExistingPaper } from "./SchoolPaperForm";
+import { EntryList, type Entry } from "./EntryList";
 import { signOutAction } from "./actions";
 
 export default async function EntryPage() {
@@ -24,7 +25,7 @@ export default async function EntryPage() {
     redirect("/login");
   }
 
-  const [{ data: settings }, { data: papers }] = await Promise.all([
+  const [{ data: settings }, { data: papers }, { data: events }, { data: entries }] = await Promise.all([
     supabase.from("app_settings").select("submissions_locked").single(),
     supabase
       .from("school_papers")
@@ -32,6 +33,14 @@ export default async function EntryPage() {
         "id, language, paper_name, adviser_name, adviser_gender, principal_name, paper_staff(id, full_name, title)"
       )
       .eq("school_id", school.id),
+    supabase.from("events").select("id, category, level, language, name").order("sort_order"),
+    supabase
+      .from("entries")
+      .select(
+        "id, submitted_at, events(name), entry_participants(first_name, middle_name, last_name, gender), entry_coaches(full_name, gender)"
+      )
+      .eq("school_id", school.id)
+      .order("submitted_at", { ascending: false }),
   ]);
 
   const locked = settings?.submissions_locked ?? false;
@@ -68,7 +77,10 @@ export default async function EntryPage() {
         />
       </section>
 
-      {/* Event entries section added in Task 10 */}
+      <section>
+        <h2 className="mb-4 text-xl font-semibold">Event Entries</h2>
+        <EntryList entries={(entries as unknown as Entry[]) ?? []} events={events ?? []} locked={locked} />
+      </section>
     </main>
   );
 }
