@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Loader2, ShieldCheck } from "lucide-react";
+
 import { adminLoginAction } from "./actions";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function AdminLoginForm() {
   const [error, setError] = useState<string | null>(null);
@@ -16,19 +22,42 @@ export function AdminLoginForm() {
   }
 
   return (
-    <form action={handleSubmit} className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Email</span>
-        <input type="email" name="email" required className="rounded border px-3 py-2" />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Password</span>
-        <input type="password" name="password" required className="rounded border px-3 py-2" />
-      </label>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <button type="submit" disabled={isPending} className="rounded bg-blue-600 px-4 py-2 font-medium text-white disabled:opacity-50">
-        {isPending ? "Signing in..." : "Sign in"}
-      </button>
+    <form action={handleSubmit} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="email">Email</Label>
+        <Input id="email" type="email" name="email" required autoComplete="username" />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="admin-password">Password</Label>
+        <Input
+          id="admin-password"
+          type="password"
+          name="password"
+          required
+          autoComplete="current-password"
+        />
+      </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <Button type="submit" disabled={isPending} className="w-full">
+        {isPending ? (
+          <>
+            <Loader2 className="size-4 animate-spin" />
+            Signing in...
+          </>
+        ) : (
+          <>
+            <ShieldCheck className="size-4" />
+            Sign in
+          </>
+        )}
+      </Button>
     </form>
   );
 }

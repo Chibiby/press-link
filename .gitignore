@@ -47,3 +47,4 @@ seed-data/
 
 .vercel
 .env*
+.verify/
