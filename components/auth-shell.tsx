@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { ThemeToggle } from "@/components/theme-toggle";
 
 /**
@@ -15,9 +17,28 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <ThemeToggle />
       </div>
       <div className="relative w-full max-w-md">{children}</div>
-      <p className="relative mt-8 text-center text-xs text-muted-foreground">
-        Division of Sarangani &middot; Schools Press Conference
-      </p>
+
+      {/* Only the coloured letters come from the source raster; the society's
+          full name is set in real text so it stays legible and theme-aware. */}
+      <footer className="relative mt-10 flex flex-col items-center gap-2">
+        <span className="flex items-center rounded-xl bg-white px-4 py-2.5 shadow-sm ring-1 ring-black/5">
+          <Image
+            src="/aspajccjsi-wordmark.png"
+            alt="ASPAJCCJSI"
+            width={400}
+            height={267}
+            style={{ height: "2.75rem", width: "auto" }}
+            className="object-contain"
+          />
+        </span>
+        <p className="max-w-xs text-center text-xs leading-relaxed text-muted-foreground">
+          Association of School Paper Advisers, Journalism Coaches, and Campus
+          Journalists of Sarangani Inc.
+        </p>
+        <p className="text-center text-xs text-muted-foreground">
+          Division of Sarangani &middot; Schools Press Conference
+        </p>
+      </footer>
     </main>
   );
 }
