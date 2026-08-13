@@ -1,13 +1,21 @@
-import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
+import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
 
-export interface ParticipantRow {
+/** A person on the school's roster, ready to be picked into an entry. */
+export interface RosterParticipant {
+  id: string;
+  participant_number: number;
+  /** Zero-padded on the server so no component re-derives it. */
+  number_label: string;
   first_name: string;
   middle_name: string | null;
   last_name: string;
   gender: "M" | "F";
+  /** "Dela Cruz, Ana M." — built once on the server. */
+  full_name: string;
 }
 
-export interface CoachRow {
+export interface RosterCoach {
+  id: string;
   full_name: string;
   gender: "M" | "F";
 }
@@ -20,11 +28,14 @@ export interface EntryRow {
   submitted_label: string;
   event_type_id: string;
   event_name: string;
+  category: EventCategory;
   level: EventLevel;
   language: EventLanguage;
-  participants: ParticipantRow[];
-  coaches: CoachRow[];
+  participants: RosterParticipant[];
+  coaches: RosterCoach[];
 }
+
+export type PaperParticipation = "undecided" | "yes" | "no";
 
 export interface PaperStaffRow {
   id: string;

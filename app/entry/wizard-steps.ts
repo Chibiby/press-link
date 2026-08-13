@@ -7,6 +7,8 @@ export interface EventTypeRow {
   category: EventCategory;
   name_en: string;
   name_fil: string;
+  min_participants: number;
+  max_participants: number | null;
   sort_order: number;
 }
 
