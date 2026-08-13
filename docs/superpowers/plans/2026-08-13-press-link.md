@@ -406,7 +406,7 @@ git commit -m "Add Press Link schema, RLS policies, and a schema smoke test"
 **Files:**
 - Create: `lib/supabase/server.ts`
 - Create: `lib/supabase/client.ts`
-- Create: `middleware.ts`
+- Create: `proxy.ts` (Next.js 16 renamed the `middleware.ts` file convention to `proxy.ts` — same mechanism, `export async function proxy(request)` instead of `middleware(request)`, `config` unchanged)
 
 **Interfaces:**
 - Consumes: none beyond env vars from Task 2.
@@ -459,14 +459,14 @@ export function createClient() {
 }
 ```
 
-- [ ] **Step 3: Add session-refresh + route-guard middleware**
+- [ ] **Step 3: Add session-refresh + route-guard proxy**
 
-Create `middleware.ts` at the repo root:
+Create `proxy.ts` at the repo root (Next.js 16's replacement for the `middleware.ts` convention — if `create-next-app` scaffolded an older version that still expects `middleware.ts`, run `npx @next/codemod@canary middleware-to-proxy .` after creating the file to migrate it):
 ```ts
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -517,8 +517,8 @@ Expected: succeeds (no route uses these clients yet, but TypeScript must resolve
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/supabase/server.ts lib/supabase/client.ts middleware.ts
-git commit -m "Add Supabase server/browser clients and auth middleware"
+git add lib/supabase/server.ts lib/supabase/client.ts proxy.ts
+git commit -m "Add Supabase server/browser clients and auth proxy"
 ```
 
 ---
