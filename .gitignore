@@ -44,3 +44,6 @@ next-env.d.ts
 # press link seed data (contains PII from the source spreadsheets)
 seed-data/
 *.xlsx
+
+.vercel
+.env*
