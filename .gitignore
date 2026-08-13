@@ -48,3 +48,6 @@ seed-data/
 .vercel
 .env*
 .verify/
+
+# subagent-driven-development scratch (ledgers, briefs, review packages)
+.superpowers/
