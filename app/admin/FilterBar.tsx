@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -104,14 +104,21 @@ export function FilterBar({
           ]}
         />
 
-        {activeCount > 0 && (
-          <div className="flex items-end sm:col-span-2 lg:col-span-3 xl:col-span-6">
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-6">
+          {activeCount > 0 && (
             <Button variant="ghost" size="sm" onClick={() => router.push("/admin")}>
               <X className="size-4" />
               Clear {activeCount} filter{activeCount === 1 ? "" : "s"}
             </Button>
-          </div>
-        )}
+          )}
+          <Button asChild variant="outline" size="sm" className="ml-auto">
+            {/* Carries the current filters so the file matches the screen. */}
+            <a href={`/admin/export?${searchParams.toString()}`}>
+              <Download className="size-4" />
+              Export to Excel
+            </a>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
