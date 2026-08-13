@@ -3,15 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Check,
-  Loader2,
-  Plus,
-  Trash2,
-  User,
-  Users,
-} from "lucide-react";
+import { ArrowLeft, Check, Loader2, Plus, Trash2, User, Users } from "lucide-react";
 
 import { saveEntryAction } from "./actions";
 import {
@@ -23,8 +15,14 @@ import {
   type EventRow,
   type EventTypeRow,
 } from "./wizard-steps";
-import type { EntryRow } from "./types";
+import type { EntryRow, RosterCoach, RosterParticipant } from "./types";
 import { entrySchema } from "@/lib/validation/entry";
+import {
+  capReason,
+  maxCoachesFor,
+  validateEntryCounts,
+  type UsageMap,
+} from "@/lib/roster/limits";
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -35,32 +33,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
-interface ParticipantDraft {
-  firstName: string;
-  middleName: string;
-  lastName: string;
-  gender: "M" | "F";
-}
-
-interface CoachDraft {
-  fullName: string;
-  gender: "M" | "F";
-}
-
-const emptyParticipant = (): ParticipantDraft => ({
-  firstName: "",
-  middleName: "",
-  lastName: "",
-  gender: "M",
-});
-
-const emptyCoach = (): CoachDraft => ({ fullName: "", gender: "M" });
+/** Radix Select forbids an empty item value, so this stands in for "unfilled". */
+const UNSET = "__unset__";
 
 const STEP_LABELS = ["Category", "Event", "Level", "Language", "Details"];
 
@@ -69,12 +54,18 @@ export function EntryWizard({
   onOpenChange,
   types,
   events,
+  participants,
+  coaches,
+  usage,
   entry,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   types: EventTypeRow[];
   events: EventRow[];
+  participants: RosterParticipant[];
+  coaches: RosterCoach[];
+  usage: UsageMap;
   /** When present the wizard edits this entry instead of creating one. */
   entry?: EntryRow | null;
 }) {
@@ -86,8 +77,9 @@ export function EntryWizard({
   const [typeId, setTypeId] = useState<string | null>(null);
   const [level, setLevel] = useState<EventLevel | null>(null);
   const [language, setLanguage] = useState<EventLanguage | null>(null);
-  const [participants, setParticipants] = useState<ParticipantDraft[]>([emptyParticipant()]);
-  const [coaches, setCoaches] = useState<CoachDraft[]>([emptyCoach()]);
+  /** One slot per picker row; UNSET means the row is still empty. */
+  const [participantIds, setParticipantIds] = useState<string[]>([UNSET]);
+  const [coachIds, setCoachIds] = useState<string[]>([UNSET]);
   const [error, setError] = useState<string | null>(null);
 
   // Reset (or prefill from `entry`) every time the dialog opens.
@@ -100,27 +92,16 @@ export function EntryWizard({
       setTypeId(entry.event_type_id);
       setLevel(entry.level);
       setLanguage(entry.language);
-      setParticipants(
-        entry.participants.map((p) => ({
-          firstName: p.first_name,
-          middleName: p.middle_name ?? "",
-          lastName: p.last_name,
-          gender: p.gender,
-        }))
-      );
-      setCoaches(
-        entry.coaches.length > 0
-          ? entry.coaches.map((c) => ({ fullName: c.full_name, gender: c.gender }))
-          : [emptyCoach()]
-      );
+      setParticipantIds(entry.participants.map((p) => p.id));
+      setCoachIds(entry.coaches.length > 0 ? entry.coaches.map((c) => c.id) : [UNSET]);
       setStep(5);
     } else {
       setCategory(null);
       setTypeId(null);
       setLevel(null);
       setLanguage(null);
-      setParticipants([emptyParticipant()]);
-      setCoaches([emptyCoach()]);
+      setParticipantIds([UNSET]);
+      setCoachIds([UNSET]);
       setStep(1);
     }
   }, [open, entry, types]);
@@ -140,6 +121,15 @@ export function EntryWizard({
   const selectedType = types.find((t) => t.id === typeId) ?? null;
   const resolved =
     typeId && level && language ? resolveEvent(events, typeId, level, language) : undefined;
+
+  const effectiveCategory: EventCategory = selectedType?.category ?? category ?? "individual";
+  const minParticipants = selectedType?.min_participants ?? 1;
+  const maxParticipants = selectedType?.max_participants ?? null;
+
+  /** Ids this entry already holds, so a person cannot be picked into two rows. */
+  const chosenParticipants = participantIds.filter((id) => id !== UNSET);
+  const chosenCoaches = coachIds.filter((id) => id !== UNSET);
+  const maxCoaches = maxCoachesFor(effectiveCategory, Math.max(chosenParticipants.length, 1));
 
   function chooseCategory(next: EventCategory) {
     setCategory(next);
@@ -171,16 +161,15 @@ export function EntryWizard({
 
   function chooseLanguage(next: EventLanguage) {
     setLanguage(next);
-    const nextCategory = selectedType?.category ?? category;
-    // Group events need at least two participants — start with the rows the
-    // form actually requires instead of making the user discover the rule.
-    setParticipants((prev) =>
-      nextCategory === "group"
-        ? prev.length >= 2
-          ? prev
-          : [...prev, ...Array(2 - prev.length).fill(null).map(emptyParticipant)]
-        : prev.slice(0, 1)
-    );
+    // Open with exactly the rows the contest requires — a 7-member group event
+    // should not make the user press Add six times.
+    const required = types.find((t) => t.id === typeId)?.min_participants ?? 1;
+    setParticipantIds((prev) => {
+      const filled = prev.filter((id) => id !== UNSET);
+      const rows = [...filled];
+      while (rows.length < required) rows.push(UNSET);
+      return rows.length === 0 ? [UNSET] : rows;
+    });
     setStep(5);
   }
 
@@ -205,19 +194,25 @@ export function EntryWizard({
 
     const input = {
       eventId: resolved.id,
-      category: resolved.category,
-      participants: participants.map((p) => ({
-        firstName: p.firstName,
-        middleName: p.middleName || undefined,
-        lastName: p.lastName,
-        gender: p.gender,
-      })),
-      coaches: coaches.map((c) => ({ fullName: c.fullName, gender: c.gender })),
+      participantIds: chosenParticipants,
+      coachIds: chosenCoaches,
     };
 
     const parsed = entrySchema.safeParse(input);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Please check the form.");
+      return;
+    }
+
+    const countError = validateEntryCounts({
+      category: effectiveCategory,
+      participantIds: chosenParticipants,
+      coachIds: chosenCoaches,
+      minParticipants,
+      maxParticipants,
+    });
+    if (countError) {
+      setError(countError);
       return;
     }
 
@@ -232,9 +227,6 @@ export function EntryWizard({
       router.refresh();
     });
   }
-
-  const isGroup = (selectedType?.category ?? category) === "group";
-  const minParticipants = isGroup ? 2 : 1;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -336,20 +328,25 @@ export function EntryWizard({
               </Button>
             </div>
 
-            <section className="flex flex-col gap-4">
+            <section className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">
                   Participants{" "}
                   <span className="font-normal text-muted-foreground">
-                    ({isGroup ? "at least 2" : "exactly 1"})
+                    ({maxParticipants === null
+                      ? `at least ${minParticipants}`
+                      : minParticipants === maxParticipants
+                        ? `exactly ${minParticipants}`
+                        : `${minParticipants}–${maxParticipants}`}
+                    )
                   </span>
                 </h3>
-                {isGroup && (
+                {(maxParticipants === null || participantIds.length < maxParticipants) && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setParticipants((p) => [...p, emptyParticipant()])}
+                    onClick={() => setParticipantIds((prev) => [...prev, UNSET])}
                   >
                     <Plus className="size-4" />
                     Add participant
@@ -357,91 +354,83 @@ export function EntryWizard({
                 )}
               </div>
 
-              {participants.map((p, i) => (
-                <div key={i} className="rounded-lg border p-3">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Participant {i + 1}
-                    </span>
-                    {participants.length > minParticipants && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setParticipants((prev) => prev.filter((_, idx) => idx !== i))
-                        }
-                      >
-                        <Trash2 className="size-4" />
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <Field label="First name">
-                      <Input
-                        value={p.firstName}
-                        onChange={(e) =>
-                          setParticipants((prev) =>
-                            prev.map((row, idx) =>
-                              idx === i ? { ...row, firstName: e.target.value } : row
-                            )
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Middle name">
-                      <Input
-                        value={p.middleName}
-                        onChange={(e) =>
-                          setParticipants((prev) =>
-                            prev.map((row, idx) =>
-                              idx === i ? { ...row, middleName: e.target.value } : row
-                            )
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label="Last name">
-                      <Input
-                        value={p.lastName}
-                        onChange={(e) =>
-                          setParticipants((prev) =>
-                            prev.map((row, idx) =>
-                              idx === i ? { ...row, lastName: e.target.value } : row
-                            )
-                          )
-                        }
-                      />
-                    </Field>
-                  </div>
-                  <GenderPicker
-                    name={`participant-gender-${i}`}
-                    value={p.gender}
-                    onChange={(gender) =>
-                      setParticipants((prev) =>
-                        prev.map((row, idx) => (idx === i ? { ...row, gender } : row))
+              {participantIds.map((selected, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Label className="sr-only" htmlFor={`participant-slot-${i}`}>
+                    Participant {i + 1}
+                  </Label>
+                  <Select
+                    value={selected}
+                    onValueChange={(value) =>
+                      setParticipantIds((prev) =>
+                        prev.map((row, idx) => (idx === i ? value : row))
                       )
                     }
-                  />
+                  >
+                    <SelectTrigger id={`participant-slot-${i}`} className="w-full">
+                      <SelectValue placeholder={`Select participant ${i + 1}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNSET}>Select participant {i + 1}</SelectItem>
+                      {participants.map((participant) => {
+                        const alreadyHere =
+                          participant.id !== selected &&
+                          chosenParticipants.includes(participant.id);
+                        // Editing an entry must not count that entry against its
+                        // own members, so anyone already on it stays selectable.
+                        const onThisEntry = Boolean(
+                          entry?.participants.some((p) => p.id === participant.id)
+                        );
+                        const reason = onThisEntry
+                          ? null
+                          : capReason(usage[participant.id], effectiveCategory);
+                        const disabled = alreadyHere || reason !== null;
+                        return (
+                          <SelectItem
+                            key={participant.id}
+                            value={participant.id}
+                            disabled={disabled}
+                          >
+                            {participant.number_label} · {participant.full_name}
+                            {reason ? ` — ${reason}` : alreadyHere ? " — already added" : ""}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  {participantIds.length > minParticipants && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove participant ${i + 1}`}
+                      onClick={() =>
+                        setParticipantIds((prev) => prev.filter((_, idx) => idx !== i))
+                      }
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </section>
 
             <Separator />
 
-            <section className="flex flex-col gap-4">
+            <section className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">
                   Coaches{" "}
-                  <span className="font-normal text-muted-foreground">(1 or 2)</span>
+                  <span className="font-normal text-muted-foreground">
+                    (1{maxCoaches > 1 ? `–${maxCoaches}` : ""})
+                  </span>
                 </h3>
-                {coaches.length < 2 && (
+                {coachIds.length < maxCoaches && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setCoaches((c) => [...c, emptyCoach()])}
+                    onClick={() => setCoachIds((prev) => [...prev, UNSET])}
                   >
                     <Plus className="size-4" />
                     Add coach
@@ -449,45 +438,45 @@ export function EntryWizard({
                 )}
               </div>
 
-              {coaches.map((c, i) => (
-                <div key={i} className="rounded-lg border p-3">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Coach {i + 1}
-                    </span>
-                    {coaches.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setCoaches((prev) => prev.filter((_, idx) => idx !== i))}
-                      >
-                        <Trash2 className="size-4" />
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-                  <Field label="Complete name">
-                    <Input
-                      value={c.fullName}
-                      onChange={(e) =>
-                        setCoaches((prev) =>
-                          prev.map((row, idx) =>
-                            idx === i ? { ...row, fullName: e.target.value } : row
-                          )
-                        )
-                      }
-                    />
-                  </Field>
-                  <GenderPicker
-                    name={`coach-gender-${i}`}
-                    value={c.gender}
-                    onChange={(gender) =>
-                      setCoaches((prev) =>
-                        prev.map((row, idx) => (idx === i ? { ...row, gender } : row))
-                      )
+              {coachIds.map((selected, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Label className="sr-only" htmlFor={`coach-slot-${i}`}>
+                    Coach {i + 1}
+                  </Label>
+                  <Select
+                    value={selected}
+                    onValueChange={(value) =>
+                      setCoachIds((prev) => prev.map((row, idx) => (idx === i ? value : row)))
                     }
-                  />
+                  >
+                    <SelectTrigger id={`coach-slot-${i}`} className="w-full">
+                      <SelectValue placeholder={`Select coach ${i + 1}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNSET}>Select coach {i + 1}</SelectItem>
+                      {coaches.map((coach) => {
+                        const alreadyHere =
+                          coach.id !== selected && chosenCoaches.includes(coach.id);
+                        return (
+                          <SelectItem key={coach.id} value={coach.id} disabled={alreadyHere}>
+                            {coach.full_name}
+                            {alreadyHere ? " — already added" : ""}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  {coachIds.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove coach ${i + 1}`}
+                      onClick={() => setCoachIds((prev) => prev.filter((_, idx) => idx !== i))}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </section>
@@ -592,49 +581,5 @@ function ChoiceCard({
         {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
       </span>
     </button>
-  );
-}
-
-/** Wrapping the control associates it with the label without needing an id. */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <Label className="flex flex-col items-stretch gap-1.5 font-normal">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      {children}
-    </Label>
-  );
-}
-
-function GenderPicker({
-  name,
-  value,
-  onChange,
-}: {
-  name: string;
-  value: "M" | "F";
-  onChange: (value: "M" | "F") => void;
-}) {
-  return (
-    <div className="mt-3 flex items-center gap-4">
-      <Label className="text-xs text-muted-foreground">Gender</Label>
-      <RadioGroup
-        value={value}
-        onValueChange={(v) => onChange(v as "M" | "F")}
-        className="flex items-center gap-4"
-      >
-        <div className="flex items-center gap-2">
-          <RadioGroupItem value="M" id={`${name}-m`} />
-          <Label htmlFor={`${name}-m`} className="text-sm font-normal">
-            Male
-          </Label>
-        </div>
-        <div className="flex items-center gap-2">
-          <RadioGroupItem value="F" id={`${name}-f`} />
-          <Label htmlFor={`${name}-f`} className="text-sm font-normal">
-            Female
-          </Label>
-        </div>
-      </RadioGroup>
-    </div>
   );
 }
