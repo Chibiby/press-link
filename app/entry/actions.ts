@@ -171,8 +171,70 @@ export async function saveEntryAction(
       .eq("id", id)
       .eq("school_id", schoolId);
     if (error) return { error: "Could not update entry." };
-    await supabase.from("entry_participants").delete().eq("entry_id", id);
-    await supabase.from("entry_coaches").delete().eq("entry_id", id);
+
+    // supabase-js cannot express a multi-statement transaction, so the
+    // delete-then-insert below is a compensating write: snapshot the current
+    // members first, and if either insert fails afterward, restore them so a
+    // previously valid entry never ends up silently emptied.
+    const [{ data: participantSnapshot, error: participantSnapshotError }, { data: coachSnapshot, error: coachSnapshotError }] =
+      await Promise.all([
+        supabase.from("entry_participants").select("participant_id").eq("entry_id", id),
+        supabase.from("entry_coaches").select("coach_id").eq("entry_id", id),
+      ]);
+    if (participantSnapshotError || coachSnapshotError) {
+      return { error: "Could not read the existing entry." };
+    }
+
+    const { error: deleteParticipantsError } = await supabase
+      .from("entry_participants")
+      .delete()
+      .eq("entry_id", id);
+    if (deleteParticipantsError) return { error: "Could not update entry." };
+
+    const { error: deleteCoachesError } = await supabase
+      .from("entry_coaches")
+      .delete()
+      .eq("entry_id", id);
+    if (deleteCoachesError) return { error: "Could not update entry." };
+
+    // Restores both tables to the pre-mutation snapshot. Called after a
+    // failed insert, so any rows this attempt already wrote for that table
+    // must be cleared first or the restore would duplicate them.
+    const restoreSnapshot = async () => {
+      const previousParticipantIds = (participantSnapshot ?? []).map((row) => row.participant_id as string);
+      const previousCoachIds = (coachSnapshot ?? []).map((row) => row.coach_id as string);
+      await supabase.from("entry_participants").delete().eq("entry_id", id);
+      await supabase.from("entry_coaches").delete().eq("entry_id", id);
+      if (previousParticipantIds.length) {
+        await supabase
+          .from("entry_participants")
+          .insert(previousParticipantIds.map((participantId) => ({ entry_id: id, participant_id: participantId })));
+      }
+      if (previousCoachIds.length) {
+        await supabase
+          .from("entry_coaches")
+          .insert(previousCoachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
+      }
+    };
+
+    const { error: participantsError } = await supabase
+      .from("entry_participants")
+      .insert(participantIds.map((participantId) => ({ entry_id: id, participant_id: participantId })));
+    if (participantsError) {
+      await restoreSnapshot();
+      return { error: "Could not save participants." };
+    }
+
+    const { error: coachesError } = await supabase
+      .from("entry_coaches")
+      .insert(coachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
+    if (coachesError) {
+      await restoreSnapshot();
+      return { error: "Could not save coaches." };
+    }
+
+    revalidatePath("/entry");
+    return { success: true as const };
   } else {
     const { data: inserted, error } = await supabase
       .from("entries")
