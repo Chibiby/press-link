@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { schoolPaperSchema } from "@/lib/validation/school-paper";
 import { entrySchema } from "@/lib/validation/entry";
+import { capReason, validateEntryCounts, type UsageMap } from "@/lib/roster/limits";
 
 async function getSchoolId() {
   const supabase = await createClient();
@@ -96,11 +97,77 @@ export async function saveEntryAction(
     return { error: "Submissions are locked." };
   }
 
+  const { participantIds, coachIds, eventId } = parsed.data;
+
+  // Counts come from the database, never from the client.
+  const { data: event } = await supabase
+    .from("events")
+    .select("id, category, event_types(min_participants, max_participants)")
+    .eq("id", eventId)
+    .single<{
+      id: string;
+      category: "individual" | "group";
+      event_types: { min_participants: number; max_participants: number | null } | null;
+    }>();
+  if (!event || !event.event_types) return { error: "Unknown event." };
+
+  const countError = validateEntryCounts({
+    category: event.category,
+    participantIds,
+    coachIds,
+    minParticipants: event.event_types.min_participants,
+    maxParticipants: event.event_types.max_participants,
+  });
+  if (countError) return { error: countError };
+
+  // Everyone referenced must belong to this school.
+  const [{ data: ownedParticipants }, { data: ownedCoaches }] = await Promise.all([
+    supabase.from("participants").select("id").eq("school_id", schoolId).in("id", participantIds),
+    supabase.from("coaches").select("id").eq("school_id", schoolId).in("id", coachIds),
+  ]);
+  if ((ownedParticipants?.length ?? 0) !== participantIds.length) {
+    return { error: "One of those participants is not on your roster." };
+  }
+  if ((ownedCoaches?.length ?? 0) !== coachIds.length) {
+    return { error: "One of those coaches is not on your roster." };
+  }
+
+  // Participation caps, counted over every entry except the one being edited.
+  const { data: usageRows } = await supabase
+    .from("entry_participants")
+    .select("participant_id, entry_id, entries(event_id, events(category))")
+    .in("participant_id", participantIds)
+    .overrideTypes<
+      {
+        participant_id: string;
+        entry_id: string;
+        entries: { event_id: string; events: { category: "individual" | "group" } | null } | null;
+      }[]
+    >();
+
+  const usage: UsageMap = {};
+  for (const row of usageRows ?? []) {
+    if (entryId && row.entry_id === entryId) continue;
+    const category = row.entries?.events?.category;
+    if (!category) continue;
+    const current = usage[row.participant_id] ?? { individualCount: 0, groupCount: 0 };
+    if (category === "individual") current.individualCount += 1;
+    else current.groupCount += 1;
+    usage[row.participant_id] = current;
+  }
+
+  for (const participantId of participantIds) {
+    const reason = capReason(usage[participantId], event.category);
+    if (reason) {
+      return { error: `A selected participant is unavailable: ${reason.toLowerCase()}.` };
+    }
+  }
+
   let id = entryId;
   if (id) {
     const { error } = await supabase
       .from("entries")
-      .update({ event_id: parsed.data.eventId, updated_at: new Date().toISOString() })
+      .update({ event_id: eventId, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("school_id", schoolId);
     if (error) return { error: "Could not update entry." };
@@ -109,31 +176,21 @@ export async function saveEntryAction(
   } else {
     const { data: inserted, error } = await supabase
       .from("entries")
-      .insert({ event_id: parsed.data.eventId, school_id: schoolId })
+      .insert({ event_id: eventId, school_id: schoolId })
       .select("id")
       .single();
     if (error || !inserted) return { error: "Could not create entry." };
     id = inserted.id;
   }
 
-  const { error: participantsError } = await supabase.from("entry_participants").insert(
-    parsed.data.participants.map((p) => ({
-      entry_id: id,
-      first_name: p.firstName,
-      middle_name: p.middleName || null,
-      last_name: p.lastName,
-      gender: p.gender,
-    }))
-  );
+  const { error: participantsError } = await supabase
+    .from("entry_participants")
+    .insert(participantIds.map((participantId) => ({ entry_id: id, participant_id: participantId })));
   if (participantsError) return { error: "Could not save participants." };
 
-  const { error: coachesError } = await supabase.from("entry_coaches").insert(
-    parsed.data.coaches.map((c) => ({
-      entry_id: id,
-      full_name: c.fullName,
-      gender: c.gender,
-    }))
-  );
+  const { error: coachesError } = await supabase
+    .from("entry_coaches")
+    .insert(coachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
   if (coachesError) return { error: "Could not save coaches." };
 
   revalidatePath("/entry");
