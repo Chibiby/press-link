@@ -208,22 +208,25 @@ script — not by hand-rolled sessions:
   calls `supabase.auth.signInWithPassword({ email, password: schoolId })`
   from a Server Action, then relies on Supabase's cookie-based session
   (`@supabase/ssr`) for subsequent requests.
-- **RLS** on `schools`, `school_papers`, `paper_staff`, `entries`,
+- **`schools` is public-read** (`select` allowed for `anon`/`authenticated`,
+  no writes from the client): the login page must render the full
+  district → school picker *before* any session exists, so this table
+  cannot be session-restricted. The login page query only ever selects
+  `id, name, district_id` — never `school_id_number` — so the password
+  itself is not shipped to the browser even though the row is technically
+  readable. `districts` and `events` are public-read for the same reason
+  (login page district picker; entry page event picker).
+- **RLS** on `school_papers`, `paper_staff`, `entries`,
   `entry_participants`, `entry_coaches`: a school's session may only
-  read/write rows where `school_id` resolves to
-  `schools.id` for `schools.auth_user_id = auth.uid()`. Concretely, each
-  table gets a policy like:
+  read/write rows where `school_id` (or, for `paper_staff`/
+  `entry_participants`/`entry_coaches`, the parent row's `school_id`)
+  resolves to `schools.id` for `schools.auth_user_id = auth.uid()`.
+  Concretely, each table gets a policy like:
   ```sql
   using (
     school_id in (select id from schools where auth_user_id = auth.uid())
   )
   ```
-  (For `schools` itself, the policy is `auth_user_id = auth.uid()` for
-  row-level fields school users may read, e.g. their own name/district —
-  they never need to see other schools.)
-- Districts and the events catalog are public-read (needed to populate the
-  login page's district/school pickers, and the entry page's event picker)
-  — `select` allowed for `anon`/`authenticated`, no writes from the client.
 
 **Admin** is a normal Supabase Auth user, gated by presence of a row in
 `admin_profiles`. RLS on all tables also grants full read (and, where
