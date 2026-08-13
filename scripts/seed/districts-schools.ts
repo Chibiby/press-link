@@ -20,12 +20,12 @@ export async function seedDistrictsAndSchools() {
     district: row[3] as string | undefined,
   }));
 
-  const { districtNames, schools, droppedDuplicates } = transformSchoolRows(rows);
+  const { districtNames, schools, skipped } = transformSchoolRows(rows);
 
-  if (droppedDuplicates.length > 0) {
-    console.warn(`Dropped ${droppedDuplicates.length} row(s) with a school_id_number already used by an earlier row:`);
-    for (const d of droppedDuplicates) {
-      console.warn(`  - ${d.schoolName} (${d.districtName}, id ${d.schoolIdNumber})`);
+  if (skipped.length > 0) {
+    console.warn(`Skipped ${skipped.length} row(s) with an unusable school_id_number:`);
+    for (const s of skipped) {
+      console.warn(`  - ${s.schoolName} (${s.districtName}, id "${s.rawSchoolId}") — ${s.reason}`);
     }
   }
 

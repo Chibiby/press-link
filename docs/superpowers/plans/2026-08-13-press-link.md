@@ -1009,7 +1009,11 @@ git commit -m "Add the 56-event DSPC catalog and its seed script"
 
 The source file's header row is row 2 (`NO., SCHOOL ID , SCHOOL NAME, DISTRICT, ...`), with data starting row 3. Column B (index 1) is School ID, column C (index 2) is School Name, column D (index 3) is District. Some rows are section-banner rows (e.g. `"ALABEL 1 DISTRICT"` in the School Name column, no School ID) that must be skipped, and district names have inconsistent trailing whitespace that must be trimmed before dedup.
 
-The real file also turns out to have 3 rows that repeat an earlier row's School ID — "Extension" satellite campuses sharing their parent school's official ID (e.g. `Sitio Lanao Integrated IP School` and `Sitio Kling CLC - Sitio Lanao IPS Extension` both carry School ID `502694`). Since `school_id_number` is this app's unique login credential (`unique` in the schema, and the seed for the synthetic Auth email in Task 7 assumes one-to-one), two schools can't share one — the transform keeps the first (parent) row and drops later duplicates, surfacing what it dropped so the seed script can log it instead of silently losing schools.
+The real file also turns out to have two categories of unusable School ID:
+- 3 rows repeat an earlier row's School ID — "Extension" satellite campuses sharing their parent school's official ID (e.g. `Sitio Lanao Integrated IP School` and `Sitio Kling CLC - Sitio Lanao IPS Extension` both carry School ID `502694`).
+- 1 row has the literal text `"No School ID yet"` in the School ID column instead of a real ID — DepEd hadn't assigned one yet as of this export.
+
+Since `school_id_number` is this app's unique login credential (`unique` in the schema) and gets embedded directly into a synthetic email address for the Task 7 Auth user, only real numeric IDs are usable, and no two schools can share one. The transform rejects non-numeric IDs outright and keeps only the first row for a repeated ID, surfacing every skipped row (with why) so the seed script can log it instead of silently losing schools.
 
 - [ ] **Step 1: Write the failing tests for the transform**
 
@@ -1060,7 +1064,7 @@ describe("transformSchoolRows", () => {
     expect(result.schools).toHaveLength(0);
   });
 
-  it("keeps the first row and drops later rows that repeat a school id", () => {
+  it("keeps the first row and skips later rows that repeat a school id", () => {
     const rows: RawSchoolRow[] = [
       { schoolId: "130551", schoolName: "Del Hilado ES", district: "Malapatan 2" },
       { schoolId: "130551", schoolName: "Del Hilado ES (Matlusi Extension)", district: "Malapatan 2" },
@@ -1070,8 +1074,29 @@ describe("transformSchoolRows", () => {
 
     expect(result.schools).toHaveLength(1);
     expect(result.schools[0].schoolName).toBe("Del Hilado ES");
-    expect(result.droppedDuplicates).toHaveLength(1);
-    expect(result.droppedDuplicates[0].schoolName).toBe("Del Hilado ES (Matlusi Extension)");
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({
+      schoolName: "Del Hilado ES (Matlusi Extension)",
+      reason: "duplicate-school-id",
+    });
+  });
+
+  it("skips rows with a placeholder (non-numeric) school id", () => {
+    const rows: RawSchoolRow[] = [
+      { schoolId: "No School ID yet", schoolName: "Datal Bong ES - Green Valley extension", district: "Kiamba 1" },
+      { schoolId: "130506", schoolName: "Mamangos Maulana Kandog ES", district: "Kiamba 1" },
+    ];
+
+    const result = transformSchoolRows(rows);
+
+    expect(result.schools).toHaveLength(1);
+    expect(result.schools[0].schoolName).toBe("Mamangos Maulana Kandog ES");
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({
+      schoolName: "Datal Bong ES - Green Valley extension",
+      rawSchoolId: "No School ID yet",
+      reason: "non-numeric-school-id",
+    });
   });
 });
 ```
@@ -1097,20 +1122,30 @@ export interface NormalizedSchool {
   districtName: string;
 }
 
+export interface SkippedRow {
+  schoolName: string;
+  districtName: string;
+  rawSchoolId: string;
+  reason: "duplicate-school-id" | "non-numeric-school-id";
+}
+
 export interface TransformResult {
   districtNames: string[];
   schools: NormalizedSchool[];
-  /** Rows dropped because their school_id_number repeats an earlier row's — e.g. an
-   * "Extension" satellite campus sharing its parent school's official School ID. Since
-   * school_id_number is this app's unique login credential, only the first (parent) row
-   * is kept; duplicates are surfaced here so seeding can log what got dropped instead of
-   * silently discarding schools. */
-  droppedDuplicates: NormalizedSchool[];
+  /** Rows skipped either because their school_id_number repeats an earlier row's — e.g. an
+   * "Extension" satellite campus sharing its parent school's official School ID — or because
+   * the source spreadsheet has a placeholder like "No School ID yet" instead of a real ID.
+   * Since school_id_number is this app's unique login credential and gets embedded in a
+   * synthetic email address, only real numeric IDs are usable; skipped rows are surfaced
+   * here so seeding can log what got dropped instead of silently discarding schools. */
+  skipped: SkippedRow[];
 }
+
+const NUMERIC_ID_PATTERN = /^\d+$/;
 
 export function transformSchoolRows(rows: RawSchoolRow[]): TransformResult {
   const schools: NormalizedSchool[] = [];
-  const droppedDuplicates: NormalizedSchool[] = [];
+  const skipped: SkippedRow[] = [];
   const districtSet = new Set<string>();
   const seenSchoolIds = new Set<string>();
 
@@ -1123,22 +1158,25 @@ export function transformSchoolRows(rows: RawSchoolRow[]): TransformResult {
       continue;
     }
 
-    const school = { schoolIdNumber, schoolName, districtName };
+    if (!NUMERIC_ID_PATTERN.test(schoolIdNumber)) {
+      skipped.push({ schoolName, districtName, rawSchoolId: schoolIdNumber, reason: "non-numeric-school-id" });
+      continue;
+    }
 
     if (seenSchoolIds.has(schoolIdNumber)) {
-      droppedDuplicates.push(school);
+      skipped.push({ schoolName, districtName, rawSchoolId: schoolIdNumber, reason: "duplicate-school-id" });
       continue;
     }
     seenSchoolIds.add(schoolIdNumber);
 
     districtSet.add(districtName);
-    schools.push(school);
+    schools.push({ schoolIdNumber, schoolName, districtName });
   }
 
   return {
     districtNames: Array.from(districtSet).sort(),
     schools,
-    droppedDuplicates,
+    skipped,
   };
 }
 ```
@@ -1174,12 +1212,12 @@ export async function seedDistrictsAndSchools() {
     district: row[3] as string | undefined,
   }));
 
-  const { districtNames, schools, droppedDuplicates } = transformSchoolRows(rows);
+  const { districtNames, schools, skipped } = transformSchoolRows(rows);
 
-  if (droppedDuplicates.length > 0) {
-    console.warn(`Dropped ${droppedDuplicates.length} row(s) with a school_id_number already used by an earlier row:`);
-    for (const d of droppedDuplicates) {
-      console.warn(`  - ${d.schoolName} (${d.districtName}, id ${d.schoolIdNumber})`);
+  if (skipped.length > 0) {
+    console.warn(`Skipped ${skipped.length} row(s) with an unusable school_id_number:`);
+    for (const s of skipped) {
+      console.warn(`  - ${s.schoolName} (${s.districtName}, id "${s.rawSchoolId}") — ${s.reason}`);
     }
   }
 
@@ -1231,7 +1269,7 @@ Add to `.env.local`:
 SCHOOL_HEADS_XLSX_PATH=C:\Users\PC5\Downloads\List-of-School-Heads-as-of-July-6-2026-with-school-Address.xlsx
 ```
 Run: `npx tsx --env-file=.env.local scripts/seed/districts-schools.ts`
-Expected: a handful of `Dropped ... row(s) with a school_id_number already used by an earlier row:` warning lines (real "Extension" duplicates in the source file — see above), then `Seeded 23 districts and 329 schools.` (or close to those counts — the exact figures depend on the live file; this run found 3 duplicates out of 332 raw rows). Spot-check in the Supabase Table Editor that a `schools` row like `Alabel Integrated SPED Center` has `school_id_number = "500282"` and its `district_id` resolves to a `districts` row named `Alabel 1`.
+Expected: a handful of `Skipped ... row(s) with an unusable school_id_number:` warning lines (real "Extension" duplicates and at least one "No School ID yet" placeholder in the source file — see above), then `Seeded 23 districts and 328 schools.` (or close to those counts — the exact figures depend on the live file; this run found 3 duplicate IDs and 1 non-numeric ID out of 332 raw rows). Spot-check in the Supabase Table Editor that a `schools` row like `Alabel Integrated SPED Center` has `school_id_number = "500282"` and its `district_id` resolves to a `districts` row named `Alabel 1`.
 
 - [ ] **Step 7: Commit**
 
@@ -1368,11 +1406,11 @@ ADMIN_PASSWORD=choose-a-strong-password-here
 ADMIN_FULL_NAME=Division Admin
 ```
 Run: `npm run seed`
-Expected: `Seeded 56 events.`, `Seeded 23 districts and 332 schools.`, `Created auth users for 332 schools.`, `Created admin user admin@presslink.local.` — in that order, exit code 0. (If you already ran the Task 5/6 scripts individually, `seedEvents`/`seedDistrictsAndSchools` will just upsert the same rows again — safe to re-run.)
+Expected: `Seeded 56 events.`, the same `Skipped ...` warnings from Task 6, `Seeded 23 districts and 328 schools.`, `Created auth users for N schools.` (N depends on how many already got an auth user from a prior partial run — safe either way, the query only picks up schools where `auth_user_id is null`), `Created admin user <your ADMIN_EMAIL>.` — in that order, exit code 0. (If you already ran the Task 5/6 scripts individually, `seedEvents`/`seedDistrictsAndSchools` will just upsert the same rows again — safe to re-run.)
 
 - [ ] **Step 5: Spot-check in the dashboard**
 
-In Supabase dashboard → Authentication → Users, confirm there are 333 users total (332 schools + 1 admin), with school emails like `school-500282@presslink.internal`.
+In Supabase dashboard → Authentication → Users, confirm there are 329 users total (328 schools + 1 admin), with school emails like `school-500282@presslink.internal`.
 
 - [ ] **Step 6: Commit**
 

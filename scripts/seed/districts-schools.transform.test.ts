@@ -43,7 +43,7 @@ describe("transformSchoolRows", () => {
     expect(result.schools).toHaveLength(0);
   });
 
-  it("keeps the first row and drops later rows that repeat a school id", () => {
+  it("keeps the first row and skips later rows that repeat a school id", () => {
     const rows: RawSchoolRow[] = [
       { schoolId: "130551", schoolName: "Del Hilado ES", district: "Malapatan 2" },
       { schoolId: "130551", schoolName: "Del Hilado ES (Matlusi Extension)", district: "Malapatan 2" },
@@ -53,7 +53,28 @@ describe("transformSchoolRows", () => {
 
     expect(result.schools).toHaveLength(1);
     expect(result.schools[0].schoolName).toBe("Del Hilado ES");
-    expect(result.droppedDuplicates).toHaveLength(1);
-    expect(result.droppedDuplicates[0].schoolName).toBe("Del Hilado ES (Matlusi Extension)");
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({
+      schoolName: "Del Hilado ES (Matlusi Extension)",
+      reason: "duplicate-school-id",
+    });
+  });
+
+  it("skips rows with a placeholder (non-numeric) school id", () => {
+    const rows: RawSchoolRow[] = [
+      { schoolId: "No School ID yet", schoolName: "Datal Bong ES - Green Valley extension", district: "Kiamba 1" },
+      { schoolId: "130506", schoolName: "Mamangos Maulana Kandog ES", district: "Kiamba 1" },
+    ];
+
+    const result = transformSchoolRows(rows);
+
+    expect(result.schools).toHaveLength(1);
+    expect(result.schools[0].schoolName).toBe("Mamangos Maulana Kandog ES");
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({
+      schoolName: "Datal Bong ES - Green Valley extension",
+      rawSchoolId: "No School ID yet",
+      reason: "non-numeric-school-id",
+    });
   });
 });
