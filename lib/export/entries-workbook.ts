@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
+import { formatParticipantNumber } from "@/lib/roster/limits";
 
 export interface ExportEntry {
   schoolName: string;
@@ -11,6 +12,7 @@ export interface ExportEntry {
   language: EventLanguage;
   submittedAt: string | null;
   participants: {
+    participantNumber: number;
     firstName: string;
     middleName: string | null;
     lastName: string;
@@ -20,6 +22,7 @@ export interface ExportEntry {
 }
 
 export interface ExportRow {
+  "No.": string;
   School: string;
   District: string;
   Event: string;
@@ -60,13 +63,14 @@ export function toExportRows(entries: ExportEntry[]): ExportRow[] {
     };
 
     if (entry.participants.length === 0) {
-      rows.push({ ...base, Participant: "", Gender: "" });
+      rows.push({ ...base, "No.": "", Participant: "", Gender: "" });
       continue;
     }
 
     for (const participant of entry.participants) {
       rows.push({
         ...base,
+        "No.": formatParticipantNumber(participant.participantNumber),
         Participant: fullName(participant),
         Gender: participant.gender,
       });
@@ -80,6 +84,7 @@ export function buildEntriesWorkbook(entries: ExportEntry[]): XLSX.WorkBook {
   const rows = toExportRows(entries);
   const sheet = XLSX.utils.json_to_sheet(rows, {
     header: [
+      "No.",
       "School",
       "District",
       "Event",
@@ -92,7 +97,7 @@ export function buildEntriesWorkbook(entries: ExportEntry[]): XLSX.WorkBook {
       "Submitted",
     ],
   });
-  sheet["!cols"] = [32, 22, 34, 12, 12, 10, 30, 8, 34, 20].map((wch) => ({ wch }));
+  sheet["!cols"] = [8, 32, 22, 34, 12, 12, 10, 30, 8, 34, 20].map((wch) => ({ wch }));
 
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, "Entries");

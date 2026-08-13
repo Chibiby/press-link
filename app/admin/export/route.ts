@@ -24,12 +24,15 @@ interface EntryRow {
     language: EventLanguage;
   } | null;
   entry_participants: {
-    first_name: string;
-    middle_name: string | null;
-    last_name: string;
-    gender: "M" | "F";
+    participants: {
+      participant_number: number;
+      first_name: string;
+      middle_name: string | null;
+      last_name: string;
+      gender: "M" | "F";
+    } | null;
   }[];
-  entry_coaches: { full_name: string; gender: "M" | "F" }[];
+  entry_coaches: { coaches: { full_name: string; gender: "M" | "F" } | null }[];
 }
 
 export async function GET(request: NextRequest) {
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("entries")
     .select(
-      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(first_name, middle_name, last_name, gender), entry_coaches(full_name, gender)"
+      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(full_name, gender))"
     )
     .order("submitted_at", { ascending: false });
 
@@ -93,13 +96,20 @@ export async function GET(request: NextRequest) {
     level: entry.events?.level ?? "elementary",
     language: entry.events?.language ?? "english",
     submittedAt: entry.submitted_at ? DATE_FORMAT.format(new Date(entry.submitted_at)) : null,
-    participants: entry.entry_participants.map((p) => ({
-      firstName: p.first_name,
-      middleName: p.middle_name,
-      lastName: p.last_name,
-      gender: p.gender,
-    })),
-    coaches: entry.entry_coaches.map((c) => ({ fullName: c.full_name, gender: c.gender })),
+    participants: entry.entry_participants
+      .map((link) => link.participants)
+      .filter((p) => p !== null)
+      .map((p) => ({
+        participantNumber: p.participant_number,
+        firstName: p.first_name,
+        middleName: p.middle_name,
+        lastName: p.last_name,
+        gender: p.gender,
+      })),
+    coaches: entry.entry_coaches
+      .map((link) => link.coaches)
+      .filter((c) => c !== null)
+      .map((c) => ({ fullName: c.full_name, gender: c.gender })),
   }));
 
   const book = buildEntriesWorkbook(exportEntries);

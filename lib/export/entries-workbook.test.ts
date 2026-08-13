@@ -12,7 +12,7 @@ const individual: ExportEntry = {
   language: "english",
   submittedAt: "2026-08-13 09:30",
   participants: [
-    { firstName: "Ana", middleName: "Reyes", lastName: "Cruz", gender: "F" },
+    { participantNumber: 1, firstName: "Ana", middleName: "Reyes", lastName: "Cruz", gender: "F" },
   ],
   coaches: [{ fullName: "Mr. Santos", gender: "M" }],
 };
@@ -26,9 +26,9 @@ const group: ExportEntry = {
   language: "filipino",
   submittedAt: "2026-08-13 10:00",
   participants: [
-    { firstName: "Ben", middleName: null, lastName: "Lim", gender: "M" },
-    { firstName: "Cara", middleName: "P", lastName: "Diaz", gender: "F" },
-    { firstName: "Dino", middleName: null, lastName: "Uy", gender: "M" },
+    { participantNumber: 1, firstName: "Ben", middleName: null, lastName: "Lim", gender: "M" },
+    { participantNumber: 1, firstName: "Cara", middleName: "P", lastName: "Diaz", gender: "F" },
+    { participantNumber: 1, firstName: "Dino", middleName: null, lastName: "Uy", gender: "M" },
   ],
   coaches: [
     { fullName: "Ms. Tan", gender: "F" },
@@ -81,6 +81,7 @@ describe("buildEntriesWorkbook", () => {
     const parsed = XLSX.utils.sheet_to_json<Record<string, string>>(book.Sheets.Entries);
     expect(parsed).toHaveLength(4);
     expect(Object.keys(parsed[0])).toEqual([
+      "No.",
       "School",
       "District",
       "Event",
@@ -97,5 +98,33 @@ describe("buildEntriesWorkbook", () => {
   it("produces an empty sheet for no entries", () => {
     const book = buildEntriesWorkbook([]);
     expect(XLSX.utils.sheet_to_json(book.Sheets.Entries)).toEqual([]);
+  });
+});
+
+describe("participant numbers", () => {
+  it("puts the zero-padded number in its own leading column", () => {
+    const rows = toExportRows([
+      {
+        schoolName: "Bagumbayan ES",
+        districtName: "District I",
+        eventName: "News Writing",
+        category: "individual",
+        level: "elementary",
+        language: "english",
+        submittedAt: null,
+        participants: [
+          {
+            participantNumber: 7,
+            firstName: "Ana",
+            middleName: null,
+            lastName: "Dela Cruz",
+            gender: "F",
+          },
+        ],
+        coaches: [{ fullName: "Mr. Reyes", gender: "M" }],
+      },
+    ]);
+    expect(rows[0]["No."]).toBe("0007");
+    expect(rows[0].Participant).toBe("Dela Cruz, Ana");
   });
 });
