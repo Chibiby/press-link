@@ -12,6 +12,8 @@ export async function seedEvents() {
       category: t.category,
       name_en: t.nameEn,
       name_fil: t.nameFil,
+      min_participants: t.minParticipants,
+      max_participants: t.maxParticipants,
       sort_order: t.sortOrder,
     })),
     { onConflict: "slug" }

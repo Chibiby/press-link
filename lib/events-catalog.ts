@@ -13,6 +13,10 @@ export interface EventTypeSeed {
   nameFil: string;
   /** Levels this contest is actually offered at. */
   levels: readonly EventLevel[];
+  /** Fewest participants a single entry may carry. */
+  minParticipants: number;
+  /** Most participants a single entry may carry; null means unbounded. */
+  maxParticipants: number | null;
   sortOrder: number;
 }
 
@@ -38,24 +42,24 @@ const LANGUAGES = ["english", "filipino"] as const;
  */
 export const EVENT_TYPES: EventTypeSeed[] = [
   // Individual
-  { slug: "news-writing", category: "individual", nameEn: "News Writing", nameFil: "Pagsulat ng Balita", levels: BOTH_LEVELS, sortOrder: 1 },
-  { slug: "editorial-writing", category: "individual", nameEn: "Editorial Writing", nameFil: "Pagsulat ng Editoryal", levels: BOTH_LEVELS, sortOrder: 2 },
-  { slug: "column-writing", category: "individual", nameEn: "Column Writing", nameFil: "Pagsulat ng Kolum", levels: BOTH_LEVELS, sortOrder: 3 },
-  { slug: "feature-writing", category: "individual", nameEn: "Feature Writing", nameFil: "Pagsulat ng Lathalain", levels: BOTH_LEVELS, sortOrder: 4 },
-  { slug: "sci-tech-writing", category: "individual", nameEn: "Science & Technology Writing", nameFil: "Pagsulat ng Agham at Teknolohiya", levels: BOTH_LEVELS, sortOrder: 5 },
-  { slug: "editorial-cartooning", category: "individual", nameEn: "Editorial Cartooning", nameFil: "Pagguhit ng Kartung Editoryal", levels: BOTH_LEVELS, sortOrder: 6 },
-  { slug: "photojournalism", category: "individual", nameEn: "Photojourn", nameFil: "Pagkuha ng Larawang Pampahayagan", levels: BOTH_LEVELS, sortOrder: 7 },
-  { slug: "sports-writing", category: "individual", nameEn: "Sports Writing", nameFil: "Pagsulat ng Isports", levels: BOTH_LEVELS, sortOrder: 8 },
-  { slug: "copy-editing", category: "individual", nameEn: "Copy Editing & Headline Writing", nameFil: "Pagwawasto at Pag-uulo ng Balita", levels: BOTH_LEVELS, sortOrder: 9 },
-  { slug: "mojo", category: "individual", nameEn: "MOJO", nameFil: "MOJO", levels: SECONDARY_ONLY, sortOrder: 10 },
+  { slug: "news-writing", category: "individual", nameEn: "News Writing", nameFil: "Pagsulat ng Balita", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 1 },
+  { slug: "editorial-writing", category: "individual", nameEn: "Editorial Writing", nameFil: "Pagsulat ng Editoryal", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 2 },
+  { slug: "column-writing", category: "individual", nameEn: "Column Writing", nameFil: "Pagsulat ng Kolum", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 3 },
+  { slug: "feature-writing", category: "individual", nameEn: "Feature Writing", nameFil: "Pagsulat ng Lathalain", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 4 },
+  { slug: "sci-tech-writing", category: "individual", nameEn: "Science & Technology Writing", nameFil: "Pagsulat ng Agham at Teknolohiya", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 5 },
+  { slug: "editorial-cartooning", category: "individual", nameEn: "Editorial Cartooning", nameFil: "Pagguhit ng Kartung Editoryal", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 6 },
+  { slug: "photojournalism", category: "individual", nameEn: "Photojourn", nameFil: "Pagkuha ng Larawang Pampahayagan", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 7 },
+  { slug: "sports-writing", category: "individual", nameEn: "Sports Writing", nameFil: "Pagsulat ng Isports", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 8 },
+  { slug: "copy-editing", category: "individual", nameEn: "Copy Editing & Headline Writing", nameFil: "Pagwawasto at Pag-uulo ng Balita", levels: BOTH_LEVELS, minParticipants: 1, maxParticipants: 3, sortOrder: 9 },
+  { slug: "mojo", category: "individual", nameEn: "MOJO", nameFil: "MOJO", levels: SECONDARY_ONLY, minParticipants: 1, maxParticipants: 3, sortOrder: 10 },
 
   // Group
-  { slug: "radio-broadcasting-regular", category: "group", nameEn: "Radio Broadcasting and Scriptwriting (Regular)", nameFil: "Radio Broadcasting and Scriptwriting (Regular)", levels: BOTH_LEVELS, sortOrder: 11 },
-  { slug: "collaborative-publishing", category: "group", nameEn: "Collaborative Publishing", nameFil: "Collaborative Publishing", levels: BOTH_LEVELS, sortOrder: 12 },
-  { slug: "radio-broadcasting-spj", category: "group", nameEn: "Radio Broadcasting and Scriptwriting (SPJ)", nameFil: "Radio Broadcasting and Scriptwriting (SPJ)", levels: BOTH_LEVELS, sortOrder: 13 },
-  { slug: "online-publishing", category: "group", nameEn: "Online Publishing", nameFil: "Online Publishing", levels: SECONDARY_ONLY, sortOrder: 14 },
-  { slug: "tv-broadcasting-regular", category: "group", nameEn: "TV Broadcasting and Scriptwriting (Regular)", nameFil: "TV Broadcasting and Scriptwriting (Regular)", levels: SECONDARY_ONLY, sortOrder: 15 },
-  { slug: "tv-broadcasting-spj", category: "group", nameEn: "TV Broadcasting and Scriptwriting (SPJ)", nameFil: "TV Broadcasting and Scriptwriting (SPJ)", levels: SECONDARY_ONLY, sortOrder: 16 },
+  { slug: "radio-broadcasting-regular", category: "group", nameEn: "Radio Broadcasting and Scriptwriting (Regular)", nameFil: "Radio Broadcasting and Scriptwriting (Regular)", levels: BOTH_LEVELS, minParticipants: 7, maxParticipants: 7, sortOrder: 11 },
+  { slug: "collaborative-publishing", category: "group", nameEn: "Collaborative Publishing", nameFil: "Collaborative Publishing", levels: BOTH_LEVELS, minParticipants: 7, maxParticipants: 7, sortOrder: 12 },
+  { slug: "radio-broadcasting-spj", category: "group", nameEn: "Radio Broadcasting and Scriptwriting (SPJ)", nameFil: "Radio Broadcasting and Scriptwriting (SPJ)", levels: BOTH_LEVELS, minParticipants: 7, maxParticipants: 7, sortOrder: 13 },
+  { slug: "online-publishing", category: "group", nameEn: "Online Publishing", nameFil: "Online Publishing", levels: SECONDARY_ONLY, minParticipants: 2, maxParticipants: null, sortOrder: 14 },
+  { slug: "tv-broadcasting-regular", category: "group", nameEn: "TV Broadcasting and Scriptwriting (Regular)", nameFil: "TV Broadcasting and Scriptwriting (Regular)", levels: SECONDARY_ONLY, minParticipants: 7, maxParticipants: 7, sortOrder: 15 },
+  { slug: "tv-broadcasting-spj", category: "group", nameEn: "TV Broadcasting and Scriptwriting (SPJ)", nameFil: "TV Broadcasting and Scriptwriting (SPJ)", levels: SECONDARY_ONLY, minParticipants: 7, maxParticipants: 7, sortOrder: 16 },
 ];
 
 export function levelTag(level: EventLevel): "elem" | "sec" {

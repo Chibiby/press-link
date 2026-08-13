@@ -93,3 +93,33 @@ describe("EVENTS_CATALOG", () => {
     }
   });
 });
+
+describe("participant counts", () => {
+  it("allows 1 to 3 participants for every individual type", () => {
+    for (const type of EVENT_TYPES.filter((t) => t.category === "individual")) {
+      expect(type.minParticipants).toBe(1);
+      expect(type.maxParticipants).toBe(3);
+    }
+  });
+
+  it("requires exactly 7 for the five seven-member group contests", () => {
+    const sevens = [
+      "radio-broadcasting-regular",
+      "radio-broadcasting-spj",
+      "collaborative-publishing",
+      "tv-broadcasting-regular",
+      "tv-broadcasting-spj",
+    ];
+    for (const slug of sevens) {
+      const type = EVENT_TYPES.find((t) => t.slug === slug);
+      expect(type?.minParticipants).toBe(7);
+      expect(type?.maxParticipants).toBe(7);
+    }
+  });
+
+  it("leaves online publishing unbounded above 2", () => {
+    const type = EVENT_TYPES.find((t) => t.slug === "online-publishing");
+    expect(type?.minParticipants).toBe(2);
+    expect(type?.maxParticipants).toBeNull();
+  });
+});
