@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Building2, FileText, User, Users } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
@@ -9,6 +10,7 @@ import { DashboardHeader } from "@/components/dashboard-header";
 import { LanguageBadge, LevelBadge } from "@/components/entry-badges";
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -123,7 +125,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                   : "Submissions are open."}
               </p>
             </div>
-            <LockToggle locked={locked} />
+            <div className="flex items-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/admin/participants">
+                  <Users className="size-4" />
+                  Participants
+                </Link>
+              </Button>
+              <LockToggle locked={locked} />
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
