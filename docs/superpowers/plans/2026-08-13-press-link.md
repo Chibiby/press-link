@@ -1009,6 +1009,8 @@ git commit -m "Add the 56-event DSPC catalog and its seed script"
 
 The source file's header row is row 2 (`NO., SCHOOL ID , SCHOOL NAME, DISTRICT, ...`), with data starting row 3. Column B (index 1) is School ID, column C (index 2) is School Name, column D (index 3) is District. Some rows are section-banner rows (e.g. `"ALABEL 1 DISTRICT"` in the School Name column, no School ID) that must be skipped, and district names have inconsistent trailing whitespace that must be trimmed before dedup.
 
+The real file also turns out to have 3 rows that repeat an earlier row's School ID — "Extension" satellite campuses sharing their parent school's official ID (e.g. `Sitio Lanao Integrated IP School` and `Sitio Kling CLC - Sitio Lanao IPS Extension` both carry School ID `502694`). Since `school_id_number` is this app's unique login credential (`unique` in the schema, and the seed for the synthetic Auth email in Task 7 assumes one-to-one), two schools can't share one — the transform keeps the first (parent) row and drops later duplicates, surfacing what it dropped so the seed script can log it instead of silently losing schools.
+
 - [ ] **Step 1: Write the failing tests for the transform**
 
 Create `scripts/seed/districts-schools.transform.test.ts`:
@@ -1057,6 +1059,20 @@ describe("transformSchoolRows", () => {
 
     expect(result.schools).toHaveLength(0);
   });
+
+  it("keeps the first row and drops later rows that repeat a school id", () => {
+    const rows: RawSchoolRow[] = [
+      { schoolId: "130551", schoolName: "Del Hilado ES", district: "Malapatan 2" },
+      { schoolId: "130551", schoolName: "Del Hilado ES (Matlusi Extension)", district: "Malapatan 2" },
+    ];
+
+    const result = transformSchoolRows(rows);
+
+    expect(result.schools).toHaveLength(1);
+    expect(result.schools[0].schoolName).toBe("Del Hilado ES");
+    expect(result.droppedDuplicates).toHaveLength(1);
+    expect(result.droppedDuplicates[0].schoolName).toBe("Del Hilado ES (Matlusi Extension)");
+  });
 });
 ```
 
@@ -1084,11 +1100,19 @@ export interface NormalizedSchool {
 export interface TransformResult {
   districtNames: string[];
   schools: NormalizedSchool[];
+  /** Rows dropped because their school_id_number repeats an earlier row's — e.g. an
+   * "Extension" satellite campus sharing its parent school's official School ID. Since
+   * school_id_number is this app's unique login credential, only the first (parent) row
+   * is kept; duplicates are surfaced here so seeding can log what got dropped instead of
+   * silently discarding schools. */
+  droppedDuplicates: NormalizedSchool[];
 }
 
 export function transformSchoolRows(rows: RawSchoolRow[]): TransformResult {
   const schools: NormalizedSchool[] = [];
+  const droppedDuplicates: NormalizedSchool[] = [];
   const districtSet = new Set<string>();
+  const seenSchoolIds = new Set<string>();
 
   for (const row of rows) {
     const schoolIdNumber = String(row.schoolId ?? "").trim();
@@ -1099,13 +1123,22 @@ export function transformSchoolRows(rows: RawSchoolRow[]): TransformResult {
       continue;
     }
 
+    const school = { schoolIdNumber, schoolName, districtName };
+
+    if (seenSchoolIds.has(schoolIdNumber)) {
+      droppedDuplicates.push(school);
+      continue;
+    }
+    seenSchoolIds.add(schoolIdNumber);
+
     districtSet.add(districtName);
-    schools.push({ schoolIdNumber, schoolName, districtName });
+    schools.push(school);
   }
 
   return {
     districtNames: Array.from(districtSet).sort(),
     schools,
+    droppedDuplicates,
   };
 }
 ```
@@ -1141,7 +1174,14 @@ export async function seedDistrictsAndSchools() {
     district: row[3] as string | undefined,
   }));
 
-  const { districtNames, schools } = transformSchoolRows(rows);
+  const { districtNames, schools, droppedDuplicates } = transformSchoolRows(rows);
+
+  if (droppedDuplicates.length > 0) {
+    console.warn(`Dropped ${droppedDuplicates.length} row(s) with a school_id_number already used by an earlier row:`);
+    for (const d of droppedDuplicates) {
+      console.warn(`  - ${d.schoolName} (${d.districtName}, id ${d.schoolIdNumber})`);
+    }
+  }
 
   const supabase = createAdminClient();
 
@@ -1191,7 +1231,7 @@ Add to `.env.local`:
 SCHOOL_HEADS_XLSX_PATH=C:\Users\PC5\Downloads\List-of-School-Heads-as-of-July-6-2026-with-school-Address.xlsx
 ```
 Run: `npx tsx --env-file=.env.local scripts/seed/districts-schools.ts`
-Expected: `Seeded 23 districts and 332 schools.` (or close to those counts — the exact figures depend on the live file). Spot-check in the Supabase Table Editor that a `schools` row like `Alabel Integrated SPED Center` has `school_id_number = "500282"` and its `district_id` resolves to a `districts` row named `Alabel 1`.
+Expected: a handful of `Dropped ... row(s) with a school_id_number already used by an earlier row:` warning lines (real "Extension" duplicates in the source file — see above), then `Seeded 23 districts and 329 schools.` (or close to those counts — the exact figures depend on the live file; this run found 3 duplicates out of 332 raw rows). Spot-check in the Supabase Table Editor that a `schools` row like `Alabel Integrated SPED Center` has `school_id_number = "500282"` and its `district_id` resolves to a `districts` row named `Alabel 1`.
 
 - [ ] **Step 7: Commit**
 
