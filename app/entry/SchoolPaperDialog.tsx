@@ -169,8 +169,9 @@ function PaperForm({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label>Name of School Paper</Label>
+        <Label htmlFor={`${language}-paper-name`}>Name of School Paper</Label>
         <Input
+          id={`${language}-paper-name`}
           value={draft.paperName}
           disabled={locked}
           onChange={(e) => patch({ paperName: e.target.value })}
@@ -179,8 +180,9 @@ function PaperForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <Label>School Paper Adviser</Label>
+          <Label htmlFor={`${language}-adviser-name`}>School Paper Adviser</Label>
           <Input
+            id={`${language}-adviser-name`}
             value={draft.adviserName}
             disabled={locked}
             onChange={(e) => patch({ adviserName: e.target.value })}
@@ -211,8 +213,9 @@ function PaperForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label>School Principal</Label>
+        <Label htmlFor={`${language}-principal-name`}>School Principal</Label>
         <Input
+          id={`${language}-principal-name`}
           value={draft.principalName}
           disabled={locked}
           onChange={(e) => patch({ principalName: e.target.value })}

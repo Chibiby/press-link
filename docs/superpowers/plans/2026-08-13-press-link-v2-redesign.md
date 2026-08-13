@@ -12,7 +12,13 @@
 ## Global Constraints
 
 - Everything from the v1 plan's Global Constraints still holds: Node runtime only (never `runtime = 'edge'`), Server Components read / Server Actions write, anon key in browser only, service-role key only in `scripts/`, RLS on every table, only District + School Name + School ID ever read from the source spreadsheet.
-- **Migrations are applied by the user, not by tooling.** Direct Postgres connection from this machine fails (`db.isixamkeazcjmiquanpv.supabase.co` is IPv6-only → `ENOTFOUND`). Every migration step means: write the `.sql` file, print it, ask the user to paste it into the Supabase SQL Editor, then verify via a script using the service-role client.
+- **Migrations run through the IPv4 pooler.** The direct host (`db.<ref>.supabase.co`) is IPv6-only and unreachable from this machine, which is why v1 fell back to pasting SQL by hand. The Supavisor pooler (`aws-0-ap-southeast-1.pooler.supabase.com:5432`, user `postgres.<ref>`) *is* reachable over IPv4, so `scripts/run-migration.ts` applies migration files directly:
+
+  ```bash
+  SUPABASE_DB_PASSWORD='...' npx tsx --env-file=.env.local scripts/run-migration.ts supabase/migrations/0002_event_types.sql
+  ```
+
+  The script probes pooler regions until one authenticates and wraps the file in a transaction. Verify afterwards with `npm run verify-event-types`.
 - **Server Actions must declare explicit return types** — `Promise<{ error: string } | { success: true }>`. Inferring the type produces `string | undefined` at the call site and fails `tsc`.
 - Tailwind v4 has no `tailwind.config.js` here. shadcn's Tailwind v4 mode writes tokens into `app/globals.css` via `@theme inline` and `:root` / `.dark` blocks — do not create a JS config.
 - Dark mode switches from `prefers-color-scheme` to a **class strategy** (`next-themes` with `attribute="class"`), because the v1 media-query approach is exactly what produced the broken screenshots.
@@ -30,7 +36,7 @@
 **Interfaces:**
 - Produces: `cn()` from `@/lib/utils`, every shadcn primitive under `@/components/ui/*`, and a working `<ThemeToggle />`. Every later task consumes these.
 
-- [ ] **Step 1: Init shadcn**
+- [x] **Step 1: Init shadcn**
 
 Run:
 ```bash
@@ -40,7 +46,7 @@ Expected: `components.json` created, `lib/utils.ts` created with `cn()`, `class-
 
 If the CLI errors on Next 16 / React 19 peer deps, re-run with `--force`. Do not hand-write `components.json`.
 
-- [ ] **Step 2: Add the components**
+- [x] **Step 2: Add the components**
 
 Run:
 ```bash
@@ -48,7 +54,7 @@ npx shadcn@latest add button card dialog input label select table badge separato
 ```
 Expected: files appear under `components/ui/`. `react-hook-form`, `@hookform/resolvers`, `zod`, `sonner`, `@radix-ui/*` get installed as needed.
 
-- [ ] **Step 3: Overwrite the palette with Fresh Academic Teal**
+- [x] **Step 3: Overwrite the palette with Fresh Academic Teal**
 
 Edit `app/globals.css`, replacing shadcn's neutral `--primary` / `--accent` / `--background` / `--ring` values in **both** the `:root` and `.dark` blocks. Keep shadcn's variable *names* and its `oklch()`/hsl format convention — only the values change.
 
@@ -67,7 +73,7 @@ Edit `app/globals.css`, replacing shadcn's neutral `--primary` / `--accent` / `-
 
 Also delete the leftover v1 `@media (prefers-color-scheme: dark)` block and the `body { font-family: Arial... }` rule — the font comes from the Geist variable already set on `<html>` in `layout.tsx`.
 
-- [ ] **Step 4: Wire next-themes**
+- [x] **Step 4: Wire next-themes**
 
 Run `npm i next-themes`.
 
@@ -82,7 +88,7 @@ Edit `app/layout.tsx`:
 
 Create `components/theme-toggle.tsx` — a `"use client"` `Button variant="ghost" size="icon"` toggling `light`/`dark` with `Sun`/`Moon` icons from lucide. Guard against hydration mismatch with a `mounted` state.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `npm run build` — expected: succeeds.
 Run: `npm run dev`, open the printed port (read the log — port 3000 is occupied on this machine by an unrelated process), visit `/login`. Expected: page renders with the new tokens; toggling the OS theme no longer produces light controls on a dark background.
@@ -99,7 +105,7 @@ Run: `npm run dev`, open the printed port (read the log — port 3000 is occupie
 **Interfaces:**
 - Produces: `EVENT_TYPES: EventTypeSeed[]` (16 rows) and `EVENTS_CATALOG: EventSeed[]` (56 rows, each carrying `eventTypeSlug`), plus an `event_types` table and `events.event_type_id`. Task 5's wizard reads from these.
 
-- [ ] **Step 1: Restructure the catalog (TDD — test first)**
+- [x] **Step 1: Restructure the catalog (TDD — test first)**
 
 Edit `lib/events-catalog.test.ts` to assert, before touching the implementation:
 - `EVENT_TYPES` has 16 entries: 10 `category: "individual"`, 6 `category: "group"`.
@@ -113,7 +119,7 @@ Edit `lib/events-catalog.test.ts` to assert, before touching the implementation:
 
 Run `npm test` — expected: **fails** (that is the point of this step).
 
-- [ ] **Step 2: Implement the restructure**
+- [x] **Step 2: Implement the restructure**
 
 Rewrite `lib/events-catalog.ts`:
 
@@ -149,7 +155,7 @@ Keep the existing display names verbatim from v1 (`Photojourn`, `Copy Editing & 
 
 Run `npm test` — expected: passes.
 
-- [ ] **Step 3: Write migration 0002**
+- [x] **Step 3: Write migration 0002**
 
 Create `supabase/migrations/0002_event_types.sql`:
 - `create table event_types (id uuid pk default gen_random_uuid(), slug text unique not null, category text not null check (category in ('individual','group')), name_en text not null, name_fil text not null, sort_order int not null, created_at timestamptz default now())`
@@ -159,7 +165,7 @@ Create `supabase/migrations/0002_event_types.sql`:
 
 Print the file and ask the user to run it in the Supabase SQL Editor. Wait for confirmation.
 
-- [ ] **Step 4: Update the seed**
+- [x] **Step 4: Update the seed**
 
 Edit `scripts/seed/events.ts`:
 1. Upsert `EVENT_TYPES` into `event_types` on conflict `slug`.
@@ -170,13 +176,13 @@ Edit `scripts/seed/events.ts`:
 
 Keep the `isDirectRun` guard pattern already in the file — without it the script exits 0 having done nothing.
 
-- [ ] **Step 5: Run and verify the seed**
+- [x] **Step 5: Run and verify the seed**
 
 Run: `npm run seed` (or the events-only entry point).
 Create `scripts/verify-event-types.ts` using `createAdminClient()` to assert: `event_types` count = 16, `events` count = 56, `events where event_type_id is null` = 0, and zero codes failing the `-(elem|sec)-(eng|fil)$` shape.
 Run it. Expected: all assertions pass.
 
-- [ ] **Step 6: Write and apply migration 0003**
+- [x] **Step 6: Write and apply migration 0003**
 
 Create `supabase/migrations/0003_event_type_not_null.sql` with `alter table events alter column event_type_id set not null;`. Give it to the user to run. Re-run the verify script.
 
@@ -191,11 +197,11 @@ Create `supabase/migrations/0003_event_type_not_null.sql` with `alter table even
 **Interfaces:**
 - Consumes: Task 1 components. Produces: `<Wordmark />` used by login pages and both dashboard headers.
 
-- [ ] **Step 1: Wordmark**
+- [x] **Step 1: Wordmark**
 
 Create `components/brand/wordmark.tsx` — a server component: a teal rounded-square icon tile (lucide `Newspaper`) beside "Press&nbsp;Link" in `font-semibold tracking-tight`, with a `size` prop (`sm` | `lg`) and an optional subtitle slot for "Division Schools Press Conference".
 
-- [ ] **Step 2: `/login`**
+- [x] **Step 2: `/login`**
 
 Rebuild as a centered `Card` on a subtle teal-tinted gradient background (`bg-gradient-to-b from-primary/5 to-background`), max-width ~`28rem`:
 - `CardHeader`: `<Wordmark size="lg" />` + description
@@ -206,11 +212,11 @@ Rebuild as a centered `Card` on a subtle teal-tinted gradient background (`bg-gr
 
 **Keep the existing data logic unchanged** — the schools query must still select only `id, name, district_id`, never `school_id_number`.
 
-- [ ] **Step 3: `/admin/login`**
+- [x] **Step 3: `/admin/login`**
 
 Same card shell, email + password `Input`s, and a muted "School sign-in →" link back to `/login`.
 
-- [ ] **Step 4: Verify in the browser**
+- [x] **Step 4: Verify in the browser**
 
 Drive both pages: wrong school ID → destructive alert, correct → redirect to `/entry`; admin creds → `/admin`. Toggle dark mode on each. Expected: no console errors, no unstyled controls, no hydration warnings.
 
@@ -226,17 +232,17 @@ Drive both pages: wrong school ID → destructive alert, correct → redirect to
 **Interfaces:**
 - Produces: the dashboard layout with an action bar exposing `Create Entry`, `School Paper`, and per-row `Edit` / `Delete`. Tasks 5 and 6 mount their dialogs into it.
 
-- [ ] **Step 1: Server page**
+- [x] **Step 1: Server page**
 
 `app/entry/page.tsx` stays a Server Component. It fetches, in parallel: the school (name + district name), `event_types`, `events`, this school's `entries` with nested participants/coaches and the joined event, the school's `school_papers`, and `app_settings.submissions_locked`. Pass everything down as props. Use `.overrideTypes<…>()` on the nested selects, as `app/admin/page.tsx` already does.
 
-- [ ] **Step 2: Header**
+- [x] **Step 2: Header**
 
 `DashboardHeader.tsx`: sticky top bar with `<Wordmark size="sm" />`, school name + district as muted text, a `Badge` with the entry count, `<ThemeToggle />`, and a sign-out `Button variant="ghost"` calling the existing `signOutAction`.
 
 When `submissions_locked` is true, render an `Alert` under the header ("Submissions are closed…") and pass `locked` down so every mutating button is `disabled`.
 
-- [ ] **Step 3: Action bar + table**
+- [x] **Step 3: Action bar + table**
 
 `EntryDashboard.tsx` (`"use client"`) owns dialog open state. Action bar: `<Button>` **+ Create Entry** (primary), `<Button variant="outline">` **School Paper**, and — only if `school_papers` is missing for a language — an amber `Badge variant="outline"` nudge beside it.
 
@@ -246,7 +252,7 @@ Actions column: `DropdownMenu` with **Edit** (opens the wizard prefilled at step
 
 Empty state: centered card with an icon, "No entries yet", and a **Create your first entry** button.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Browser: sign in as a real school. Expected: header shows the right school and district, empty state renders, dark mode is coherent. With the admin lock toggled on, expected: the alert appears and both action-bar buttons are disabled.
 
@@ -262,7 +268,7 @@ Browser: sign in as a real school. Expected: header shows the right school and d
 - Consumes: `event_types` + `events` from Task 4's page, `saveEntryAction` from v1.
 - Produces: the dialog that replaces `EntryList.tsx`'s inline form.
 
-- [ ] **Step 1: Step-derivation logic (TDD — test first)**
+- [x] **Step 1: Step-derivation logic (TDD — test first)**
 
 `wizard-steps.ts` holds **pure** functions over the fetched rows, so they are unit-testable without React:
 
@@ -281,7 +287,7 @@ Write `wizard-steps.test.ts` first, against a fixture built from `EVENTS_CATALOG
 
 Run `npm test` → fails → implement → passes.
 
-- [ ] **Step 2: The dialog**
+- [x] **Step 2: The dialog**
 
 `EntryWizard.tsx` (`"use client"`), a `Dialog` with a step indicator (numbered dots + labels, current step in primary, completed in muted). Local `step` state 1–5.
 
@@ -293,17 +299,17 @@ Run `npm test` → fails → implement → passes.
 
 A `Back` button on every step past the first; the primary button on step 5 is **Save entry**.
 
-- [ ] **Step 3: Submit**
+- [x] **Step 3: Submit**
 
 Step 5's submit calls `saveEntryAction(entryId, input)` with the `event_id` from `resolveEvent`. Keep the action's explicit `Promise<{ error: string } | { success: true }>` return type. On success: close the dialog, `toast.success`, `router.refresh()`. On failure: keep the dialog open and show the message in an `Alert variant="destructive"` inside it.
 
 Client-side, validate with the existing `lib/validation/entry.ts` schema before calling the action so the user gets field-level feedback; the action re-validates server-side regardless.
 
-- [ ] **Step 4: Edit mode**
+- [x] **Step 4: Edit mode**
 
 `EntryWizard` accepts an optional `entry` prop. When present it opens at step 5 with everything prefilled and the event locked (shown as a read-only summary line with a "Change event" link that jumps back to step 1).
 
-- [ ] **Step 5: Verify in the browser**
+- [x] **Step 5: Verify in the browser**
 
 Drive: individual entry end-to-end → appears in the table. Group entry → wizard opens step 5 with 2 participant rows → saves. A Secondary-only event → step 3 is skipped in both directions. Edit an entry, change a name, save → table updates. Delete → confirm → row disappears. Expected: all pass, no console errors.
 
@@ -319,17 +325,17 @@ Drive: individual entry end-to-end → appears in the table. Group entry → wiz
 **Interfaces:**
 - Consumes: `saveSchoolPaperAction` from v1, unchanged.
 
-- [ ] **Step 1: The dialog**
+- [x] **Step 1: The dialog**
 
 `Dialog` with two `Tabs` — **English** and **Filipino** (add the `tabs` component if Task 1 skipped it). Each tab: paper name `Input`, adviser name `Input`, principal `Input`, and a repeatable staff list (name + role, minimum 2, matching `lib/validation/school-paper.ts`). A `Badge` on each tab shows "Complete" / "Incomplete".
 
 Saving one language does not require the other; each tab has its own submit.
 
-- [ ] **Step 2: Delete the dead v1 components**
+- [x] **Step 2: Delete the dead v1 components**
 
 Remove `app/entry/SchoolPaperForm.tsx` and `app/entry/EntryList.tsx` and any remaining imports. Run `npm run build` — expected: clean, with no unused-import or missing-module errors.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Browser: open the dialog, fill English only, save, reopen → values persisted, English tab reads "Complete", Filipino reads "Incomplete". Try saving with 1 staff member → validation error, no write.
 
@@ -343,25 +349,25 @@ Browser: open the dialog, fill English only, save, reopen → values persisted, 
 **Interfaces:**
 - **Filter semantics do not change.** School and event stay filtered in the query; district, category and language stay filtered in JS after the fetch. URL query state is preserved exactly.
 
-- [ ] **Step 1: Shell + stats**
+- [x] **Step 1: Shell + stats**
 
 Reuse `DashboardHeader`'s look (wordmark, theme toggle, sign out). Add a row of four stat `Card`s: total entries, participating schools, individual entries, group entries — all derived from the already-fetched rows, no extra queries.
 
-- [ ] **Step 2: Filter bar**
+- [x] **Step 2: Filter bar**
 
 Rebuild `FilterBar.tsx` with shadcn `Select`s in a `Card`, laid out `grid gap-3 sm:grid-cols-2 lg:grid-cols-5`, plus a **Clear filters** `Button variant="ghost"` that appears only when at least one filter is active. Keep the existing `router.push` query-string behaviour verbatim.
 
 Add a **Level** select while here — v1 had district / school / event / category / language but no level, and level is now a first-class wizard step. Filter it in JS alongside district.
 
-- [ ] **Step 3: Table**
+- [x] **Step 3: Table**
 
 shadcn `Table`: School · District · Event · Level · Language · Participants · Coaches · Submitted. Same `Badge` conventions as the entry dashboard. Sticky header, horizontal scroll inside the card on narrow viewports. Empty state: "No entries match these filters."
 
-- [ ] **Step 4: Lock toggle**
+- [x] **Step 4: Lock toggle**
 
 `LockToggle.tsx` becomes a `Button` (destructive when unlocking-is-the-action, primary otherwise) wrapped in an `AlertDialog` confirmation that names the consequence: "Schools will no longer be able to create or edit entries." Toast the result.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Browser as admin: create entries from two different schools first, then check each filter narrows correctly and the URL updates; Clear filters resets. Toggle the lock and confirm the school-side `/entry` page reflects it immediately. Expected: all pass.
 
@@ -373,15 +379,15 @@ Browser as admin: create entries from two different schools first, then check ea
 - Create: `app/admin/export/route.ts`, `lib/export/entries-workbook.ts`, `lib/export/entries-workbook.test.ts`
 - Modify: `app/admin/FilterBar.tsx`
 
-- [ ] **Step 1: Workbook builder (TDD)**
+- [x] **Step 1: Workbook builder (TDD)**
 
 `lib/export/entries-workbook.ts` — a pure function from entry rows to a `xlsx` workbook (SheetJS is already a dependency from seeding). One row per participant, columns: School, District, Event, Level, Language, Participant Name, Gender, Coach(es), Submitted. Test it against fixtures: a group entry with 3 participants yields 3 rows carrying identical entry-level fields.
 
-- [ ] **Step 2: Route handler**
+- [x] **Step 2: Route handler**
 
 `app/admin/export/route.ts` — a Node-runtime `GET` that re-checks `admin_profiles` for the caller (a route handler is publicly reachable; do not rely on `proxy.ts` alone), applies the same filters from `searchParams`, and returns the workbook with `Content-Disposition: attachment; filename="press-link-entries-<date>.xlsx"`.
 
-- [ ] **Step 3: Button + verify**
+- [x] **Step 3: Button + verify**
 
 Add **Export** `Button variant="outline"` to the filter bar, linking to `/admin/export?<current query string>` so the export honours the on-screen filters. Verify by downloading with a filter applied and opening the file.
 
@@ -389,7 +395,24 @@ Add **Export** `Button variant="outline"` to the filter bar, linking to `/admin/
 
 ## Post-implementation
 
-- [ ] `npm run build` and `npm test` both clean
-- [ ] `npx tsc --noEmit` clean
-- [ ] Commit, push to `main` on `github.com/Chibiby/press-link`
-- [ ] Deploy: `vercel --prod`, then re-verify `https://press-link-delta.vercel.app` — `/login`, a school sign-in, the wizard, and `/admin` — in a real browser, checking the page title rather than just the HTTP status (a 200 from Vercel's own SSO login page is a known false positive on this project)
+- [x] `npm run build` and `npm test` both clean
+- [x] `npx tsc --noEmit` clean
+- [x] Commit, push to `main` on `github.com/Chibiby/press-link`
+- [x] Deploy: `vercel --prod`, then re-verify `https://press-link-delta.vercel.app` — `/login`, a school sign-in, the wizard, and `/admin` — in a real browser, checking the page title rather than just the HTTP status (a 200 from Vercel's own SSO login page is a known false positive on this project)
+
+---
+
+## Execution notes (2026-08-13)
+
+Things that differed from the plan as written:
+
+- **shadcn CLI has changed.** `-b` is now the component library (`radix` | `base` | `aria`), not the base colour, and init requires a preset. The working command is
+  `npx shadcn@latest init -b radix -p nova -y --css-variables --force`.
+- **`--accent` stayed a quiet hover surface.** shadcn uses `--accent` for menu, table and item hover states, so painting it amber turned every hover orange. Amber moved to a dedicated `--warning` token used by badges and the "to fill" nudge.
+- **Missing label associations were a real bug, not a test artifact.** The wizard's `Field`, the School Paper inputs and the admin filters all rendered a `<Label>` with no `htmlFor`, so screen readers (and `getByLabel`) could not connect them. Fixed by wrapping the control in the label (wizard) and by explicit `htmlFor`/`id` pairs (paper dialog, filters).
+- **`@/` needed a Vitest alias.** `vitest.config.ts` gained a `resolve.alias` entry once tests started importing through the alias.
+- **`xlsx` moved from devDependencies to dependencies** once `app/admin/export/route.ts` imported it at runtime.
+- **Radix `Select` forbids an empty item value**, so the admin filters use an `__any__` sentinel that maps back to "remove this query param".
+
+Verified end-to-end in Chromium against the live database, with zero console errors:
+login (wrong and right password) · empty dashboard · individual entry (1 participant row) · secondary-only group event skipping the level step forward *and* backward · group entry opening with 2 participant rows · School Paper save and "Complete" badge · edit prefill and save · delete with confirm · admin district/school/event/category/level/language filters · Clear filters · filtered Excel export · lock toggle reflected on the school's `/entry` page.

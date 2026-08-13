@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Download, X } from "lucide-react";
 
@@ -137,11 +138,15 @@ function Filter({
   placeholder: string;
   options: { value: string; label: string }[];
 }) {
+  const id = useId();
+
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger id={id} className="w-full">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>

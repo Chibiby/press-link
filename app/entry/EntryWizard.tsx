@@ -595,12 +595,13 @@ function ChoiceCard({
   );
 }
 
+/** Wrapping the control associates it with the label without needing an id. */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+    <Label className="flex flex-col items-stretch gap-1.5 font-normal">
+      <span className="text-xs text-muted-foreground">{label}</span>
       {children}
-    </div>
+    </Label>
   );
 }
 
