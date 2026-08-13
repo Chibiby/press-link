@@ -17,7 +17,10 @@ export async function resetPaperParticipationAction(
   const { error } = await supabase.rpc("admin_reset_paper_participation", {
     target_school: schoolId,
   });
-  if (error) return { error: "Could not reset that school's answer." };
+  if (error) {
+    console.error("resetPaperParticipationAction", error);
+    return { error: "Could not reset that school's answer." };
+  }
 
   revalidatePath("/admin/participants");
   revalidatePath("/entry");

@@ -132,12 +132,15 @@ export default async function AdminParticipantsPage({
                       )}
                     </TableCell>
                     <TableCell>
-                      {row.paperParticipation === "no" ? (
-                        <ResetPaperButton schoolId={row.schoolId} schoolName={row.schoolName} />
+                      {row.paperParticipation === "undecided" ? (
+                        <span className="text-sm text-muted-foreground">Not answered</span>
                       ) : (
-                        <span className="text-sm text-muted-foreground">
-                          {row.paperParticipation === "yes" ? "Submitting" : "Not answered"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {row.paperParticipation === "yes" ? "Submitting" : "Not submitting"}
+                          </span>
+                          <ResetPaperButton schoolId={row.schoolId} schoolName={row.schoolName} />
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>

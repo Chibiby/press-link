@@ -11,7 +11,8 @@
     "seed": "tsx --env-file=.env.local scripts/seed/index.ts",
     "seed:events": "tsx --env-file=.env.local scripts/seed/events.ts",
     "verify-schema": "tsx --env-file=.env.local scripts/verify-schema.ts",
-    "verify-event-types": "tsx --env-file=.env.local scripts/verify-event-types.ts"
+    "verify-event-types": "tsx --env-file=.env.local scripts/verify-event-types.ts",
+    "verify-roster-schema": "tsx --env-file=.env.local scripts/verify-roster-schema.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

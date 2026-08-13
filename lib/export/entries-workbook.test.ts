@@ -27,8 +27,8 @@ const group: ExportEntry = {
   submittedAt: "2026-08-13 10:00",
   participants: [
     { participantNumber: 1, firstName: "Ben", middleName: null, lastName: "Lim", gender: "M" },
-    { participantNumber: 1, firstName: "Cara", middleName: "P", lastName: "Diaz", gender: "F" },
-    { participantNumber: 1, firstName: "Dino", middleName: null, lastName: "Uy", gender: "M" },
+    { participantNumber: 2, firstName: "Cara", middleName: "P", lastName: "Diaz", gender: "F" },
+    { participantNumber: 3, firstName: "Dino", middleName: null, lastName: "Uy", gender: "M" },
   ],
   coaches: [
     { fullName: "Ms. Tan", gender: "F" },
@@ -59,6 +59,7 @@ describe("toExportRows", () => {
       "Uy, Dino",
     ]);
     expect(rows.map((r) => r.Gender)).toEqual(["M", "F", "M"]);
+    expect(rows.map((r) => r["No."])).toEqual(["0001", "0002", "0003"]);
   });
 
   it("still emits a row when an entry has no participants", () => {

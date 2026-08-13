@@ -55,7 +55,10 @@ export async function addParticipantAction(
     last_name: parsed.data.lastName,
     gender: parsed.data.gender,
   });
-  if (error) return { error: "Could not add participant." };
+  if (error) {
+    console.error("addParticipantAction", error);
+    return { error: "Could not add participant." };
+  }
 
   revalidatePath("/entry");
   return { success: true as const };
@@ -81,7 +84,10 @@ export async function deleteParticipantAction(
     .delete()
     .eq("id", participantId)
     .eq("school_id", schoolId);
-  if (error) return { error: "Could not delete participant." };
+  if (error) {
+    console.error("deleteParticipantAction", error);
+    return { error: "Could not delete participant." };
+  }
 
   revalidatePath("/entry");
   return { success: true as const };
@@ -104,7 +110,10 @@ export async function addCoachAction(
     full_name: parsed.data.fullName,
     gender: parsed.data.gender,
   });
-  if (error) return { error: "Could not add coach." };
+  if (error) {
+    console.error("addCoachAction", error);
+    return { error: "Could not add coach." };
+  }
 
   revalidatePath("/entry");
   return { success: true as const };
@@ -130,7 +139,10 @@ export async function deleteCoachAction(
     .delete()
     .eq("id", coachId)
     .eq("school_id", schoolId);
-  if (error) return { error: "Could not delete coach." };
+  if (error) {
+    console.error("deleteCoachAction", error);
+    return { error: "Could not delete coach." };
+  }
 
   revalidatePath("/entry");
   return { success: true as const };
@@ -145,7 +157,10 @@ export async function setPaperParticipationAction(
   const supabase = await createClient();
   // Definer RPC: a school may write this column and nothing else on its row.
   const { error } = await supabase.rpc("set_paper_participation", { choice: parsed.data });
-  if (error) return { error: "Could not save your answer." };
+  if (error) {
+    console.error("setPaperParticipationAction", error);
+    return { error: "Could not save your answer." };
+  }
 
   revalidatePath("/entry");
   return { success: true as const };

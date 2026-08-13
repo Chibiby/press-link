@@ -9,6 +9,7 @@ import { LockToggle } from "./LockToggle";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { LanguageBadge, LevelBadge } from "@/components/entry-badges";
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,8 +49,10 @@ interface EntryRow {
     level: EventLevel;
     language: EventLanguage;
   } | null;
-  entry_participants: { first_name: string; last_name: string }[];
-  entry_coaches: { full_name: string }[];
+  entry_participants: {
+    participants: { participant_number: number; first_name: string; last_name: string } | null;
+  }[];
+  entry_coaches: { coaches: { full_name: string } | null }[];
 }
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -77,14 +80,14 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   let query = supabase
     .from("entries")
     .select(
-      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(first_name, last_name), entry_coaches(full_name)"
+      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, last_name)), entry_coaches(coaches(full_name))"
     )
     .order("submitted_at", { ascending: false });
 
   if (params.school) query = query.eq("school_id", params.school);
   if (params.event) query = query.eq("event_id", params.event);
 
-  const { data: rawEntries } = await query.overrideTypes<EntryRow[]>();
+  const { data: rawEntries, error: entriesError } = await query.overrideTypes<EntryRow[]>();
 
   // District, category, level and language live on joined tables, so they are
   // narrowed here rather than in the query.
@@ -145,6 +148,14 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
           <FilterBar districts={districts ?? []} schools={schools ?? []} events={events ?? []} />
 
+          {entriesError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Could not load entries</AlertTitle>
+              <AlertDescription>
+                The entries could not be loaded. Please try refreshing the page.
+              </AlertDescription>
+            </Alert>
+          ) : (
           <div className="overflow-x-auto rounded-xl border">
             <Table>
               <TableHeader>
@@ -184,11 +195,17 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                     </TableCell>
                     <TableCell>
                       {entry.entry_participants
+                        .map((link) => link.participants)
+                        .filter((p) => p !== null)
                         .map((p) => `${p.first_name} ${p.last_name}`)
                         .join(", ")}
                     </TableCell>
                     <TableCell>
-                      {entry.entry_coaches.map((c) => c.full_name).join(", ")}
+                      {entry.entry_coaches
+                        .map((link) => link.coaches)
+                        .filter((c) => c !== null)
+                        .map((c) => c.full_name)
+                        .join(", ")}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {entry.submitted_at ? DATE_FORMAT.format(new Date(entry.submitted_at)) : "—"}
@@ -205,6 +222,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               </TableBody>
             </Table>
           </div>
+          )}
         </div>
       </main>
     </div>

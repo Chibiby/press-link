@@ -16,12 +16,16 @@ async function getSchoolId() {
 
   const { data: school } = await supabase
     .from("schools")
-    .select("id")
+    .select("id, paper_participation")
     .eq("auth_user_id", user.id)
     .single();
   if (!school) throw new Error("School not found");
 
-  return { supabase, schoolId: school.id as string };
+  return {
+    supabase,
+    schoolId: school.id as string,
+    paperParticipation: school.paper_participation as "undecided" | "yes" | "no",
+  };
 }
 
 export async function signOutAction() {
@@ -38,10 +42,13 @@ export async function saveSchoolPaperAction(
     const message = parsed.error.issues[0]?.message;
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
-  const { supabase, schoolId } = await getSchoolId();
+  const { supabase, schoolId, paperParticipation } = await getSchoolId();
   const { data: settings } = await supabase.from("app_settings").select("submissions_locked").single();
   if (settings?.submissions_locked) {
     return { error: "Submissions are locked." };
+  }
+  if (paperParticipation === "no") {
+    return { error: "Your school is not submitting a school paper." };
   }
 
   const { data: paper, error: upsertError } = await supabase
@@ -63,6 +70,7 @@ export async function saveSchoolPaperAction(
     .single();
 
   if (upsertError || !paper) {
+    console.error("saveSchoolPaperAction", upsertError);
     return { error: "Could not save school paper." };
   }
 
@@ -75,6 +83,7 @@ export async function saveSchoolPaperAction(
     }))
   );
   if (staffError) {
+    console.error("saveSchoolPaperAction", staffError);
     return { error: "Could not save section heads." };
   }
 
@@ -165,13 +174,6 @@ export async function saveEntryAction(
 
   let id = entryId;
   if (id) {
-    const { error } = await supabase
-      .from("entries")
-      .update({ event_id: eventId, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("school_id", schoolId);
-    if (error) return { error: "Could not update entry." };
-
     // supabase-js cannot express a multi-statement transaction, so the
     // delete-then-insert below is a compensating write: snapshot the current
     // members first, and if either insert fails afterward, restore them so a
@@ -182,6 +184,7 @@ export async function saveEntryAction(
         supabase.from("entry_coaches").select("coach_id").eq("entry_id", id),
       ]);
     if (participantSnapshotError || coachSnapshotError) {
+      console.error("saveEntryAction", participantSnapshotError ?? coachSnapshotError);
       return { error: "Could not read the existing entry." };
     }
 
@@ -189,13 +192,19 @@ export async function saveEntryAction(
       .from("entry_participants")
       .delete()
       .eq("entry_id", id);
-    if (deleteParticipantsError) return { error: "Could not update entry." };
+    if (deleteParticipantsError) {
+      console.error("saveEntryAction", deleteParticipantsError);
+      return { error: "Could not update entry." };
+    }
 
     const { error: deleteCoachesError } = await supabase
       .from("entry_coaches")
       .delete()
       .eq("entry_id", id);
-    if (deleteCoachesError) return { error: "Could not update entry." };
+    if (deleteCoachesError) {
+      console.error("saveEntryAction", deleteCoachesError);
+      return { error: "Could not update entry." };
+    }
 
     // Restores both tables to the pre-mutation snapshot. Called after a
     // failed insert, so any rows this attempt already wrote for that table
@@ -216,19 +225,31 @@ export async function saveEntryAction(
         .from("entry_coaches")
         .delete()
         .eq("entry_id", id);
-      if (restoreDeleteParticipantsError || restoreDeleteCoachesError) return false;
+      if (restoreDeleteParticipantsError || restoreDeleteCoachesError) {
+        console.error(
+          "saveEntryAction.restoreSnapshot",
+          restoreDeleteParticipantsError ?? restoreDeleteCoachesError
+        );
+        return false;
+      }
 
       if (previousParticipantIds.length) {
         const { error: restoreParticipantsError } = await supabase
           .from("entry_participants")
           .insert(previousParticipantIds.map((participantId) => ({ entry_id: id, participant_id: participantId })));
-        if (restoreParticipantsError) return false;
+        if (restoreParticipantsError) {
+          console.error("saveEntryAction.restoreSnapshot", restoreParticipantsError);
+          return false;
+        }
       }
       if (previousCoachIds.length) {
         const { error: restoreCoachesError } = await supabase
           .from("entry_coaches")
           .insert(previousCoachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
-        if (restoreCoachesError) return false;
+        if (restoreCoachesError) {
+          console.error("saveEntryAction.restoreSnapshot", restoreCoachesError);
+          return false;
+        }
       }
       return true;
     };
@@ -240,6 +261,7 @@ export async function saveEntryAction(
       .from("entry_participants")
       .insert(participantIds.map((participantId) => ({ entry_id: id, participant_id: participantId })));
     if (participantsError) {
+      console.error("saveEntryAction", participantsError);
       const restored = await restoreSnapshot();
       return { error: restored ? "Could not save participants." : RESTORE_FAILED_MESSAGE };
     }
@@ -248,8 +270,22 @@ export async function saveEntryAction(
       .from("entry_coaches")
       .insert(coachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
     if (coachesError) {
+      console.error("saveEntryAction", coachesError);
       const restored = await restoreSnapshot();
       return { error: restored ? "Could not save coaches." : RESTORE_FAILED_MESSAGE };
+    }
+
+    // Only flip the entry onto the new event once both member inserts have
+    // succeeded, so a failed insert (restored above) never leaves the row
+    // pointing at an event its membership no longer satisfies.
+    const { error: updateError } = await supabase
+      .from("entries")
+      .update({ event_id: eventId, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("school_id", schoolId);
+    if (updateError) {
+      console.error("saveEntryAction", updateError);
+      return { error: "Could not update entry." };
     }
 
     revalidatePath("/entry");
@@ -260,19 +296,28 @@ export async function saveEntryAction(
       .insert({ event_id: eventId, school_id: schoolId })
       .select("id")
       .single();
-    if (error || !inserted) return { error: "Could not create entry." };
+    if (error || !inserted) {
+      console.error("saveEntryAction", error);
+      return { error: "Could not create entry." };
+    }
     id = inserted.id;
   }
 
   const { error: participantsError } = await supabase
     .from("entry_participants")
     .insert(participantIds.map((participantId) => ({ entry_id: id, participant_id: participantId })));
-  if (participantsError) return { error: "Could not save participants." };
+  if (participantsError) {
+    console.error("saveEntryAction", participantsError);
+    return { error: "Could not save participants." };
+  }
 
   const { error: coachesError } = await supabase
     .from("entry_coaches")
     .insert(coachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
-  if (coachesError) return { error: "Could not save coaches." };
+  if (coachesError) {
+    console.error("saveEntryAction", coachesError);
+    return { error: "Could not save coaches." };
+  }
 
   revalidatePath("/entry");
   return { success: true as const };
@@ -285,7 +330,10 @@ export async function deleteEntryAction(entryId: string): Promise<{ error: strin
     return { error: "Submissions are locked." };
   }
   const { error } = await supabase.from("entries").delete().eq("id", entryId).eq("school_id", schoolId);
-  if (error) return { error: "Could not delete entry." };
+  if (error) {
+    console.error("deleteEntryAction", error);
+    return { error: "Could not delete entry." };
+  }
   revalidatePath("/entry");
   return { success: true as const };
 }
