@@ -18,26 +18,18 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
       </div>
       <div className="relative w-full max-w-md">{children}</div>
 
-      {/* Only the coloured letters come from the source raster; the society's
-          full name is set in real text so it stays legible and theme-aware. */}
-      <footer className="relative mt-10 flex flex-col items-center gap-2">
-        <span className="flex items-center rounded-xl bg-white px-4 py-2.5 shadow-sm ring-1 ring-black/5">
+      {/* The full society lockup. It carries its own white background, so it
+          gets a white panel rather than sitting straight on a dark page. */}
+      <footer className="relative mt-10 flex justify-center">
+        <span className="flex items-center rounded-xl bg-white px-5 py-4 shadow-sm ring-1 ring-black/5">
           <Image
-            src="/aspajccjsi-wordmark.png"
-            alt="ASPAJCCJSI"
-            width={400}
-            height={267}
-            style={{ height: "2.75rem", width: "auto" }}
-            className="object-contain"
+            src="/aspajccjsi-logo.png"
+            alt="Association of School Paper Advisers, Journalism Coaches, and Campus Journalists of Sarangani Inc."
+            width={915}
+            height={484}
+            className="w-[19rem] max-w-full object-contain sm:w-[23rem]"
           />
         </span>
-        <p className="max-w-xs text-center text-xs leading-relaxed text-muted-foreground">
-          Association of School Paper Advisers, Journalism Coaches, and Campus
-          Journalists of Sarangani Inc.
-        </p>
-        <p className="text-center text-xs text-muted-foreground">
-          Division of Sarangani &middot; Schools Press Conference
-        </p>
       </footer>
     </main>
   );
