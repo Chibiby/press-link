@@ -47,10 +47,10 @@ interface PaperDraft {
 const emptyStaff = (): StaffDraft => ({ fullName: "", title: "section_head" });
 
 /**
- * Every field here is required, and a school that has no paper in one language
- * still has to get past this form before it can add participants and coaches.
- * A never-filled language therefore opens pre-typed with N/A: save it as-is, or
- * type over it.
+ * Every field here is required. Before the school has answered the submission
+ * question it is expected to give real details, so blank fields stay blank. A
+ * school that answered No is filling this in only because the form demands it,
+ * so its fields open pre-typed with N/A: save as-is, or type over it.
  */
 const NOT_APPLICABLE = "N/A";
 const notApplicableStaff = (): StaffDraft => ({
@@ -58,14 +58,17 @@ const notApplicableStaff = (): StaffDraft => ({
   title: "section_head",
 });
 
-function toDraft(paper: SchoolPaperRow | null): PaperDraft {
+function toDraft(paper: SchoolPaperRow | null, allowNotApplicable: boolean): PaperDraft {
+  const blank = allowNotApplicable ? NOT_APPLICABLE : "";
+  const filler = allowNotApplicable ? notApplicableStaff : emptyStaff;
+
   if (!paper) {
     return {
-      paperName: NOT_APPLICABLE,
-      adviserName: NOT_APPLICABLE,
+      paperName: blank,
+      adviserName: blank,
       adviserGender: "M",
-      principalName: NOT_APPLICABLE,
-      staff: [notApplicableStaff(), notApplicableStaff()],
+      principalName: blank,
+      staff: [filler(), filler()],
     };
   }
   return {
@@ -76,7 +79,7 @@ function toDraft(paper: SchoolPaperRow | null): PaperDraft {
     staff:
       paper.paper_staff.length >= 2
         ? paper.paper_staff.map((s) => ({ fullName: s.full_name, title: s.title }))
-        : [notApplicableStaff(), notApplicableStaff()],
+        : [filler(), filler()],
   };
 }
 
@@ -86,17 +89,20 @@ export function SchoolPaperDialog({
   papers,
   locked,
   required,
+  allowNotApplicable = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   papers: SchoolPaperRow[];
   locked: boolean;
   /**
-   * The school said it is submitting a paper but has saved nothing yet. Saving
-   * is the only way out: no close button, and neither Escape nor the overlay
-   * dismisses it. A school that opened this itself keeps its close button.
+   * The school still owes these papers. Saving them is the only way out: no
+   * close button, and neither Escape nor the overlay dismisses it. A school
+   * that opened the form itself keeps its close button.
    */
   required?: boolean;
+  /** Prefill blanks with N/A — true only after the school has answered No. */
+  allowNotApplicable?: boolean;
 }) {
   const english = papers.find((p) => p.language === "english") ?? null;
   const filipino = papers.find((p) => p.language === "filipino") ?? null;
@@ -110,9 +116,13 @@ export function SchoolPaperDialog({
         <DialogHeader>
           <DialogTitle>School Paper</DialogTitle>
           <DialogDescription>
-            {required
-              ? "Save at least one language to continue. Fields you cannot answer can stay as N/A."
-              : "Filled once per language and reused across every entry. Save each language separately."}
+            {locked
+              ? "Submitted as your school paper entry. Contact the division office if this needs a change."
+              : required
+                ? allowNotApplicable
+                  ? "Save both languages to continue. Anything that does not apply can stay as N/A."
+                  : "Save both the English and Filipino paper to continue."
+                : "Filled once per language and reused across every entry. Save each language separately."}
           </DialogDescription>
         </DialogHeader>
 
@@ -128,10 +138,20 @@ export function SchoolPaperDialog({
             </TabsTrigger>
           </TabsList>
           <TabsContent value="english" className="pt-4">
-            <PaperForm language="english" existing={english} locked={locked} />
+            <PaperForm
+              language="english"
+              existing={english}
+              locked={locked}
+              allowNotApplicable={allowNotApplicable}
+            />
           </TabsContent>
           <TabsContent value="filipino" className="pt-4">
-            <PaperForm language="filipino" existing={filipino} locked={locked} />
+            <PaperForm
+              language="filipino"
+              existing={filipino}
+              locked={locked}
+              allowNotApplicable={allowNotApplicable}
+            />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -151,19 +171,21 @@ function PaperForm({
   language,
   existing,
   locked,
+  allowNotApplicable,
 }: {
   language: EventLanguage;
   existing: SchoolPaperRow | null;
   locked: boolean;
+  allowNotApplicable: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [draft, setDraft] = useState<PaperDraft>(() => toDraft(existing));
+  const [draft, setDraft] = useState<PaperDraft>(() => toDraft(existing, allowNotApplicable));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setDraft(toDraft(existing));
-  }, [existing]);
+    setDraft(toDraft(existing, allowNotApplicable));
+  }, [existing, allowNotApplicable]);
 
   function patch(patchObj: Partial<PaperDraft>) {
     setDraft((prev) => ({ ...prev, ...patchObj }));

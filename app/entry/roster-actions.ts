@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
-  paperAnswerSchema,
+  paperParticipationSchema,
   rosterCoachSchema,
   rosterParticipantSchema,
 } from "@/lib/validation/roster";
+import { paperFlowState, type PaperParticipation } from "@/lib/paper/gate";
+import type { EventLanguage } from "@/lib/events-catalog";
 
 async function getSchoolId() {
   const supabase = await createClient();
@@ -35,6 +37,38 @@ async function assertUnlocked(
   return settings?.submissions_locked ? "Submissions are locked." : null;
 }
 
+/**
+ * The roster stays shut until the school paper business is settled. The dialogs
+ * enforce this too, but a hand-rolled request would sail past them.
+ */
+async function assertPaperSettled(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  schoolId: string
+): Promise<string | null> {
+  const [{ data: school }, { data: papers }] = await Promise.all([
+    supabase
+      .from("schools")
+      .select("paper_participation, paper_answered_at")
+      .eq("id", schoolId)
+      .single<{ paper_participation: PaperParticipation; paper_answered_at: string | null }>(),
+    supabase
+      .from("school_papers")
+      .select("language, updated_at")
+      .eq("school_id", schoolId)
+      .overrideTypes<{ language: EventLanguage; updated_at: string }[]>(),
+  ]);
+  if (!school) return "School not found.";
+
+  const state = paperFlowState({
+    participation: school.paper_participation,
+    answeredAt: school.paper_answered_at,
+    papers: (papers ?? []).map((p) => ({ language: p.language, updatedAt: p.updated_at })),
+  });
+  return state.rosterEnabled
+    ? null
+    : "Complete your School Paper details before adding people.";
+}
+
 export async function addParticipantAction(
   input: unknown
 ): Promise<{ error: string } | { success: true }> {
@@ -46,6 +80,8 @@ export async function addParticipantAction(
   const { supabase, schoolId } = await getSchoolId();
   const locked = await assertUnlocked(supabase);
   if (locked) return { error: locked };
+  const unsettled = await assertPaperSettled(supabase, schoolId);
+  if (unsettled) return { error: unsettled };
 
   // participant_number comes from the division-wide sequence default.
   const { error } = await supabase.from("participants").insert({
@@ -104,6 +140,8 @@ export async function addCoachAction(
   const { supabase, schoolId } = await getSchoolId();
   const locked = await assertUnlocked(supabase);
   if (locked) return { error: locked };
+  const unsettled = await assertPaperSettled(supabase, schoolId);
+  if (unsettled) return { error: unsettled };
 
   const { error } = await supabase.from("coaches").insert({
     school_id: schoolId,
@@ -149,21 +187,17 @@ export async function deleteCoachAction(
 }
 
 export async function setPaperParticipationAction(
-  input: unknown
+  choice: unknown
 ): Promise<{ error: string } | { success: true }> {
-  const parsed = paperAnswerSchema.safeParse(input);
-  if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message;
-    return { error: typeof message === "string" ? message : "Please answer Yes or No." };
-  }
-  const { choice, reason, note } = parsed.data;
+  const parsed = paperParticipationSchema.safeParse(choice);
+  if (!parsed.success) return { error: "Please answer Yes or No." };
 
   const supabase = await createClient();
-  // Definer RPC: a school may write these columns and nothing else on its row.
+  // Definer RPC: a school may write this answer and nothing else on its row.
+  // It also refuses unless both papers exist, so the roster cannot be unlocked
+  // by calling this before the form has been filled.
   const { error } = await supabase.rpc("set_paper_participation", {
-    choice,
-    reason: choice === "no" ? (reason ?? null) : null,
-    note: reason === "other" ? (note ?? null) : null,
+    choice: parsed.data,
   });
   if (error) {
     console.error("setPaperParticipationAction", error);

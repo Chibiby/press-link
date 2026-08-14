@@ -18,37 +18,6 @@ export const rosterCoachSchema = z.object({
  */
 export const paperParticipationSchema = z.enum(["yes", "no"]);
 
-/**
- * A No has to say why: the reason decides whether the school keeps being asked
- * and whether its School Paper form stays open. Only "other" carries a note,
- * and it is the one case where the note is required.
- */
-export const paperAnswerSchema = z
-  .object({
-    choice: z.enum(["yes", "no"]),
-    reason: z
-      .enum(["submit_later", "no_paper_yet", "will_not_submit", "other"])
-      .nullish(),
-    note: z.string().trim().nullish(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.choice === "no" && !value.reason) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["reason"],
-        message: "Please choose a reason",
-      });
-    }
-    if (value.reason === "other" && !value.note) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["note"],
-        message: "Please describe your reason",
-      });
-    }
-  });
-
 export type RosterParticipantInput = z.infer<typeof rosterParticipantSchema>;
 export type RosterCoachInput = z.infer<typeof rosterCoachSchema>;
 export type PaperParticipationInput = z.infer<typeof paperParticipationSchema>;
-export type PaperAnswerInput = z.infer<typeof paperAnswerSchema>;

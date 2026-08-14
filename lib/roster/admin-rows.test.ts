@@ -13,8 +13,6 @@ const raw = (overrides: Partial<RawAdminParticipant> = {}): RawAdminParticipant 
     name: "Bagumbayan ES",
     district_id: "d1",
     paper_participation: "yes",
-    paper_decline_reason: null,
-    paper_decline_note: null,
     districts: { name: "District I" },
   },
   entry_participants: [{ entry_id: "e1" }],
@@ -22,30 +20,6 @@ const raw = (overrides: Partial<RawAdminParticipant> = {}): RawAdminParticipant 
 });
 
 describe("toAdminParticipantRows", () => {
-  it("carries the decline reason and note through for the admin table", () => {
-    const [row] = toAdminParticipantRows([
-      raw({
-        schools: {
-          id: "s1",
-          name: "Bagumbayan ES",
-          district_id: "d1",
-          paper_participation: "no",
-          paper_decline_reason: "other",
-          paper_decline_note: "Adviser is on leave",
-          districts: { name: "District I" },
-        },
-      }),
-    ]);
-    expect(row.paperDeclineReason).toBe("other");
-    expect(row.paperDeclineNote).toBe("Adviser is on leave");
-  });
-
-  it("leaves the reason null for a school that never declined", () => {
-    const [row] = toAdminParticipantRows([raw()]);
-    expect(row.paperDeclineReason).toBeNull();
-    expect(row.paperDeclineNote).toBeNull();
-  });
-
   it("pads the number and builds a surname-first name", () => {
     const [row] = toAdminParticipantRows([raw()]);
     expect(row.numberLabel).toBe("0007");

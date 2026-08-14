@@ -14,11 +14,7 @@ import type {
   RosterParticipant,
   SchoolPaperRow,
 } from "./types";
-import {
-  DECLINE_REASON_LABELS,
-  type PaperDeclineReason,
-  type PaperParticipation,
-} from "@/lib/paper/gate";
+import type { PaperFlowState } from "@/lib/paper/gate";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { type UsageMap } from "@/lib/roster/limits";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -33,10 +29,7 @@ export function EntryDashboard({
   participants,
   coaches,
   usage,
-  participation,
-  declineReason,
-  askPaperQuestion,
-  paperFormEnabled,
+  paperFlow,
   locked,
 }: {
   entries: EntryRow[];
@@ -46,38 +39,18 @@ export function EntryDashboard({
   participants: RosterParticipant[];
   coaches: RosterCoach[];
   usage: UsageMap;
-  participation: PaperParticipation;
-  declineReason: PaperDeclineReason | null;
-  /** The school still owes an answer — see lib/paper/gate.ts. */
-  askPaperQuestion: boolean;
-  /** False once the school has firmly refused; only an admin can reopen it. */
-  paperFormEnabled: boolean;
+  /** Where the school stands on its school paper — see lib/paper/gate.ts. */
+  paperFlow: PaperFlowState;
   locked: boolean;
 }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<EntryRow | null>(null);
   // null = follow the derived default; true/false = the user has taken over.
   const [paperOpenOverride, setPaperOpenOverride] = useState<boolean | null>(null);
-  /** The answer given in this visit, so the gate does not re-ask immediately. */
-  const [answeredThisVisit, setAnsweredThisVisit] = useState<"yes" | "no" | null>(null);
 
-  const paperDeclined = !paperFormEnabled;
-  const missingPapers = (["english", "filipino"] as const).filter(
-    (lang) => !papers.some((p) => p.language === lang)
-  );
-
-  // `askPaperQuestion` stays true for a Yes school with nothing saved — that is
-  // what brings the question back on the next visit. Without remembering the
-  // answer given just now, re-answering Yes would simply re-open the question,
-  // so the gate closes for the rest of this visit once it has been answered.
-  const answered = answeredThisVisit ?? (askPaperQuestion ? null : participation);
-  const gateOpen = askPaperQuestion && answeredThisVisit === null;
-
-  // A school that means to submit lands straight in the form rather than having
-  // to find the button. While it is open for that reason it cannot be
-  // dismissed: saving is the way out.
-  const paperRequired = paperFormEnabled && answered === "yes" && papers.length === 0;
-  const paperOpen = paperOpenOverride ?? paperRequired;
+  // The form is forced open while anything is still owed; only then can the
+  // school choose to open it itself.
+  const paperOpen = paperFlow.paperFormOpen || (paperOpenOverride ?? false);
 
   function openCreate() {
     setEditing(null);
@@ -93,7 +66,7 @@ export function EntryDashboard({
 
   return (
     <div className="flex flex-col gap-8">
-      <PaperGateDialog open={gateOpen} onAnswered={setAnsweredThisVisit} />
+      <PaperGateDialog open={paperFlow.askQuestion} />
 
       {locked && (
         <Alert>
@@ -113,39 +86,34 @@ export function EntryDashboard({
               Register everyone first — entries pick from this list.
             </p>
           </div>
-          <Button
-            variant="outline"
-            disabled={paperDeclined}
-            onClick={() => setPaperOpenOverride(true)}
-          >
+          <Button variant="outline" onClick={() => setPaperOpenOverride(true)}>
             <Newspaper className="size-4" />
             School Paper
-            {paperDeclined ? (
-              <Badge variant="outline" className="ml-1">
-                Not submitting
+            {paperFlow.paperFormLocked ? (
+              <Badge variant="secondary" className="ml-1">
+                Submitted
               </Badge>
             ) : (
-              missingPapers.length > 0 && (
+              paperFlow.missingLanguages.length > 0 && (
                 <Badge
                   variant="outline"
                   className="ml-1 border-warning/40 bg-warning/15 text-warning-foreground dark:text-warning"
                 >
-                  {missingPapers.length} to fill
+                  {paperFlow.missingLanguages.length} to fill
                 </Badge>
               )
             )}
           </Button>
         </div>
 
-        {paperDeclined && (
+        {!paperFlow.rosterEnabled && (
           <Alert>
             <Newspaper />
-            <AlertTitle>School Paper closed</AlertTitle>
+            <AlertTitle>Finish your School Paper first</AlertTitle>
             <AlertDescription>
-              {declineReason
-                ? `You answered: ${DECLINE_REASON_LABELS[declineReason].toLowerCase()}.`
-                : "You answered that your school is not submitting a paper."}{" "}
-              The division office can reopen this for you.
+              {paperFlow.phase === "refill"
+                ? "You answered that you are not submitting a school paper entry. Save both languages once more — N/A is accepted — and the roster opens."
+                : "Fill in the English and Filipino school paper. Participants and coaches open once both are saved."}
             </AlertDescription>
           </Alert>
         )}
@@ -154,7 +122,7 @@ export function EntryDashboard({
           participants={participants}
           coaches={coaches}
           usage={usage}
-          locked={locked}
+          locked={locked || !paperFlow.rosterEnabled}
         />
       </section>
 
@@ -198,8 +166,9 @@ export function EntryDashboard({
         open={paperOpen}
         onOpenChange={setPaperOpenOverride}
         papers={papers}
-        locked={locked || paperDeclined}
-        required={paperRequired}
+        locked={locked || paperFlow.paperFormLocked}
+        required={paperFlow.paperFormOpen}
+        allowNotApplicable={paperFlow.allowNotApplicable}
       />
     </div>
   );

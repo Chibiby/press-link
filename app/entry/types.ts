@@ -36,7 +36,7 @@ export interface EntryRow {
 }
 
 /** Re-exported so the paper rules live in exactly one module. */
-export type { PaperDeclineReason, PaperParticipation } from "@/lib/paper/gate";
+export type { PaperParticipation } from "@/lib/paper/gate";
 
 export interface PaperStaffRow {
   id: string;
@@ -47,6 +47,8 @@ export interface PaperStaffRow {
 export interface SchoolPaperRow {
   id: string;
   language: EventLanguage;
+  /** Last save, used to tell a post-answer re-save from the original. */
+  updated_at: string;
   paper_name: string;
   adviser_name: string;
   adviser_gender: "M" | "F";

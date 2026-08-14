@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  paperAnswerSchema,
   paperParticipationSchema,
   rosterCoachSchema,
   rosterParticipantSchema,
@@ -67,42 +66,3 @@ describe("paperParticipationSchema", () => {
   });
 });
 
-describe("paperAnswerSchema", () => {
-  it("accepts a plain yes", () => {
-    expect(paperAnswerSchema.safeParse({ choice: "yes" }).success).toBe(true);
-  });
-
-  it("requires a reason with a no", () => {
-    const result = paperAnswerSchema.safeParse({ choice: "no" });
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.message).toBe("Please choose a reason");
-  });
-
-  it("accepts a no with a listed reason", () => {
-    expect(
-      paperAnswerSchema.safeParse({ choice: "no", reason: "no_paper_yet" }).success
-    ).toBe(true);
-  });
-
-  it("requires a note when the reason is other", () => {
-    const result = paperAnswerSchema.safeParse({ choice: "no", reason: "other" });
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.message).toBe("Please describe your reason");
-  });
-
-  it("rejects a whitespace-only note", () => {
-    expect(
-      paperAnswerSchema.safeParse({ choice: "no", reason: "other", note: "   " }).success
-    ).toBe(false);
-  });
-
-  it("accepts other with a real note", () => {
-    expect(
-      paperAnswerSchema.safeParse({
-        choice: "no",
-        reason: "other",
-        note: "Adviser is on leave",
-      }).success
-    ).toBe(true);
-  });
-});

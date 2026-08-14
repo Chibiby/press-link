@@ -9,11 +9,7 @@ import type {
   RosterParticipant,
   SchoolPaperRow,
 } from "./types";
-import {
-  paperGateState,
-  type PaperDeclineReason,
-  type PaperParticipation,
-} from "@/lib/paper/gate";
+import { paperFlowState, type PaperParticipation } from "@/lib/paper/gate";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { formatParticipantNumber, type UsageMap } from "@/lib/roster/limits";
 import type { EventCategory } from "@/lib/events-catalog";
@@ -80,15 +76,13 @@ export default async function EntryPage() {
 
   const { data: school, error: schoolError } = await supabase
     .from("schools")
-    .select(
-      "id, name, paper_participation, paper_decline_reason, districts(name)"
-    )
+    .select("id, name, paper_participation, paper_answered_at, districts(name)")
     .eq("auth_user_id", user.id)
     .single<{
       id: string;
       name: string;
       paper_participation: PaperParticipation;
-      paper_decline_reason: PaperDeclineReason | null;
+      paper_answered_at: string | null;
       districts: { name: string } | null;
     }>();
 
@@ -118,7 +112,7 @@ export default async function EntryPage() {
     supabase
       .from("school_papers")
       .select(
-        "id, language, paper_name, adviser_name, adviser_gender, principal_name, paper_staff(id, full_name, title)"
+        "id, language, updated_at, paper_name, adviser_name, adviser_gender, principal_name, paper_staff(id, full_name, title)"
       )
       .eq("school_id", school.id)
       .overrideTypes<SchoolPaperRow[]>(),
@@ -189,12 +183,12 @@ export default async function EntryPage() {
 
   const locked = settings?.submissions_locked ?? false;
 
-  // One place decides whether the school is asked again and whether its paper
-  // form stays open — see lib/paper/gate.ts for the rules.
-  const gate = paperGateState({
+  // One place decides where the school is in the paper flow, and therefore
+  // whether the form is forced open, locked, or done — see lib/paper/gate.ts.
+  const paperFlow = paperFlowState({
     participation: school.paper_participation,
-    declineReason: school.paper_decline_reason,
-    savedLanguageCount: (papers ?? []).length,
+    answeredAt: school.paper_answered_at,
+    papers: (papers ?? []).map((p) => ({ language: p.language, updatedAt: p.updated_at })),
   });
 
   return (
@@ -214,10 +208,7 @@ export default async function EntryPage() {
           participants={(rawParticipants ?? []).map(toRosterParticipant)}
           coaches={rawCoaches ?? []}
           usage={usage}
-          participation={school.paper_participation}
-          declineReason={school.paper_decline_reason}
-          askPaperQuestion={gate.askAgain}
-          paperFormEnabled={gate.paperFormEnabled}
+          paperFlow={paperFlow}
           locked={locked}
         />
       </main>

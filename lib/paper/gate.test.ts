@@ -1,78 +1,117 @@
 import { describe, expect, it } from "vitest";
 
-import { DECLINE_REASON_LABELS, paperGateState } from "./gate";
+import { paperFlowState } from "./gate";
 
-describe("paperGateState", () => {
-  it("asks a school that has not answered yet", () => {
-    expect(
-      paperGateState({
-        participation: "undecided",
-        declineReason: null,
-        savedLanguageCount: 0,
-      })
-    ).toEqual({ askAgain: true, paperFormEnabled: true });
+const ANSWERED = "2026-08-14T02:00:00.000Z";
+const BEFORE = "2026-08-14T01:00:00.000Z";
+const AFTER = "2026-08-14T03:00:00.000Z";
+
+const both = (updatedAt: string) => [
+  { language: "english" as const, updatedAt },
+  { language: "filipino" as const, updatedAt },
+];
+
+describe("paperFlowState", () => {
+  it("makes a school with nothing saved fill both languages first", () => {
+    const state = paperFlowState({ participation: "undecided", answeredAt: null, papers: [] });
+    expect(state.phase).toBe("fill");
+    expect(state.paperFormOpen).toBe(true);
+    expect(state.rosterEnabled).toBe(false);
+    expect(state.askQuestion).toBe(false);
+    expect(state.allowNotApplicable).toBe(false);
+    expect(state.missingLanguages).toEqual(["english", "filipino"]);
   });
 
-  it("keeps asking a Yes school until it saves a language", () => {
-    expect(
-      paperGateState({ participation: "yes", declineReason: null, savedLanguageCount: 0 })
-    ).toEqual({ askAgain: true, paperFormEnabled: true });
+  it("keeps the form open when only one language is saved", () => {
+    const state = paperFlowState({
+      participation: "undecided",
+      answeredAt: null,
+      papers: [{ language: "english", updatedAt: BEFORE }],
+    });
+    expect(state.phase).toBe("fill");
+    expect(state.missingLanguages).toEqual(["filipino"]);
+    expect(state.rosterEnabled).toBe(false);
   });
 
-  it("stops asking once a Yes school has saved one language", () => {
-    expect(
-      paperGateState({ participation: "yes", declineReason: null, savedLanguageCount: 1 })
-    ).toEqual({ askAgain: false, paperFormEnabled: true });
+  it("asks the question once both languages are saved", () => {
+    const state = paperFlowState({
+      participation: "undecided",
+      answeredAt: null,
+      papers: both(BEFORE),
+    });
+    expect(state.phase).toBe("question");
+    expect(state.askQuestion).toBe(true);
+    expect(state.paperFormOpen).toBe(false);
+    expect(state.rosterEnabled).toBe(false);
   });
 
-  it("keeps asking a school that said it would submit later", () => {
-    expect(
-      paperGateState({
-        participation: "no",
-        declineReason: "submit_later",
-        savedLanguageCount: 0,
-      })
-    ).toEqual({ askAgain: true, paperFormEnabled: true });
+  it("locks the papers and opens the roster on yes", () => {
+    const state = paperFlowState({
+      participation: "yes",
+      answeredAt: ANSWERED,
+      papers: both(BEFORE),
+    });
+    expect(state.phase).toBe("done");
+    expect(state.paperFormLocked).toBe(true);
+    expect(state.rosterEnabled).toBe(true);
+    expect(state.askQuestion).toBe(false);
   });
 
-  it("leaves a school with no paper yet alone, but able to fill it in", () => {
-    expect(
-      paperGateState({
-        participation: "no",
-        declineReason: "no_paper_yet",
-        savedLanguageCount: 0,
-      })
-    ).toEqual({ askAgain: false, paperFormEnabled: true });
+  it("sends a no school back to re-save, with N/A allowed and the roster shut", () => {
+    const state = paperFlowState({
+      participation: "no",
+      answeredAt: ANSWERED,
+      papers: both(BEFORE),
+    });
+    expect(state.phase).toBe("refill");
+    expect(state.paperFormOpen).toBe(true);
+    expect(state.allowNotApplicable).toBe(true);
+    expect(state.rosterEnabled).toBe(false);
+    expect(state.paperFormLocked).toBe(false);
   });
 
-  it("disables the form for a school that will not submit", () => {
-    expect(
-      paperGateState({
-        participation: "no",
-        declineReason: "will_not_submit",
-        savedLanguageCount: 0,
-      })
-    ).toEqual({ askAgain: false, paperFormEnabled: false });
+  it("still blocks a no school that has re-saved only one language", () => {
+    const state = paperFlowState({
+      participation: "no",
+      answeredAt: ANSWERED,
+      papers: [
+        { language: "english", updatedAt: AFTER },
+        { language: "filipino", updatedAt: BEFORE },
+      ],
+    });
+    expect(state.phase).toBe("refill");
+    expect(state.missingLanguages).toEqual(["filipino"]);
+    expect(state.rosterEnabled).toBe(false);
   });
 
-  it("disables the form for an other reason too", () => {
-    expect(
-      paperGateState({ participation: "no", declineReason: "other", savedLanguageCount: 0 })
-    ).toEqual({ askAgain: false, paperFormEnabled: false });
+  it("releases a no school once both languages are re-saved", () => {
+    const state = paperFlowState({
+      participation: "no",
+      answeredAt: ANSWERED,
+      papers: both(AFTER),
+    });
+    expect(state.phase).toBe("done");
+    expect(state.rosterEnabled).toBe(true);
+    expect(state.paperFormOpen).toBe(false);
+    expect(state.paperFormLocked).toBe(false);
+    expect(state.allowNotApplicable).toBe(true);
   });
 
-  it("re-asks a No school whose reason went missing rather than locking it out", () => {
-    expect(
-      paperGateState({ participation: "no", declineReason: null, savedLanguageCount: 0 })
-    ).toEqual({ askAgain: true, paperFormEnabled: true });
+  it("counts a re-save at the very moment of the answer", () => {
+    const state = paperFlowState({
+      participation: "no",
+      answeredAt: ANSWERED,
+      papers: both(ANSWERED),
+    });
+    expect(state.phase).toBe("done");
   });
 
-  it("labels every reason", () => {
-    expect(Object.keys(DECLINE_REASON_LABELS)).toEqual([
-      "submit_later",
-      "no_paper_yet",
-      "will_not_submit",
-      "other",
-    ]);
+  it("treats a missing answer timestamp as nothing re-saved yet", () => {
+    const state = paperFlowState({
+      participation: "no",
+      answeredAt: null,
+      papers: both(AFTER),
+    });
+    expect(state.phase).toBe("refill");
   });
 });
