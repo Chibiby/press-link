@@ -65,7 +65,7 @@ export function toAdminParticipantRows(raw: RawAdminParticipant[]): AdminPartici
           paperCount: row.schools?.paper_count ?? 0,
           lockedAt: row.schools?.paper_locked_at ?? null,
         }),
-        paperLocked: (row.schools?.paper_locked_at ?? null) !== null,
+        paperLocked: row.schools?.paper_locked_at != null,
       };
     })
     .sort((a, b) => a.numberLabel.localeCompare(b.numberLabel));

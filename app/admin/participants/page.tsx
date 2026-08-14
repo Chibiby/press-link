@@ -12,6 +12,19 @@ import {
   type RawAdminParticipant,
 } from "@/lib/roster/admin-rows";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
+
+// The `school_papers(count)` aggregate in the select below is what Supabase
+// actually returns for a participant's school — not the flattened
+// `paper_count` that `RawAdminParticipant` (and the pure row mapper) expect.
+// This type describes the query's real shape so `overrideTypes` cannot lie
+// about pre-flattening data; `rawWithCounts` below converts one into the other.
+type RawAdminParticipantWithAggregate = Omit<RawAdminParticipant, "schools"> & {
+  schools:
+    | (Omit<NonNullable<RawAdminParticipant["schools"]>, "paper_count"> & {
+        school_papers?: { count: number }[];
+      })
+    | null;
+};
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,7 +75,7 @@ export default async function AdminParticipantsPage({
         "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, paper_locked_at, school_papers(count), districts(name)), entry_participants(entry_id)"
       )
       .order("participant_number")
-      .overrideTypes<RawAdminParticipant[]>(),
+      .overrideTypes<RawAdminParticipantWithAggregate[]>(),
   ]);
 
   // `school_papers(count)` arrives as a one-element array; the row mapper wants
@@ -72,9 +85,7 @@ export default async function AdminParticipantsPage({
     schools: row.schools
       ? {
           ...row.schools,
-          paper_count:
-            (row.schools as unknown as { school_papers?: { count: number }[] }).school_papers?.[0]
-              ?.count ?? 0,
+          paper_count: row.schools.school_papers?.[0]?.count ?? 0,
         }
       : null,
   }));
