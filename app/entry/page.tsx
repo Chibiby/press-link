@@ -78,7 +78,7 @@ export default async function EntryPage() {
     redirect("/login");
   }
 
-  const { data: school } = await supabase
+  const { data: school, error: schoolError } = await supabase
     .from("schools")
     .select(
       "id, name, paper_participation, paper_decline_reason, districts(name)"
@@ -91,6 +91,15 @@ export default async function EntryPage() {
       paper_decline_reason: PaperDeclineReason | null;
       districts: { name: string } | null;
     }>();
+
+  // A broken query and a signed-in user who owns no school are different
+  // problems. Redirecting on both turns any schema drift into what looks like
+  // a rejected password — the school is bounced to /login with nothing to see.
+  // PGRST116 is "no rows", the only case that genuinely belongs at /login.
+  if (schoolError && schoolError.code !== "PGRST116") {
+    console.error("EntryPage school lookup", schoolError);
+    throw new Error(`Could not load your school: ${schoolError.message}`);
+  }
 
   if (!school) {
     redirect("/login");
