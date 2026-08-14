@@ -10,7 +10,6 @@ const TABLES = [
   "entries",
   "entry_participants",
   "entry_coaches",
-  "app_settings",
 ];
 
 async function main() {
