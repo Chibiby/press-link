@@ -58,7 +58,7 @@ export function EntryDashboard({
 
   // Each dialog is forced open while its stage is unfinished; only then can the
   // school open it itself.
-  const paperOpen = paperFlow.paperFormOpen || (paperOpenOverride ?? false);
+  const paperOpen = (paperFlow.paperFormOpen && !locked) || (paperOpenOverride ?? false);
   const gateOpen = paperFlow.askQuestion || gateOpenOverride;
 
   function openCreate() {
@@ -181,8 +181,11 @@ export function EntryDashboard({
         entry={editing}
       />
 
-      {/* A globally locked school cannot fill the form, so trapping it behind an
-          undismissable dialog would only hide the dashboard it can still read. */}
+      {/* A globally locked school cannot fill this form, so the stage-1 gate
+          stands down: `paperOpen` stops forcing it open and `required` stops
+          suppressing the close button. Restoring only the close button would
+          not have been enough — the forced-open condition would have re-opened
+          the dialog on the very next render. */}
       <SchoolPaperDialog
         open={paperOpen}
         onOpenChange={setPaperOpenOverride}
