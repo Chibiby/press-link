@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Newspaper } from "lucide-react";
 
+import { signOutAction } from "./actions";
 import { setPaperParticipationAction } from "./roster-actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -34,11 +35,13 @@ export function PaperGateDialog({ open }: { open: boolean }) {
         setError(result.error);
         return;
       }
-      toast.success(
-        choice === "yes"
-          ? "Your school paper entry is locked in."
-          : "Please review your school paper details — N/A is accepted."
-      );
+      if (choice === "no") {
+        // Recorded, and that ends the session. signOutAction redirects to
+        // /login itself, so there is nothing to refresh afterwards.
+        await signOutAction();
+        return;
+      }
+      toast.success("Your school paper entry has been submitted.");
       router.refresh();
     });
   }
@@ -53,8 +56,9 @@ export function PaperGateDialog({ open }: { open: boolean }) {
           </DialogTitle>
           <DialogDescription>
             You have filled in the English and Filipino school paper. Answering Yes
-            submits them and locks them from further edits. Answering No re-opens the
-            form so you can replace anything that does not apply with N/A.
+            submits them as your entry and locks them from further edits. Answering No
+            records that and signs you out — you will be asked again next time, and
+            participants and coaches stay closed until you answer Yes.
           </DialogDescription>
         </DialogHeader>
 
@@ -75,7 +79,7 @@ export function PaperGateDialog({ open }: { open: boolean }) {
             disabled={isPending}
             onClick={() => answer("no")}
           >
-            No, we are not submitting
+            No — sign me out
           </Button>
         </div>
       </DialogContent>

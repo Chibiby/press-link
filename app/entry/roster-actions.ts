@@ -48,25 +48,24 @@ async function assertPaperSettled(
   const [{ data: school }, { data: papers }] = await Promise.all([
     supabase
       .from("schools")
-      .select("paper_participation, paper_answered_at")
+      .select("paper_participation")
       .eq("id", schoolId)
-      .single<{ paper_participation: PaperParticipation; paper_answered_at: string | null }>(),
+      .single<{ paper_participation: PaperParticipation }>(),
     supabase
       .from("school_papers")
-      .select("language, updated_at")
+      .select("language")
       .eq("school_id", schoolId)
-      .overrideTypes<{ language: EventLanguage; updated_at: string }[]>(),
+      .overrideTypes<{ language: EventLanguage }[]>(),
   ]);
   if (!school) return "School not found.";
 
   const state = paperFlowState({
     participation: school.paper_participation,
-    answeredAt: school.paper_answered_at,
-    papers: (papers ?? []).map((p) => ({ language: p.language, updatedAt: p.updated_at })),
+    savedLanguages: (papers ?? []).map((p) => p.language),
   });
   return state.rosterEnabled
     ? null
-    : "Complete your School Paper details before adding people.";
+    : "Submit your School Paper entry before adding people.";
 }
 
 export async function addParticipantAction(

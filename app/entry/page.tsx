@@ -76,13 +76,12 @@ export default async function EntryPage() {
 
   const { data: school, error: schoolError } = await supabase
     .from("schools")
-    .select("id, name, paper_participation, paper_answered_at, districts(name)")
+    .select("id, name, paper_participation, districts(name)")
     .eq("auth_user_id", user.id)
     .single<{
       id: string;
       name: string;
       paper_participation: PaperParticipation;
-      paper_answered_at: string | null;
       districts: { name: string } | null;
     }>();
 
@@ -187,8 +186,7 @@ export default async function EntryPage() {
   // whether the form is forced open, locked, or done — see lib/paper/gate.ts.
   const paperFlow = paperFlowState({
     participation: school.paper_participation,
-    answeredAt: school.paper_answered_at,
-    papers: (papers ?? []).map((p) => ({ language: p.language, updatedAt: p.updated_at })),
+    savedLanguages: (papers ?? []).map((p) => p.language),
   });
 
   return (

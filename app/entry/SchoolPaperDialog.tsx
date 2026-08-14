@@ -46,29 +46,14 @@ interface PaperDraft {
 
 const emptyStaff = (): StaffDraft => ({ fullName: "", title: "section_head" });
 
-/**
- * Every field here is required. Before the school has answered the submission
- * question it is expected to give real details, so blank fields stay blank. A
- * school that answered No is filling this in only because the form demands it,
- * so its fields open pre-typed with N/A: save as-is, or type over it.
- */
-const NOT_APPLICABLE = "N/A";
-const notApplicableStaff = (): StaffDraft => ({
-  fullName: NOT_APPLICABLE,
-  title: "section_head",
-});
-
-function toDraft(paper: SchoolPaperRow | null, allowNotApplicable: boolean): PaperDraft {
-  const blank = allowNotApplicable ? NOT_APPLICABLE : "";
-  const filler = allowNotApplicable ? notApplicableStaff : emptyStaff;
-
+function toDraft(paper: SchoolPaperRow | null): PaperDraft {
   if (!paper) {
     return {
-      paperName: blank,
-      adviserName: blank,
+      paperName: "",
+      adviserName: "",
       adviserGender: "M",
-      principalName: blank,
-      staff: [filler(), filler()],
+      principalName: "",
+      staff: [emptyStaff(), emptyStaff()],
     };
   }
   return {
@@ -79,7 +64,7 @@ function toDraft(paper: SchoolPaperRow | null, allowNotApplicable: boolean): Pap
     staff:
       paper.paper_staff.length >= 2
         ? paper.paper_staff.map((s) => ({ fullName: s.full_name, title: s.title }))
-        : [filler(), filler()],
+        : [emptyStaff(), emptyStaff()],
   };
 }
 
@@ -89,7 +74,6 @@ export function SchoolPaperDialog({
   papers,
   locked,
   required,
-  allowNotApplicable = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -101,8 +85,6 @@ export function SchoolPaperDialog({
    * that opened the form itself keeps its close button.
    */
   required?: boolean;
-  /** Prefill blanks with N/A — true only after the school has answered No. */
-  allowNotApplicable?: boolean;
 }) {
   const english = papers.find((p) => p.language === "english") ?? null;
   const filipino = papers.find((p) => p.language === "filipino") ?? null;
@@ -119,9 +101,7 @@ export function SchoolPaperDialog({
             {locked
               ? "Submitted as your school paper entry. Contact the division office if this needs a change."
               : required
-                ? allowNotApplicable
-                  ? "Save both languages to continue. Anything that does not apply can stay as N/A."
-                  : "Save both the English and Filipino paper to continue."
+                ? "Save both the English and Filipino paper to continue."
                 : "Filled once per language and reused across every entry. Save each language separately."}
           </DialogDescription>
         </DialogHeader>
@@ -142,7 +122,6 @@ export function SchoolPaperDialog({
               language="english"
               existing={english}
               locked={locked}
-              allowNotApplicable={allowNotApplicable}
             />
           </TabsContent>
           <TabsContent value="filipino" className="pt-4">
@@ -150,7 +129,6 @@ export function SchoolPaperDialog({
               language="filipino"
               existing={filipino}
               locked={locked}
-              allowNotApplicable={allowNotApplicable}
             />
           </TabsContent>
         </Tabs>
@@ -171,21 +149,19 @@ function PaperForm({
   language,
   existing,
   locked,
-  allowNotApplicable,
 }: {
   language: EventLanguage;
   existing: SchoolPaperRow | null;
   locked: boolean;
-  allowNotApplicable: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [draft, setDraft] = useState<PaperDraft>(() => toDraft(existing, allowNotApplicable));
+  const [draft, setDraft] = useState<PaperDraft>(() => toDraft(existing));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setDraft(toDraft(existing, allowNotApplicable));
-  }, [existing, allowNotApplicable]);
+    setDraft(toDraft(existing));
+  }, [existing]);
 
   function patch(patchObj: Partial<PaperDraft>) {
     setDraft((prev) => ({ ...prev, ...patchObj }));

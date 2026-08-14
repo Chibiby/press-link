@@ -111,9 +111,9 @@ export function EntryDashboard({
             <Newspaper />
             <AlertTitle>Finish your School Paper first</AlertTitle>
             <AlertDescription>
-              {paperFlow.phase === "refill"
-                ? "You answered that you are not submitting a school paper entry. Save both languages once more — N/A is accepted — and the roster opens."
-                : "Fill in the English and Filipino school paper. Participants and coaches open once both are saved."}
+              {paperFlow.phase === "question"
+                ? "Submit your English and Filipino paper as your school paper entry to open participants and coaches."
+                : "Fill in the English and Filipino school paper. Participants and coaches open once both are saved and submitted."}
             </AlertDescription>
           </Alert>
         )}
@@ -168,7 +168,6 @@ export function EntryDashboard({
         papers={papers}
         locked={locked || paperFlow.paperFormLocked}
         required={paperFlow.paperFormOpen}
-        allowNotApplicable={paperFlow.allowNotApplicable}
       />
     </div>
   );
