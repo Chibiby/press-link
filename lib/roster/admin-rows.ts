@@ -1,3 +1,4 @@
+import type { PaperDeclineReason } from "@/lib/paper/gate";
 import { formatParticipantNumber } from "./limits";
 
 /** A `participants` row joined to its school and entry links, as fetched by /admin/participants. */
@@ -13,6 +14,8 @@ export interface RawAdminParticipant {
     name: string;
     district_id: string;
     paper_participation: string;
+    paper_decline_reason: PaperDeclineReason | null;
+    paper_decline_note: string | null;
     districts: { name: string } | null;
   } | null;
   entry_participants: { entry_id: string }[];
@@ -32,6 +35,9 @@ export interface AdminParticipantRow {
   eventCount: number;
   isMultiEvent: boolean;
   paperParticipation: string;
+  /** Why the school said No, and its own wording when the reason is "other". */
+  paperDeclineReason: PaperDeclineReason | null;
+  paperDeclineNote: string | null;
 }
 
 export function toAdminParticipantRows(raw: RawAdminParticipant[]): AdminParticipantRow[] {
@@ -54,6 +60,8 @@ export function toAdminParticipantRows(raw: RawAdminParticipant[]): AdminPartici
         eventCount,
         isMultiEvent,
         paperParticipation: row.schools?.paper_participation ?? "undecided",
+        paperDeclineReason: row.schools?.paper_decline_reason ?? null,
+        paperDeclineNote: row.schools?.paper_decline_note ?? null,
       };
     })
     .sort((a, b) => a.numberLabel.localeCompare(b.numberLabel));

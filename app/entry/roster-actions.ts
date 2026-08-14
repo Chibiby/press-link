@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
-  paperParticipationSchema,
+  paperAnswerSchema,
   rosterCoachSchema,
   rosterParticipantSchema,
 } from "@/lib/validation/roster";
@@ -149,14 +149,22 @@ export async function deleteCoachAction(
 }
 
 export async function setPaperParticipationAction(
-  choice: unknown
+  input: unknown
 ): Promise<{ error: string } | { success: true }> {
-  const parsed = paperParticipationSchema.safeParse(choice);
-  if (!parsed.success) return { error: "Please answer Yes or No." };
+  const parsed = paperAnswerSchema.safeParse(input);
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message;
+    return { error: typeof message === "string" ? message : "Please answer Yes or No." };
+  }
+  const { choice, reason, note } = parsed.data;
 
   const supabase = await createClient();
-  // Definer RPC: a school may write this column and nothing else on its row.
-  const { error } = await supabase.rpc("set_paper_participation", { choice: parsed.data });
+  // Definer RPC: a school may write these columns and nothing else on its row.
+  const { error } = await supabase.rpc("set_paper_participation", {
+    choice,
+    reason: choice === "no" ? (reason ?? null) : null,
+    note: reason === "other" ? (note ?? null) : null,
+  });
   if (error) {
     console.error("setPaperParticipationAction", error);
     return { error: "Could not save your answer." };

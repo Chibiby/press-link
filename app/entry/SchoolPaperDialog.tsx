@@ -85,23 +85,34 @@ export function SchoolPaperDialog({
   onOpenChange,
   papers,
   locked,
+  required,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   papers: SchoolPaperRow[];
   locked: boolean;
+  /**
+   * The school said it is submitting a paper but has saved nothing yet. Saving
+   * is the only way out: no close button, and neither Escape nor the overlay
+   * dismisses it. A school that opened this itself keeps its close button.
+   */
+  required?: boolean;
 }) {
   const english = papers.find((p) => p.language === "english") ?? null;
   const filipino = papers.find((p) => p.language === "filipino") ?? null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+    <Dialog open={open} onOpenChange={required ? () => {} : onOpenChange}>
+      <DialogContent
+        showCloseButton={!required}
+        className="max-h-[90vh] overflow-y-auto sm:max-w-xl"
+      >
         <DialogHeader>
           <DialogTitle>School Paper</DialogTitle>
           <DialogDescription>
-            Filled once per language and reused across every entry. Save each language
-            separately.
+            {required
+              ? "Save at least one language to continue. Fields you cannot answer can stay as N/A."
+              : "Filled once per language and reused across every entry. Save each language separately."}
           </DialogDescription>
         </DialogHeader>
 

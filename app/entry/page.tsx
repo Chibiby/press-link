@@ -5,11 +5,15 @@ import { signOutAction } from "./actions";
 import { EntryDashboard } from "./EntryDashboard";
 import type {
   EntryRow,
-  PaperParticipation,
   RosterCoach,
   RosterParticipant,
   SchoolPaperRow,
 } from "./types";
+import {
+  paperGateState,
+  type PaperDeclineReason,
+  type PaperParticipation,
+} from "@/lib/paper/gate";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { formatParticipantNumber, type UsageMap } from "@/lib/roster/limits";
 import type { EventCategory } from "@/lib/events-catalog";
@@ -76,12 +80,15 @@ export default async function EntryPage() {
 
   const { data: school } = await supabase
     .from("schools")
-    .select("id, name, paper_participation, districts(name)")
+    .select(
+      "id, name, paper_participation, paper_decline_reason, districts(name)"
+    )
     .eq("auth_user_id", user.id)
     .single<{
       id: string;
       name: string;
       paper_participation: PaperParticipation;
+      paper_decline_reason: PaperDeclineReason | null;
       districts: { name: string } | null;
     }>();
 
@@ -173,6 +180,14 @@ export default async function EntryPage() {
 
   const locked = settings?.submissions_locked ?? false;
 
+  // One place decides whether the school is asked again and whether its paper
+  // form stays open — see lib/paper/gate.ts for the rules.
+  const gate = paperGateState({
+    participation: school.paper_participation,
+    declineReason: school.paper_decline_reason,
+    savedLanguageCount: (papers ?? []).length,
+  });
+
   return (
     <div className="flex min-h-screen flex-col">
       <DashboardHeader
@@ -190,7 +205,10 @@ export default async function EntryPage() {
           participants={(rawParticipants ?? []).map(toRosterParticipant)}
           coaches={rawCoaches ?? []}
           usage={usage}
-          paperParticipation={school.paper_participation}
+          participation={school.paper_participation}
+          declineReason={school.paper_decline_reason}
+          askPaperQuestion={gate.askAgain}
+          paperFormEnabled={gate.paperFormEnabled}
           locked={locked}
         />
       </main>

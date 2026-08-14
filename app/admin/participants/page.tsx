@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DECLINE_REASON_LABELS } from "@/lib/paper/gate";
 import { cn } from "@/lib/utils";
 
 interface SearchParams {
@@ -58,7 +59,7 @@ export default async function AdminParticipantsPage({
     supabase
       .from("participants")
       .select(
-        "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, districts(name)), entry_participants(entry_id)"
+        "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, paper_decline_reason, paper_decline_note, districts(name)), entry_participants(entry_id)"
       )
       .order("participant_number")
       .overrideTypes<RawAdminParticipant[]>(),
@@ -136,8 +137,16 @@ export default async function AdminParticipantsPage({
                         <span className="text-sm text-muted-foreground">Not answered</span>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">
+                          <span className="flex flex-col text-sm text-muted-foreground">
                             {row.paperParticipation === "yes" ? "Submitting" : "Not submitting"}
+                            {row.paperDeclineReason && (
+                              // Why they declined, so the office knows what a
+                              // reset would be undoing.
+                              <span className="text-xs">
+                                {DECLINE_REASON_LABELS[row.paperDeclineReason]}
+                                {row.paperDeclineNote ? `: ${row.paperDeclineNote}` : ""}
+                              </span>
+                            )}
                           </span>
                           <ResetPaperButton schoolId={row.schoolId} schoolName={row.schoolName} />
                         </div>

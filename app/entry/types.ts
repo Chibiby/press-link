@@ -35,7 +35,8 @@ export interface EntryRow {
   coaches: RosterCoach[];
 }
 
-export type PaperParticipation = "undecided" | "yes" | "no";
+/** Re-exported so the paper rules live in exactly one module. */
+export type { PaperDeclineReason, PaperParticipation } from "@/lib/paper/gate";
 
 export interface PaperStaffRow {
   id: string;
