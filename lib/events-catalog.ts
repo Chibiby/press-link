@@ -62,6 +62,12 @@ export const EVENT_TYPES: EventTypeSeed[] = [
   { slug: "tv-broadcasting-spj", category: "group", nameEn: "TV Broadcasting and Scriptwriting (SPJ)", nameFil: "TV Broadcasting and Scriptwriting (SPJ)", levels: SECONDARY_ONLY, minParticipants: 7, maxParticipants: 7, sortOrder: 16 },
 ];
 
+/** How a language is written wherever it is shown to a user. */
+export const LANGUAGE_LABEL: Record<EventLanguage, string> = {
+  english: "English",
+  filipino: "Filipino",
+};
+
 export function levelTag(level: EventLevel): "elem" | "sec" {
   return level === "elementary" ? "elem" : "sec";
 }

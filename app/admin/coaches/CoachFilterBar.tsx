@@ -6,6 +6,7 @@ import { Asterisk, UserMinus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ANY, FilterSelect } from "@/components/admin/filter-select";
+import { LANGUAGE_LABEL } from "@/lib/events-catalog";
 
 interface Option {
   id: string;
@@ -112,10 +113,10 @@ export function CoachFilterBar({
           label="Language"
           value={searchParams.get("language") ?? ANY}
           onChange={(v) => setParam("language", v)}
-          placeholder="English + Filipino"
+          placeholder={`${LANGUAGE_LABEL.english} + ${LANGUAGE_LABEL.filipino}`}
           options={[
-            { value: "english", label: "English" },
-            { value: "filipino", label: "Filipino" },
+            { value: "english", label: LANGUAGE_LABEL.english },
+            { value: "filipino", label: LANGUAGE_LABEL.filipino },
           ]}
         />
 
