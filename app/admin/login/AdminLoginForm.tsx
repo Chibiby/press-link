@@ -7,6 +7,7 @@ import { adminLoginAction } from "./actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/password-input";
 import { Label } from "@/components/ui/label";
 
 export function AdminLoginForm() {
@@ -30,9 +31,8 @@ export function AdminLoginForm() {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="admin-password">Password</Label>
-        <Input
+        <PasswordInput
           id="admin-password"
-          type="password"
           name="password"
           required
           autoComplete="current-password"

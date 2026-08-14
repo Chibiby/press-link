@@ -14,7 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/password-input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -148,7 +148,7 @@ export function LoginForm({ districts, schools }: { districts: District[]; schoo
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">School ID</Label>
-        <Input id="password" type="password" name="password" required autoComplete="off" />
+        <PasswordInput id="password" name="password" required autoComplete="off" />
         <p className="text-xs text-muted-foreground">
           Your school&apos;s DepEd School ID number is your password.
         </p>
