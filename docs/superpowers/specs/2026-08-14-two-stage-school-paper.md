@@ -86,6 +86,17 @@ are.
 - `schools.paper_participation` keeps its `undecided | yes | no` values, but
   `no` now means *"saved, not entering the contest"* rather than *"declined,
   stay signed out"*.
+- Because those two meanings are incompatible, the migration does not carry old
+  `no` rows forward: it resets them to `undecided` with a null
+  `paper_answered_at`, so the school is asked the new question once. Under the
+  old rules such a school was going to be re-asked at its next sign-in anyway,
+  so nothing it actually decided is lost.
+- Old `yes` rows keep their answer and gain a `paper_locked_at` stamped at
+  `paper_answered_at`, since the old Yes froze the papers and the lock is now
+  the only thing that does.
+- Both rewrites run only on the migration's first application (guarded on
+  `paper_locked_at` not yet existing), so a re-run cannot re-freeze a school the
+  division office reopened, nor wipe a `no` given under the new flow.
 - `set_paper_participation(choice)` requires **≥1** saved language (was 2) and
   refuses when `paper_locked_at` is set.
 - New `lock_school_paper()` definer RPC for the school.

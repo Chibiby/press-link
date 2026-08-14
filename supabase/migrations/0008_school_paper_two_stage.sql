@@ -10,14 +10,42 @@
 -- Both stages stay editable until the school locks its details in. The lock is
 -- the only thing that freezes them, and only the division office can reopen it.
 
-alter table schools add column if not exists paper_locked_at timestamptz;
+-- Everything that rewrites existing rows happens exactly once, on the first
+-- application. This file is re-run by hand, and both statements below would
+-- otherwise undo decisions schools made *after* the migration: the lock
+-- backfill would re-freeze a school the division office had reopened, and the
+-- reset would wipe a genuine new-flow "No". The presence of paper_locked_at is
+-- the marker for "this migration has already run", so the column is added
+-- inside the same block that decides whether the backfill is due.
+do $migrate$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'schools'
+      and column_name = 'paper_locked_at'
+  ) then
+    alter table schools add column paper_locked_at timestamptz;
 
--- A school that already answered under the old flow keeps its answer. Its
--- papers were frozen by the Yes itself, which no longer freezes anything, so
--- the equivalent state is a lock stamped at the moment of that answer.
-update schools
-  set paper_locked_at = coalesce(paper_answered_at, now())
-  where paper_participation = 'yes' and paper_locked_at is null;
+    -- A school that already answered Yes under the old flow keeps its answer.
+    -- Its papers were frozen by the Yes itself, which no longer freezes
+    -- anything, so the equivalent state is a lock stamped at that answer.
+    update schools
+      set paper_locked_at = coalesce(paper_answered_at, now())
+      where paper_participation = 'yes' and paper_locked_at is null;
+
+    -- Under the old rules "no" meant "declined — we will ask again at your next
+    -- sign-in", not "saved, deliberately out of the contest". Carrying those
+    -- rows forward would invent a settled decision the school never gave, and
+    -- count it in the admin tiles. They were going to be re-asked anyway, so
+    -- send them back to the question instead.
+    update schools
+      set paper_participation = 'undecided',
+          paper_answered_at = null
+      where paper_participation = 'no';
+  end if;
+end
+$migrate$;
 
 -- The question is meaningful as soon as one language exists, and a locked
 -- school may not change its answer.
@@ -93,7 +121,13 @@ as $fn$
 declare
   target uuid;
 begin
-  target := coalesce(new.school_id, old.school_id);
+  -- NEW is unassigned on DELETE and OLD on INSERT, and coalesce evaluates both
+  -- arguments, so the operation has to pick the record rather than the value.
+  if tg_op = 'DELETE' then
+    target := old.school_id;
+  else
+    target := new.school_id;
+  end if;
   if exists (
     select 1 from schools
     where id = target
@@ -102,7 +136,11 @@ begin
   ) then
     raise exception 'school paper is locked';
   end if;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then
+    return old;
+  else
+    return new;
+  end if;
 end;
 $fn$;
 
@@ -120,8 +158,13 @@ as $fn$
 declare
   target uuid;
 begin
-  select school_id into target from school_papers
-    where id = coalesce(new.school_paper_id, old.school_paper_id);
+  -- Same unassigned-record hazard as above; every save rewrites this table as a
+  -- delete followed by an insert, so both paths run constantly.
+  if tg_op = 'DELETE' then
+    select school_id into target from school_papers where id = old.school_paper_id;
+  else
+    select school_id into target from school_papers where id = new.school_paper_id;
+  end if;
   if exists (
     select 1 from schools
     where id = target
@@ -130,7 +173,11 @@ begin
   ) then
     raise exception 'school paper is locked';
   end if;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then
+    return old;
+  else
+    return new;
+  end if;
 end;
 $fn$;
 
