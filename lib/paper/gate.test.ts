@@ -5,70 +5,107 @@ import { paperFlowState } from "./gate";
 const both = ["english", "filipino"] as const;
 
 describe("paperFlowState", () => {
-  it("makes a school with nothing saved fill both languages first", () => {
-    const state = paperFlowState({ participation: "undecided", savedLanguages: [] });
+  it("forces the form open when no language is saved", () => {
+    const state = paperFlowState({
+      participation: "undecided",
+      savedLanguages: [],
+      lockedAt: null,
+    });
     expect(state.phase).toBe("fill");
     expect(state.paperFormOpen).toBe(true);
     expect(state.askQuestion).toBe(false);
     expect(state.rosterEnabled).toBe(false);
-    expect(state.missingLanguages).toEqual(["english", "filipino"]);
+    expect(state.savedLanguages).toEqual([]);
   });
 
-  it("keeps the form open when only one language is saved", () => {
+  it("treats one saved language as enough to reach the question", () => {
     const state = paperFlowState({
       participation: "undecided",
-      savedLanguages: ["english"],
+      savedLanguages: ["filipino"],
+      lockedAt: null,
     });
-    expect(state.phase).toBe("fill");
-    expect(state.missingLanguages).toEqual(["filipino"]);
-    expect(state.rosterEnabled).toBe(false);
-  });
-
-  it("asks the question once both languages are saved", () => {
-    const state = paperFlowState({ participation: "undecided", savedLanguages: [...both] });
     expect(state.phase).toBe("question");
-    expect(state.askQuestion).toBe(true);
     expect(state.paperFormOpen).toBe(false);
+    expect(state.askQuestion).toBe(true);
     expect(state.rosterEnabled).toBe(false);
+    expect(state.savedLanguages).toEqual(["filipino"]);
   });
 
-  it("submits the papers and opens the roster on yes", () => {
-    const state = paperFlowState({ participation: "yes", savedLanguages: [...both] });
+  it("opens the roster on yes", () => {
+    const state = paperFlowState({
+      participation: "yes",
+      savedLanguages: [...both],
+      lockedAt: null,
+    });
     expect(state.phase).toBe("done");
-    expect(state.paperFormLocked).toBe(true);
-    expect(state.paperFormOpen).toBe(false);
     expect(state.rosterEnabled).toBe(true);
     expect(state.askQuestion).toBe(false);
-  });
-
-  it("asks a school that answered no all over again, roster still shut", () => {
-    const state = paperFlowState({ participation: "no", savedLanguages: [...both] });
-    expect(state.phase).toBe("question");
-    expect(state.askQuestion).toBe(true);
-    expect(state.rosterEnabled).toBe(false);
     expect(state.paperFormLocked).toBe(false);
   });
 
-  it("sends a no school back to the form if a paper went missing", () => {
-    const state = paperFlowState({ participation: "no", savedLanguages: ["english"] });
-    expect(state.phase).toBe("fill");
-    expect(state.paperFormOpen).toBe(true);
-    expect(state.askQuestion).toBe(false);
-  });
-
-  it("never re-asks a yes school, even if a paper is somehow missing", () => {
-    const state = paperFlowState({ participation: "yes", savedLanguages: ["english"] });
+  it("opens the roster on no as well, and keeps the papers editable", () => {
+    const state = paperFlowState({
+      participation: "no",
+      savedLanguages: ["english"],
+      lockedAt: null,
+    });
     expect(state.phase).toBe("done");
     expect(state.rosterEnabled).toBe(true);
     expect(state.askQuestion).toBe(false);
+    expect(state.paperFormLocked).toBe(false);
+    expect(state.canAnswer).toBe(true);
   });
 
-  it("ignores duplicate language rows when counting what is saved", () => {
+  it("freezes the papers and the answer once the school locks in", () => {
     const state = paperFlowState({
-      participation: "undecided",
-      savedLanguages: ["english", "english"],
+      participation: "no",
+      savedLanguages: [...both],
+      lockedAt: "2026-08-14T02:00:00.000Z",
     });
-    expect(state.missingLanguages).toEqual(["filipino"]);
+    expect(state.paperFormLocked).toBe(true);
+    expect(state.canAnswer).toBe(false);
+    expect(state.canLock).toBe(false);
+    expect(state.rosterEnabled).toBe(true);
+  });
+
+  it("offers the lock only once the question has been answered", () => {
+    expect(
+      paperFlowState({ participation: "undecided", savedLanguages: ["english"], lockedAt: null })
+        .canLock
+    ).toBe(false);
+    expect(
+      paperFlowState({ participation: "yes", savedLanguages: ["english"], lockedAt: null }).canLock
+    ).toBe(true);
+  });
+
+  it("sends an answered school back to the form if every paper went missing", () => {
+    const state = paperFlowState({
+      participation: "yes",
+      savedLanguages: [],
+      lockedAt: null,
+    });
     expect(state.phase).toBe("fill");
+    expect(state.paperFormOpen).toBe(true);
+    expect(state.rosterEnabled).toBe(false);
+  });
+
+  it("keeps a locked school out of the form even with no paper rows", () => {
+    const state = paperFlowState({
+      participation: "yes",
+      savedLanguages: [],
+      lockedAt: "2026-08-14T02:00:00.000Z",
+    });
+    expect(state.paperFormOpen).toBe(false);
+    expect(state.paperFormLocked).toBe(true);
+    expect(state.rosterEnabled).toBe(true);
+  });
+
+  it("dedupes and orders saved languages", () => {
+    const state = paperFlowState({
+      participation: "no",
+      savedLanguages: ["filipino", "english", "filipino"],
+      lockedAt: null,
+    });
+    expect(state.savedLanguages).toEqual(["english", "filipino"]);
   });
 });

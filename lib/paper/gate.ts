@@ -2,83 +2,108 @@ import type { EventLanguage } from "@/lib/events-catalog";
 
 export type PaperParticipation = "undecided" | "yes" | "no";
 
-/** Both languages are required before a school may do anything else. */
-export const REQUIRED_LANGUAGES: EventLanguage[] = ["english", "filipino"];
+/** The languages a school may publish in, in the order the tabs show them. */
+export const PAPER_LANGUAGES: EventLanguage[] = ["english", "filipino"];
 
 export type PaperPhase =
-  /** Filling English and Filipino. Nothing else is reachable. */
+  /** Stage 1: no language on file yet. Nothing else is reachable. */
   | "fill"
-  /** Both are in; the school has yet to submit them as its entry. */
+  /** Stage 2: the contest question, which has never been answered. */
   | "question"
-  /** Submitted. The papers are frozen and the roster is open. */
+  /** Both stages behind it. The roster is open. */
   | "done";
 
 export interface PaperFlowState {
   phase: PaperPhase;
   /** Force the School Paper form open and refuse to let it be dismissed. */
   paperFormOpen: boolean;
-  /** Read-only: the school submitted these papers as its entry. */
+  /** Read-only: the school locked its details in. */
   paperFormLocked: boolean;
+  /** Ask the contest question with no way out — it has never been answered. */
   askQuestion: boolean;
-  /** Participants and coaches stay shut until the papers are submitted. */
+  /** The answer may still be given or changed. */
+  canAnswer: boolean;
+  /** Answered, so the details can be frozen. */
+  canLock: boolean;
+  /** Participants and coaches, open once both stages are behind the school. */
   rosterEnabled: boolean;
-  /** Languages still owed, in the order the tabs show them. */
-  missingLanguages: EventLanguage[];
+  /** Languages actually on file, deduped and in PAPER_LANGUAGES order. */
+  savedLanguages: EventLanguage[];
 }
 
 /**
  * The order of business after a school signs in:
  *
- *   1. Fill the English and Filipino school paper. Nothing else opens.
- *   2. "Are you submitting these as your school paper entry?"
- *   3a. Yes -> the papers are submitted and frozen, and the roster opens.
- *   3b. No  -> the answer is recorded and the school is signed out. The
- *       question returns on its next sign-in, so a school that means No stays
- *       out of the roster until the division office resets its answer with
- *       `admin_reset_paper_participation`.
+ *   1. Save the school paper information for English, Filipino, or both. One
+ *      language is enough; nothing else opens until one exists.
+ *   2. "Are you submitting this school paper to the school paper contest?"
+ *   3. Either answer opens participants and coaches. Yes records a contest
+ *      submission, No retains the information only, and neither signs the
+ *      school out.
  *
- * Only a Yes moves a school past the question, which is why every other
- * `participation` value with both papers saved lands back on it.
+ * Everything stays editable afterwards until the school locks its details in,
+ * which is the only thing that freezes them — and only the division office can
+ * reopen a locked school, with `admin_reset_paper_participation`.
  */
 export function paperFlowState(input: {
   participation: PaperParticipation;
   savedLanguages: EventLanguage[];
+  lockedAt: string | null;
 }): PaperFlowState {
-  const { participation, savedLanguages } = input;
+  const { participation, lockedAt } = input;
+  const saved = new Set(input.savedLanguages);
+  const savedLanguages = PAPER_LANGUAGES.filter((lang) => saved.has(lang));
+  const locked = lockedAt !== null;
 
-  // A submitted school is done regardless of what the papers look like now —
-  // re-asking a school that already said Yes would sign it out on a mis-click.
-  if (participation === "yes") {
+  // A locked school is finished with all of this. Re-opening the form or the
+  // question for it would only produce writes the database refuses anyway.
+  if (locked) {
     return {
       phase: "done",
       paperFormOpen: false,
       paperFormLocked: true,
       askQuestion: false,
+      canAnswer: false,
+      canLock: false,
       rosterEnabled: true,
-      missingLanguages: [],
+      savedLanguages,
     };
   }
 
-  const saved = new Set(savedLanguages);
-  const missing = REQUIRED_LANGUAGES.filter((lang) => !saved.has(lang));
-
-  if (missing.length > 0) {
+  if (savedLanguages.length === 0) {
     return {
       phase: "fill",
       paperFormOpen: true,
       paperFormLocked: false,
       askQuestion: false,
+      canAnswer: false,
+      canLock: false,
       rosterEnabled: false,
-      missingLanguages: missing,
+      savedLanguages,
+    };
+  }
+
+  if (participation === "undecided") {
+    return {
+      phase: "question",
+      paperFormOpen: false,
+      paperFormLocked: false,
+      askQuestion: true,
+      canAnswer: true,
+      canLock: false,
+      rosterEnabled: false,
+      savedLanguages,
     };
   }
 
   return {
-    phase: "question",
+    phase: "done",
     paperFormOpen: false,
     paperFormLocked: false,
-    askQuestion: true,
-    rosterEnabled: false,
-    missingLanguages: [],
+    askQuestion: false,
+    canAnswer: true,
+    canLock: true,
+    rosterEnabled: true,
+    savedLanguages,
   };
 }
