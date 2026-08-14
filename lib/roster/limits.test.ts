@@ -41,15 +41,12 @@ describe("capReason", () => {
 });
 
 describe("maxCoachesFor", () => {
-  it("ties individual coaches to the participant count", () => {
-    expect(maxCoachesFor("individual", 1)).toBe(1);
-    expect(maxCoachesFor("individual", 2)).toBe(2);
-    expect(maxCoachesFor("individual", 3)).toBe(3);
+  it("caps individual coaches at 3", () => {
+    expect(maxCoachesFor("individual")).toBe(3);
   });
 
   it("caps group coaches at 2 regardless of team size", () => {
-    expect(maxCoachesFor("group", 7)).toBe(2);
-    expect(maxCoachesFor("group", 2)).toBe(2);
+    expect(maxCoachesFor("group")).toBe(2);
   });
 });
 
@@ -104,16 +101,28 @@ describe("validateEntryCounts", () => {
     ).toBeNull();
   });
 
-  it("rejects 2 coaches on a 1-participant individual entry", () => {
+  it("accepts 3 coaches on a 1-participant individual entry", () => {
     expect(
       validateEntryCounts({
         category: "individual",
         participantIds: ids(1),
-        coachIds: ["c1", "c2"],
+        coachIds: ["c1", "c2", "c3"],
         minParticipants: 1,
         maxParticipants: 3,
       })
-    ).toBe("This entry allows at most 1 coach");
+    ).toBeNull();
+  });
+
+  it("rejects 4 coaches on an individual entry", () => {
+    expect(
+      validateEntryCounts({
+        category: "individual",
+        participantIds: ids(1),
+        coachIds: ["c1", "c2", "c3", "c4"],
+        minParticipants: 1,
+        maxParticipants: 3,
+      })
+    ).toBe("This entry allows at most 3 coaches");
   });
 
   it("rejects 3 coaches on a group entry", () => {

@@ -35,12 +35,17 @@ export function capReason(
   return usage.groupCount >= GROUP_EVENT_CAP ? "Already in a group event" : null;
 }
 
+/** An individual entry may name up to this many coaches. */
+export const INDIVIDUAL_COACH_CAP = 3;
+/** A group entry gets two coaches no matter how large the team. */
+export const GROUP_COACH_CAP = 2;
+
 /**
- * Individual entries get one coach per participant; group entries get two no
- * matter how large the team.
+ * Both caps are flat: a single contestant may still be coached by up to three
+ * people, and a seven-member team by two.
  */
-export function maxCoachesFor(category: EventCategory, participantCount: number): number {
-  return category === "individual" ? Math.max(participantCount, 1) : 2;
+export function maxCoachesFor(category: EventCategory): number {
+  return category === "individual" ? INDIVIDUAL_COACH_CAP : GROUP_COACH_CAP;
 }
 
 export function validateEntryCounts(input: {
@@ -71,7 +76,7 @@ export function validateEntryCounts(input: {
   if (coachIds.length < 1) {
     return "At least 1 coach is required";
   }
-  const maxCoaches = maxCoachesFor(category, participantIds.length);
+  const maxCoaches = maxCoachesFor(category);
   if (coachIds.length > maxCoaches) {
     return `This entry allows at most ${maxCoaches} coach${maxCoaches === 1 ? "" : "es"}`;
   }

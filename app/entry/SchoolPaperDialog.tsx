@@ -46,14 +46,26 @@ interface PaperDraft {
 
 const emptyStaff = (): StaffDraft => ({ fullName: "", title: "section_head" });
 
+/**
+ * Every field here is required, and a school that has no paper in one language
+ * still has to get past this form before it can add participants and coaches.
+ * A never-filled language therefore opens pre-typed with N/A: save it as-is, or
+ * type over it.
+ */
+const NOT_APPLICABLE = "N/A";
+const notApplicableStaff = (): StaffDraft => ({
+  fullName: NOT_APPLICABLE,
+  title: "section_head",
+});
+
 function toDraft(paper: SchoolPaperRow | null): PaperDraft {
   if (!paper) {
     return {
-      paperName: "",
-      adviserName: "",
+      paperName: NOT_APPLICABLE,
+      adviserName: NOT_APPLICABLE,
       adviserGender: "M",
-      principalName: "",
-      staff: [emptyStaff(), emptyStaff()],
+      principalName: NOT_APPLICABLE,
+      staff: [notApplicableStaff(), notApplicableStaff()],
     };
   }
   return {
@@ -64,7 +76,7 @@ function toDraft(paper: SchoolPaperRow | null): PaperDraft {
     staff:
       paper.paper_staff.length >= 2
         ? paper.paper_staff.map((s) => ({ fullName: s.full_name, title: s.title }))
-        : [emptyStaff(), emptyStaff()],
+        : [notApplicableStaff(), notApplicableStaff()],
   };
 }
 

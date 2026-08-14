@@ -150,7 +150,7 @@ export function EntryWizard({
   /** Ids this entry already holds, so a person cannot be picked into two rows. */
   const chosenParticipants = participantIds.filter((id) => id !== UNSET);
   const chosenCoaches = coachIds.filter((id) => id !== UNSET);
-  const maxCoaches = maxCoachesFor(effectiveCategory, Math.max(chosenParticipants.length, 1));
+  const maxCoaches = maxCoachesFor(effectiveCategory);
 
   function chooseCategory(next: EventCategory) {
     setCategory(next);
@@ -202,8 +202,7 @@ export function EntryWizard({
     setParticipantIds(participantRows.length === 0 ? [UNSET] : participantRows);
 
     const newCategory: EventCategory = newType?.category ?? category ?? "individual";
-    const newParticipantCount = Math.max(participantRows.length, 1);
-    const newMaxCoaches = maxCoachesFor(newCategory, newParticipantCount);
+    const newMaxCoaches = maxCoachesFor(newCategory);
     const filledCoaches = coachIds.filter((id) => id !== UNSET);
     if (filledCoaches.length > newMaxCoaches) {
       const trimmed = filledCoaches.slice(0, Math.max(newMaxCoaches, 1));
