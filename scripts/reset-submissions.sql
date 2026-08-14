@@ -17,6 +17,14 @@ delete from entry_participants;
 delete from entry_coaches;
 delete from entries;
 
+-- The lock guard would refuse these deletes for any school that locked in, so
+-- the flags are cleared before the rows go. This also puts every school back at
+-- stage 1, which is what a reset means.
+update schools
+  set paper_participation = 'undecided',
+      paper_answered_at = null,
+      paper_locked_at = null;
+
 -- Paper staff cascades from school_papers; same reasoning as above.
 delete from paper_staff;
 delete from school_papers;
