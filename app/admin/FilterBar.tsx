@@ -1,27 +1,16 @@
 "use client";
 
-import { useId } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Download, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ANY, FilterSelect } from "@/components/admin/filter-select";
 
 interface Option {
   id: string;
   name: string;
 }
-
-/** Radix Select forbids an empty item value, so "any" stands in for "no filter". */
-const ANY = "__any__";
 
 const FILTER_KEYS = ["district", "school", "event", "category", "level", "language"] as const;
 
@@ -53,28 +42,28 @@ export function FilterBar({
   return (
     <Card>
       <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <Filter
+        <FilterSelect
           label="District"
           value={searchParams.get("district") ?? ANY}
           onChange={(v) => setParam("district", v)}
           placeholder="All districts"
           options={districts.map((d) => ({ value: d.id, label: d.name }))}
         />
-        <Filter
+        <FilterSelect
           label="School"
           value={searchParams.get("school") ?? ANY}
           onChange={(v) => setParam("school", v)}
           placeholder="All schools"
           options={schools.map((s) => ({ value: s.id, label: s.name }))}
         />
-        <Filter
+        <FilterSelect
           label="Event"
           value={searchParams.get("event") ?? ANY}
           onChange={(v) => setParam("event", v)}
           placeholder="All events"
           options={events.map((e) => ({ value: e.id, label: e.name }))}
         />
-        <Filter
+        <FilterSelect
           label="Category"
           value={searchParams.get("category") ?? ANY}
           onChange={(v) => setParam("category", v)}
@@ -84,7 +73,7 @@ export function FilterBar({
             { value: "group", label: "Group" },
           ]}
         />
-        <Filter
+        <FilterSelect
           label="Level"
           value={searchParams.get("level") ?? ANY}
           onChange={(v) => setParam("level", v)}
@@ -94,7 +83,7 @@ export function FilterBar({
             { value: "secondary", label: "Secondary" },
           ]}
         />
-        <Filter
+        <FilterSelect
           label="Language"
           value={searchParams.get("language") ?? ANY}
           onChange={(v) => setParam("language", v)}
@@ -122,42 +111,5 @@ export function FilterBar({
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function Filter({
-  label,
-  value,
-  onChange,
-  placeholder,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  options: { value: string; label: string }[];
-}) {
-  const id = useId();
-
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">
-        {label}
-      </Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={id} className="w-full">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ANY}>{placeholder}</SelectItem>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
   );
 }
