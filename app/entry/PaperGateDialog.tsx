@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Newspaper } from "lucide-react";
 
-import { signOutAction } from "./actions";
 import { setPaperParticipationAction } from "./roster-actions";
+import type { PaperParticipation } from "./types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,11 +18,22 @@ import {
 } from "@/components/ui/dialog";
 
 /**
- * Asked once, after both school papers are filled in. There is no close
- * affordance: `onOpenChange` is a no-op, so Escape and the overlay cannot
- * dismiss it, and the roster stays shut until it is answered.
+ * Stage 2, asked once the school has saved at least one language. While it has
+ * never been answered it is `required`: `onOpenChange` is a no-op, so Escape
+ * and the overlay cannot dismiss it. Afterwards the school can reopen it from
+ * the dashboard to change its mind, until it locks its details in.
  */
-export function PaperGateDialog({ open }: { open: boolean }) {
+export function PaperGateDialog({
+  open,
+  onOpenChange,
+  required,
+  current,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  required: boolean;
+  current: PaperParticipation;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -35,30 +46,29 @@ export function PaperGateDialog({ open }: { open: boolean }) {
         setError(result.error);
         return;
       }
-      if (choice === "no") {
-        // Recorded, and that ends the session. signOutAction redirects to
-        // /login itself, so there is nothing to refresh afterwards.
-        await signOutAction();
-        return;
-      }
-      toast.success("Your school paper entry has been submitted.");
+      toast.success(
+        choice === "yes"
+          ? "Your school paper has been entered in the contest."
+          : "Your school paper information has been saved."
+      );
+      onOpenChange(false);
       router.refresh();
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent showCloseButton={false} className="sm:max-w-lg">
+    <Dialog open={open} onOpenChange={required ? () => {} : onOpenChange}>
+      <DialogContent showCloseButton={!required} className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Newspaper className="size-5 text-primary" />
-            Are you submitting these as your school paper entry?
+            Are you submitting this school paper to the school paper contest?
           </DialogTitle>
           <DialogDescription>
-            You have filled in the English and Filipino school paper. Answering Yes
-            submits them as your entry and locks them from further edits. Answering No
-            records that and signs you out — you will be asked again next time, and
-            participants and coaches stay closed until you answer Yes.
+            Yes enters the details you saved in the school paper contest. No keeps them on
+            record for the division office without entering the contest. Either way your
+            participants and coaches open, and you can change this answer until you lock
+            your details in.
           </DialogDescription>
         </DialogHeader>
 
@@ -71,7 +81,7 @@ export function PaperGateDialog({ open }: { open: boolean }) {
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button className="flex-1" disabled={isPending} onClick={() => answer("yes")}>
             {isPending && <Loader2 className="size-4 animate-spin" />}
-            Yes, submit these
+            Yes, submit to the contest
           </Button>
           <Button
             variant="outline"
@@ -79,9 +89,16 @@ export function PaperGateDialog({ open }: { open: boolean }) {
             disabled={isPending}
             onClick={() => answer("no")}
           >
-            No — sign me out
+            No, just save our information
           </Button>
         </div>
+
+        {current !== "undecided" && (
+          <p className="text-center text-xs text-muted-foreground">
+            Your current answer:{" "}
+            {current === "yes" ? "submitting to the contest" : "saving the information only"}.
+          </p>
+        )}
       </DialogContent>
     </Dialog>
   );

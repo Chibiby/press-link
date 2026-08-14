@@ -15,6 +15,8 @@ import type {
   SchoolPaperRow,
 } from "./types";
 import type { PaperFlowState } from "@/lib/paper/gate";
+import type { PaperParticipation } from "./types";
+import { PAPER_STATUS_LABEL, type PaperStatus } from "@/lib/paper/status";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { type UsageMap } from "@/lib/roster/limits";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -30,6 +32,8 @@ export function EntryDashboard({
   coaches,
   usage,
   paperFlow,
+  paperStatus,
+  participation,
   locked,
 }: {
   entries: EntryRow[];
@@ -41,16 +45,22 @@ export function EntryDashboard({
   usage: UsageMap;
   /** Where the school stands on its school paper — see lib/paper/gate.ts. */
   paperFlow: PaperFlowState;
+  /** The three-state label shared with the admin pages. */
+  paperStatus: PaperStatus;
+  participation: PaperParticipation;
   locked: boolean;
 }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<EntryRow | null>(null);
   // null = follow the derived default; true/false = the user has taken over.
   const [paperOpenOverride, setPaperOpenOverride] = useState<boolean | null>(null);
+  const [gateOpenOverride, setGateOpenOverride] = useState(false);
 
-  // The form is forced open while anything is still owed; only then can the
-  // school choose to open it itself.
+  // Each dialog is forced open while its stage is unfinished; only then can the
+  // school open it itself.
   const paperOpen = paperFlow.paperFormOpen || (paperOpenOverride ?? false);
+  const gateOpen = paperFlow.askQuestion || gateOpenOverride;
+  const paperStatusValue = paperStatus;
 
   function openCreate() {
     setEditing(null);
@@ -66,7 +76,12 @@ export function EntryDashboard({
 
   return (
     <div className="flex flex-col gap-8">
-      <PaperGateDialog open={paperFlow.askQuestion} />
+      <PaperGateDialog
+        open={gateOpen}
+        onOpenChange={setGateOpenOverride}
+        required={paperFlow.askQuestion}
+        current={participation}
+      />
 
       {locked && (
         <Alert>
@@ -86,24 +101,29 @@ export function EntryDashboard({
               Register everyone first — entries pick from this list.
             </p>
           </div>
-          <Button variant="outline" onClick={() => setPaperOpenOverride(true)}>
-            <Newspaper className="size-4" />
-            School Paper
-            {paperFlow.paperFormLocked ? (
-              <Badge variant="secondary" className="ml-1">
-                Submitted
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant={paperStatusValue === "submitted" ? "default" : "secondary"}
+              className="gap-1"
+            >
+              {PAPER_STATUS_LABEL[paperStatusValue]}
+            </Badge>
+            {paperFlow.paperFormLocked && (
+              <Badge variant="outline" className="gap-1">
+                <Lock className="size-3" />
+                Locked
               </Badge>
-            ) : (
-              paperFlow.missingLanguages.length > 0 && (
-                <Badge
-                  variant="outline"
-                  className="ml-1 border-warning/40 bg-warning/15 text-warning-foreground dark:text-warning"
-                >
-                  {paperFlow.missingLanguages.length} to fill
-                </Badge>
-              )
             )}
-          </Button>
+            {paperFlow.canAnswer && !paperFlow.askQuestion && (
+              <Button variant="ghost" size="sm" onClick={() => setGateOpenOverride(true)}>
+                Change contest answer
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setPaperOpenOverride(true)}>
+              <Newspaper className="size-4" />
+              School Paper
+            </Button>
+          </div>
         </div>
 
         {!paperFlow.rosterEnabled && (
@@ -112,8 +132,8 @@ export function EntryDashboard({
             <AlertTitle>Finish your School Paper first</AlertTitle>
             <AlertDescription>
               {paperFlow.phase === "question"
-                ? "Submit your English and Filipino paper as your school paper entry to open participants and coaches."
-                : "Fill in the English and Filipino school paper. Participants and coaches open once both are saved and submitted."}
+                ? "Answer whether this school paper goes to the contest. Participants and coaches open either way."
+                : "Fill in your school paper — English, Filipino, or both. Participants and coaches open once at least one is saved and you have answered the contest question."}
             </AlertDescription>
           </Alert>
         )}
@@ -168,6 +188,7 @@ export function EntryDashboard({
         papers={papers}
         locked={locked || paperFlow.paperFormLocked}
         required={paperFlow.paperFormOpen}
+        canLock={paperFlow.canLock && !locked}
       />
     </div>
   );

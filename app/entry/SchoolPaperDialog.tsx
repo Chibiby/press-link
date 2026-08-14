@@ -3,9 +3,10 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 
 import { saveSchoolPaperAction } from "./actions";
+import { lockSchoolPaperAction } from "./roster-actions";
 import type { SchoolPaperRow } from "./types";
 import { schoolPaperSchema } from "@/lib/validation/school-paper";
 import type { EventLanguage } from "@/lib/events-catalog";
@@ -44,15 +45,25 @@ interface PaperDraft {
   staff: StaffDraft[];
 }
 
-const emptyStaff = (): StaffDraft => ({ fullName: "", title: "section_head" });
+/**
+ * Nothing here is compulsory any more — a school may publish in one language,
+ * or have no paper at all — so every field arrives already answered with N/A
+ * and the school overwrites what applies to it.
+ */
+const NOT_APPLICABLE = "N/A";
+
+const emptyStaff = (): StaffDraft => ({
+  fullName: NOT_APPLICABLE,
+  title: "section_head",
+});
 
 function toDraft(paper: SchoolPaperRow | null): PaperDraft {
   if (!paper) {
     return {
-      paperName: "",
-      adviserName: "",
+      paperName: NOT_APPLICABLE,
+      adviserName: NOT_APPLICABLE,
       adviserGender: "M",
-      principalName: "",
+      principalName: NOT_APPLICABLE,
       staff: [emptyStaff(), emptyStaff()],
     };
   }
@@ -74,17 +85,20 @@ export function SchoolPaperDialog({
   papers,
   locked,
   required,
+  canLock,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   papers: SchoolPaperRow[];
   locked: boolean;
   /**
-   * The school still owes these papers. Saving them is the only way out: no
-   * close button, and neither Escape nor the overlay dismisses it. A school
-   * that opened the form itself keeps its close button.
+   * Stage 1 is unfinished: not one language is on file. Saving one is the only
+   * way out, so there is no close button and neither Escape nor the overlay
+   * dismisses it. A school that opened the form itself keeps its close button.
    */
   required?: boolean;
+  /** The contest question is answered, so the details may be frozen. */
+  canLock?: boolean;
 }) {
   const english = papers.find((p) => p.language === "english") ?? null;
   const filipino = papers.find((p) => p.language === "filipino") ?? null;
@@ -99,10 +113,10 @@ export function SchoolPaperDialog({
           <DialogTitle>School Paper</DialogTitle>
           <DialogDescription>
             {locked
-              ? "Submitted as your school paper entry. Contact the division office if this needs a change."
+              ? "These details are locked. Contact the division office if they need a change."
               : required
-                ? "Save both the English and Filipino paper to continue."
-                : "Filled once per language and reused across every entry. Save each language separately."}
+                ? "Fill in your school paper — English, Filipino, or both. Save at least one to continue."
+                : "Fill in whichever languages your school publishes in. Anything that does not apply can stay N/A."}
           </DialogDescription>
         </DialogHeader>
 
@@ -118,22 +132,84 @@ export function SchoolPaperDialog({
             </TabsTrigger>
           </TabsList>
           <TabsContent value="english" className="pt-4">
-            <PaperForm
-              language="english"
-              existing={english}
-              locked={locked}
-            />
+            <PaperForm language="english" existing={english} locked={locked} />
           </TabsContent>
           <TabsContent value="filipino" className="pt-4">
-            <PaperForm
-              language="filipino"
-              existing={filipino}
-              locked={locked}
-            />
+            <PaperForm language="filipino" existing={filipino} locked={locked} />
           </TabsContent>
         </Tabs>
+
+        {canLock && !locked && <LockPaperSection />}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The way out of "editable forever". Locking is deliberately a second click
+ * behind a confirmation, because only the division office can undo it.
+ */
+function LockPaperSection() {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [confirming, setConfirming] = useState(false);
+
+  function handleLock() {
+    startTransition(async () => {
+      const result = await lockSchoolPaperAction();
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Your school paper details are locked.");
+      setConfirming(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-dashed p-4">
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium">Done editing?</p>
+        <p className="text-sm text-muted-foreground">
+          Locking freezes your school paper details and your contest answer. Only the
+          division office can reopen them.
+        </p>
+      </div>
+      {confirming ? (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            variant="destructive"
+            className="flex-1"
+            disabled={isPending}
+            onClick={handleLock}
+          >
+            {isPending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
+            Yes, lock them
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            disabled={isPending}
+            onClick={() => setConfirming(false)}
+          >
+            Keep editing
+          </Button>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          className="self-start"
+          onClick={() => setConfirming(true)}
+        >
+          <Lock className="size-4" />
+          Lock in details
+        </Button>
+      )}
+    </div>
   );
 }
 

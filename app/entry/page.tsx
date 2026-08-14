@@ -10,6 +10,7 @@ import type {
   SchoolPaperRow,
 } from "./types";
 import { paperFlowState, type PaperParticipation } from "@/lib/paper/gate";
+import { paperStatus } from "@/lib/paper/status";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { formatParticipantNumber, type UsageMap } from "@/lib/roster/limits";
 import type { EventCategory } from "@/lib/events-catalog";
@@ -76,12 +77,13 @@ export default async function EntryPage() {
 
   const { data: school, error: schoolError } = await supabase
     .from("schools")
-    .select("id, name, paper_participation, districts(name)")
+    .select("id, name, paper_participation, paper_locked_at, districts(name)")
     .eq("auth_user_id", user.id)
     .single<{
       id: string;
       name: string;
       paper_participation: PaperParticipation;
+      paper_locked_at: string | null;
       districts: { name: string } | null;
     }>();
 
@@ -187,6 +189,13 @@ export default async function EntryPage() {
   const paperFlow = paperFlowState({
     participation: school.paper_participation,
     savedLanguages: (papers ?? []).map((p) => p.language),
+    lockedAt: school.paper_locked_at,
+  });
+
+  const status = paperStatus({
+    participation: school.paper_participation,
+    paperCount: (papers ?? []).length,
+    lockedAt: school.paper_locked_at,
   });
 
   return (
@@ -207,6 +216,8 @@ export default async function EntryPage() {
           coaches={rawCoaches ?? []}
           usage={usage}
           paperFlow={paperFlow}
+          paperStatus={status}
+          participation={school.paper_participation}
           locked={locked}
         />
       </main>
