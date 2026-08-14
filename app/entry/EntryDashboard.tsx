@@ -166,6 +166,7 @@ export function EntryDashboard({
         participants={participants}
         coaches={coaches}
         usage={usage}
+        entries={entries}
         entry={editing}
       />
 

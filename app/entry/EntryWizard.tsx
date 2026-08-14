@@ -7,11 +7,14 @@ import { ArrowLeft, Check, Loader2, Plus, Trash2, User, Users } from "lucide-rea
 
 import { saveEntryAction } from "./actions";
 import {
+  isEventTaken,
+  isEveryEventTaken,
   languagesFor,
-  levelsForType,
+  levelsFor,
   resolveEvent,
+  takenEventIdsFor,
   typeLabel,
-  typesForCategory,
+  typesFor,
   type EventRow,
   type EventTypeRow,
 } from "./wizard-steps";
@@ -47,7 +50,9 @@ import { cn } from "@/lib/utils";
 /** Radix Select forbids an empty item value, so this stands in for "unfilled". */
 const UNSET = "__unset__";
 
-const STEP_LABELS = ["Category", "Event", "Level", "Language", "Details"];
+// Level and language come before the contest so the Event step names one exact
+// `events` row — which is what lets it grey out the ones already submitted.
+const STEP_LABELS = ["Category", "Level", "Language", "Event", "Details"];
 
 export function EntryWizard({
   open,
@@ -57,6 +62,7 @@ export function EntryWizard({
   participants,
   coaches,
   usage,
+  entries,
   entry,
 }: {
   open: boolean;
@@ -66,6 +72,8 @@ export function EntryWizard({
   participants: RosterParticipant[];
   coaches: RosterCoach[];
   usage: UsageMap;
+  /** Every entry this school already has, so used-up events can be greyed out. */
+  entries: EntryRow[];
   /** When present the wizard edits this entry instead of creating one. */
   entry?: EntryRow | null;
 }) {
@@ -106,17 +114,30 @@ export function EntryWizard({
     }
   }, [open, entry, types]);
 
-  const availableTypes = useMemo(
-    () => (category ? typesForCategory(types, category) : []),
-    [types, category]
-  );
   const availableLevels = useMemo(
-    () => (typeId ? levelsForType(events, typeId) : []),
-    [events, typeId]
+    () => (category ? levelsFor(events, category) : []),
+    [events, category]
   );
   const availableLanguages = useMemo(
-    () => (typeId && level ? languagesFor(events, typeId, level) : []),
-    [events, typeId, level]
+    () => (category && level ? languagesFor(events, category, level) : []),
+    [events, category, level]
+  );
+  const availableTypes = useMemo(
+    () =>
+      category && level && language
+        ? typesFor(types, events, category, level, language)
+        : [],
+    [types, events, category, level, language]
+  );
+  /**
+   * A school gets one entry per event, so anything it has already submitted is
+   * shown greyed out rather than hidden — "already submitted" reads better than
+   * a contest that silently vanished. The entry being edited is excluded so it
+   * never blocks itself.
+   */
+  const taken = useMemo(
+    () => takenEventIdsFor(entries, entry?.id ?? null),
+    [entries, entry]
   );
   const selectedType = types.find((t) => t.id === typeId) ?? null;
   const resolved =
@@ -134,34 +155,34 @@ export function EntryWizard({
   function chooseCategory(next: EventCategory) {
     setCategory(next);
     setTypeId(null);
-    setLevel(null);
     setLanguage(null);
-    setStep(2);
-  }
-
-  function chooseType(nextTypeId: string) {
-    setTypeId(nextTypeId);
-    setLanguage(null);
-    const levels = levelsForType(events, nextTypeId);
+    const levels = levelsFor(events, next);
     if (levels.length === 1) {
-      // Secondary-only contests (MOJO, Online Publishing, both TV events) have
-      // no real choice here — skip step 3 rather than showing a dead option.
+      // A category held at a single level has no real choice here — skip step 2
+      // rather than showing a dead option.
       setLevel(levels[0]);
-      setStep(4);
+      setStep(3);
     } else {
       setLevel(null);
-      setStep(3);
+      setStep(2);
     }
   }
 
   function chooseLevel(next: EventLevel) {
     setLevel(next);
-    setStep(4);
+    setTypeId(null);
+    setStep(3);
   }
 
   function chooseLanguage(next: EventLanguage) {
     setLanguage(next);
-    const newType = types.find((t) => t.id === typeId) ?? null;
+    setTypeId(null);
+    setStep(4);
+  }
+
+  function chooseType(nextTypeId: string) {
+    setTypeId(nextTypeId);
+    const newType = types.find((t) => t.id === nextTypeId) ?? null;
     // Open with exactly the rows the contest requires — a 7-member group event
     // should not make the user press Add six times.
     const required = newType?.min_participants ?? 1;
@@ -194,11 +215,9 @@ export function EntryWizard({
 
   function goBack() {
     setError(null);
-    if (step === 5) {
-      setStep(4);
-    } else if (step === 4) {
+    if (step === 3) {
       // Mirror the forward skip: don't land on a single-option level step.
-      setStep(availableLevels.length === 1 ? 2 : 3);
+      setStep(availableLevels.length === 1 ? 1 : 2);
     } else if (step > 1) {
       setStep(step - 1);
     }
@@ -282,29 +301,35 @@ export function EntryWizard({
 
         {step === 2 && (
           <ChoiceGrid>
-            {availableTypes.map((type) => {
-              const label = typeLabel(type);
-              return (
-                <ChoiceCard
-                  key={type.id}
-                  title={label.primary}
-                  hint={label.secondary}
-                  selected={typeId === type.id}
-                  onClick={() => chooseType(type.id)}
-                />
-              );
-            })}
-          </ChoiceGrid>
-        )}
-
-        {step === 3 && (
-          <ChoiceGrid>
             {availableLevels.map((lvl) => (
               <ChoiceCard
                 key={lvl}
                 title={lvl === "elementary" ? "Elementary" : "Secondary"}
                 selected={level === lvl}
+                disabled={
+                  category
+                    ? isEveryEventTaken(events, { category, level: lvl }, taken)
+                    : false
+                }
                 onClick={() => chooseLevel(lvl)}
+              />
+            ))}
+          </ChoiceGrid>
+        )}
+
+        {step === 3 && (
+          <ChoiceGrid>
+            {availableLanguages.map((lang) => (
+              <ChoiceCard
+                key={lang}
+                title={lang === "english" ? "English" : "Filipino"}
+                selected={language === lang}
+                disabled={
+                  category && level
+                    ? isEveryEventTaken(events, { category, level, language: lang }, taken)
+                    : false
+                }
+                onClick={() => chooseLanguage(lang)}
               />
             ))}
           </ChoiceGrid>
@@ -312,19 +337,25 @@ export function EntryWizard({
 
         {step === 4 && (
           <ChoiceGrid>
-            {availableLanguages.map((lang) => (
-              <ChoiceCard
-                key={lang}
-                title={lang === "english" ? "English" : "Filipino"}
-                hint={
-                  lang === "filipino" && selectedType && selectedType.name_fil !== selectedType.name_en
-                    ? selectedType.name_fil
-                    : undefined
-                }
-                selected={language === lang}
-                onClick={() => chooseLanguage(lang)}
-              />
-            ))}
+            {availableTypes.map((type) => {
+              const label = typeLabel(type);
+              return (
+                <ChoiceCard
+                  key={type.id}
+                  // At this step the level and language are already fixed, so a
+                  // Filipino contest is best named by its Filipino title.
+                  title={language === "filipino" ? type.name_fil : label.primary}
+                  hint={language === "filipino" ? undefined : label.secondary}
+                  selected={typeId === type.id}
+                  disabled={
+                    level && language
+                      ? isEventTaken(events, type.id, level, language, taken)
+                      : false
+                  }
+                  onClick={() => chooseType(type.id)}
+                />
+              );
+            })}
           </ChoiceGrid>
         )}
 
@@ -576,28 +607,36 @@ function ChoiceCard({
   title,
   hint,
   selected,
+  disabled,
   onClick,
 }: {
   icon?: React.ReactNode;
   title: string;
   hint?: string;
   selected?: boolean;
+  /** Already submitted by this school — shown, but not pickable. */
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={cn(
         "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
         "hover:border-primary/60 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected && "border-primary bg-accent"
+        selected && "border-primary bg-accent",
+        disabled && "pointer-events-none opacity-50"
       )}
     >
       {icon ? <span className="mt-0.5 text-primary">{icon}</span> : null}
       <span className="flex flex-col gap-0.5">
         <span className="text-sm font-medium">{title}</span>
         {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
+        {disabled ? (
+          <span className="text-xs font-medium text-muted-foreground">Already submitted</span>
+        ) : null}
       </span>
     </button>
   );

@@ -7,6 +7,17 @@ import { schoolPaperSchema } from "@/lib/validation/school-paper";
 import { entrySchema } from "@/lib/validation/entry";
 import { capReason, validateEntryCounts, type UsageMap } from "@/lib/roster/limits";
 
+const DUPLICATE_EVENT_MESSAGE = "Your school already has an entry for this event.";
+
+/**
+ * The check above loses to a second tab that inserts between the read and the
+ * write; `entries_school_event_unique` catches that, and this turns the raw
+ * Postgres violation into the same sentence the school would have seen.
+ */
+function isDuplicateEventViolation(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === "23505" && (error.message ?? "").includes("entries_school_event_unique");
+}
+
 async function getSchoolId() {
   const supabase = await createClient();
   const {
@@ -119,6 +130,21 @@ export async function saveEntryAction(
       event_types: { min_participants: number; max_participants: number | null } | null;
     }>();
   if (!event || !event.event_types) return { error: "Unknown event." };
+
+  // One entry per event, per school. `events` rows are unique per contest,
+  // level and language, so this also covers "per language".
+  const { data: existingForEvent, error: existingForEventError } = await supabase
+    .from("entries")
+    .select("id")
+    .eq("school_id", schoolId)
+    .eq("event_id", eventId);
+  if (existingForEventError) {
+    console.error("saveEntryAction", existingForEventError);
+    return { error: "Could not check your existing entries." };
+  }
+  if ((existingForEvent ?? []).some((row) => row.id !== entryId)) {
+    return { error: DUPLICATE_EVENT_MESSAGE };
+  }
 
   const countError = validateEntryCounts({
     category: event.category,
@@ -285,7 +311,11 @@ export async function saveEntryAction(
       .eq("school_id", schoolId);
     if (updateError) {
       console.error("saveEntryAction", updateError);
-      return { error: "Could not update entry." };
+      return {
+        error: isDuplicateEventViolation(updateError)
+          ? DUPLICATE_EVENT_MESSAGE
+          : "Could not update entry.",
+      };
     }
 
     revalidatePath("/entry");
@@ -298,7 +328,11 @@ export async function saveEntryAction(
       .single();
     if (error || !inserted) {
       console.error("saveEntryAction", error);
-      return { error: "Could not create entry." };
+      return {
+        error: isDuplicateEventViolation(error)
+          ? DUPLICATE_EVENT_MESSAGE
+          : "Could not create entry.",
+      };
     }
     id = inserted.id;
   }
