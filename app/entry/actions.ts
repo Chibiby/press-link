@@ -58,8 +58,14 @@ export async function saveSchoolPaperAction(
   if (settings?.submissions_locked) {
     return { error: "Submissions are locked." };
   }
-  if (paperParticipation === "no") {
-    return { error: "Your school is not submitting a school paper." };
+  // Under the old flow a No closed this form for good. It is now the opposite:
+  // a No school is *required* to save these papers again, with N/A accepted,
+  // before its roster opens. A Yes is what freezes them, because those are the
+  // papers the school submitted — only an admin reset reopens them.
+  if (paperParticipation === "yes") {
+    return {
+      error: "Your school paper has been submitted. Ask the division office to reopen it.",
+    };
   }
 
   const { data: paper, error: upsertError } = await supabase
