@@ -5,7 +5,6 @@ import { Building2, FileText, Newspaper, User, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { adminSignOutAction } from "./actions";
 import { FilterBar } from "./FilterBar";
-import { LockToggle } from "./LockToggle";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { LanguageBadge, LevelBadge } from "@/components/entry-badges";
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
@@ -76,13 +75,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     { data: districts },
     { data: schools },
     { data: events },
-    { data: settings },
     { data: paperSchools },
   ] = await Promise.all([
     supabase.from("districts").select("id, name").order("name"),
     supabase.from("schools").select("id, name, district_id").order("name"),
     supabase.from("events").select("id, name").order("sort_order"),
-    supabase.from("app_settings").select("submissions_locked").single(),
     supabase
       .from("schools")
       .select("paper_participation, paper_locked_at, school_papers(count)")
@@ -139,14 +136,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     { incomplete: 0, saved: 0, submitted: 0 }
   );
 
-  const locked = settings?.submissions_locked ?? false;
-
   return (
     <div className="flex min-h-screen flex-col">
       <DashboardHeader
         title="Division Admin"
         subtitle="All school submissions"
-        badge={locked ? "Locked" : "Open"}
+        badge={`${(paperSchools ?? []).length} schools`}
         signOutAction={adminSignOutAction}
       />
 
@@ -156,9 +151,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             <div>
               <h2 className="text-lg font-semibold tracking-tight">Entries</h2>
               <p className="text-sm text-muted-foreground">
-                {locked
-                  ? "Submissions are locked — schools cannot make changes."
-                  : "Submissions are open."}
+                Every entry submitted across the division.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -168,7 +161,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                   Participants
                 </Link>
               </Button>
-              <LockToggle locked={locked} />
             </div>
           </div>
 

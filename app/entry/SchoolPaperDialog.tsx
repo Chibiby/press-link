@@ -90,6 +90,7 @@ export function SchoolPaperDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   papers: SchoolPaperRow[];
+  /** The school-paper lock — true once the school (or the division office) has locked these details. */
   locked: boolean;
   /**
    * Stage 1 is unfinished: not one language is on file. Saving one is the only

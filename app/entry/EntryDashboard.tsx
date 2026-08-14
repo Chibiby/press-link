@@ -34,7 +34,6 @@ export function EntryDashboard({
   paperFlow,
   paperStatus,
   participation,
-  locked,
 }: {
   entries: EntryRow[];
   types: EventTypeRow[];
@@ -48,7 +47,6 @@ export function EntryDashboard({
   /** The three-state label shared with the admin pages. */
   paperStatus: PaperStatus;
   participation: PaperParticipation;
-  locked: boolean;
 }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<EntryRow | null>(null);
@@ -58,7 +56,7 @@ export function EntryDashboard({
 
   // Each dialog is forced open while its stage is unfinished; only then can the
   // school open it itself.
-  const paperOpen = (paperFlow.paperFormOpen && !locked) || (paperOpenOverride ?? false);
+  const paperOpen = paperFlow.paperFormOpen || (paperOpenOverride ?? false);
   const gateOpen = paperFlow.askQuestion || gateOpenOverride;
 
   function openCreate() {
@@ -71,7 +69,7 @@ export function EntryDashboard({
     setWizardOpen(true);
   }
 
-  const canCreateEntry = !locked && participants.length > 0 && coaches.length > 0;
+  const canCreateEntry = participants.length > 0 && coaches.length > 0;
 
   return (
     <div className="flex flex-col gap-8">
@@ -81,16 +79,6 @@ export function EntryDashboard({
         required={paperFlow.askQuestion}
         current={participation}
       />
-
-      {locked && (
-        <Alert>
-          <Lock />
-          <AlertTitle>Submissions are closed</AlertTitle>
-          <AlertDescription>
-            Your entries are read-only. Contact the division office if you need a change.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -113,7 +101,7 @@ export function EntryDashboard({
                 Locked
               </Badge>
             )}
-            {paperFlow.canAnswer && !paperFlow.askQuestion && !locked && (
+            {paperFlow.canAnswer && !paperFlow.askQuestion && (
               <Button variant="ghost" size="sm" onClick={() => setGateOpenOverride(true)}>
                 Change contest answer
               </Button>
@@ -141,7 +129,7 @@ export function EntryDashboard({
           participants={participants}
           coaches={coaches}
           usage={usage}
-          locked={locked || !paperFlow.rosterEnabled}
+          locked={!paperFlow.rosterEnabled}
         />
       </section>
 
@@ -163,7 +151,6 @@ export function EntryDashboard({
 
         <EntriesTable
           entries={entries}
-          locked={locked}
           onCreate={openCreate}
           onEdit={openEdit}
         />
@@ -181,18 +168,13 @@ export function EntryDashboard({
         entry={editing}
       />
 
-      {/* A globally locked school cannot fill this form, so the stage-1 gate
-          stands down: `paperOpen` stops forcing it open and `required` stops
-          suppressing the close button. Restoring only the close button would
-          not have been enough — the forced-open condition would have re-opened
-          the dialog on the very next render. */}
       <SchoolPaperDialog
         open={paperOpen}
         onOpenChange={setPaperOpenOverride}
         papers={papers}
-        locked={locked || paperFlow.paperFormLocked}
-        required={paperFlow.paperFormOpen && !locked}
-        canLock={paperFlow.canLock && !locked}
+        locked={paperFlow.paperFormLocked}
+        required={paperFlow.paperFormOpen}
+        canLock={paperFlow.canLock}
       />
     </div>
   );

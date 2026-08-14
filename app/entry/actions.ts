@@ -54,10 +54,6 @@ export async function saveSchoolPaperAction(
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
   const { supabase, schoolId, paperLockedAt } = await getSchoolId();
-  const { data: settings } = await supabase.from("app_settings").select("submissions_locked").single();
-  if (settings?.submissions_locked) {
-    return { error: "Submissions are locked." };
-  }
   // Neither answer freezes anything now — a school that is not entering the
   // contest still keeps its information current, and one that is may correct a
   // typo. Only the school's own lock closes this form, and only the division
@@ -118,10 +114,6 @@ export async function saveEntryAction(
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
   const { supabase, schoolId } = await getSchoolId();
-  const { data: settings } = await supabase.from("app_settings").select("submissions_locked").single();
-  if (settings?.submissions_locked) {
-    return { error: "Submissions are locked." };
-  }
 
   const { participantIds, coachIds, eventId } = parsed.data;
 
@@ -365,10 +357,6 @@ export async function saveEntryAction(
 
 export async function deleteEntryAction(entryId: string): Promise<{ error: string } | { success: true }> {
   const { supabase, schoolId } = await getSchoolId();
-  const { data: settings } = await supabase.from("app_settings").select("submissions_locked").single();
-  if (settings?.submissions_locked) {
-    return { error: "Submissions are locked." };
-  }
   const { error } = await supabase.from("entries").delete().eq("id", entryId).eq("school_id", schoolId);
   if (error) {
     console.error("deleteEntryAction", error);

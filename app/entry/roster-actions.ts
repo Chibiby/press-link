@@ -27,16 +27,6 @@ async function getSchoolId() {
   return { supabase, schoolId: school.id as string };
 }
 
-async function assertUnlocked(
-  supabase: Awaited<ReturnType<typeof createClient>>
-): Promise<string | null> {
-  const { data: settings } = await supabase
-    .from("app_settings")
-    .select("submissions_locked")
-    .single();
-  return settings?.submissions_locked ? "Submissions are locked." : null;
-}
-
 /**
  * The roster stays shut until the school paper business is settled. The dialogs
  * enforce this too, but a hand-rolled request would sail past them.
@@ -78,8 +68,6 @@ export async function addParticipantAction(
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
   const { supabase, schoolId } = await getSchoolId();
-  const locked = await assertUnlocked(supabase);
-  if (locked) return { error: locked };
   const unsettled = await assertPaperSettled(supabase, schoolId);
   if (unsettled) return { error: unsettled };
 
@@ -104,8 +92,6 @@ export async function deleteParticipantAction(
   participantId: string
 ): Promise<{ error: string } | { success: true }> {
   const { supabase, schoolId } = await getSchoolId();
-  const locked = await assertUnlocked(supabase);
-  if (locked) return { error: locked };
 
   const { count } = await supabase
     .from("entry_participants")
@@ -138,8 +124,6 @@ export async function addCoachAction(
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
   const { supabase, schoolId } = await getSchoolId();
-  const locked = await assertUnlocked(supabase);
-  if (locked) return { error: locked };
   const unsettled = await assertPaperSettled(supabase, schoolId);
   if (unsettled) return { error: unsettled };
 
@@ -161,8 +145,6 @@ export async function deleteCoachAction(
   coachId: string
 ): Promise<{ error: string } | { success: true }> {
   const { supabase, schoolId } = await getSchoolId();
-  const locked = await assertUnlocked(supabase);
-  if (locked) return { error: locked };
 
   const { count } = await supabase
     .from("entry_coaches")

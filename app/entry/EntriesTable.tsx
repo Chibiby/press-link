@@ -42,12 +42,10 @@ function participantSummary(entry: EntryRow): string {
 
 export function EntriesTable({
   entries,
-  locked,
   onCreate,
   onEdit,
 }: {
   entries: EntryRow[];
-  locked: boolean;
   onCreate: () => void;
   onEdit: (entry: EntryRow) => void;
 }) {
@@ -82,7 +80,7 @@ export function EntriesTable({
             Add the contests your school is joining.
           </p>
         </div>
-        <Button onClick={onCreate} disabled={locked}>
+        <Button onClick={onCreate}>
           Create your first entry
         </Button>
       </div>
@@ -129,13 +127,12 @@ export function EntriesTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem disabled={locked} onClick={() => onEdit(entry)}>
+                      <DropdownMenuItem onClick={() => onEdit(entry)}>
                         <Pencil className="size-4" />
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
-                        disabled={locked}
                         onClick={() => setPendingDelete(entry)}
                       >
                         <Trash2 className="size-4" />

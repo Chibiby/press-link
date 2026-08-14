@@ -101,7 +101,6 @@ export default async function EntryPage() {
   }
 
   const [
-    { data: settings },
     { data: papers },
     { data: types },
     { data: events },
@@ -109,7 +108,6 @@ export default async function EntryPage() {
     { data: rawCoaches },
     { data: rawEntries },
   ] = await Promise.all([
-    supabase.from("app_settings").select("submissions_locked").single(),
     supabase
       .from("school_papers")
       .select(
@@ -182,8 +180,6 @@ export default async function EntryPage() {
     }
   }
 
-  const locked = settings?.submissions_locked ?? false;
-
   // One place decides where the school is in the paper flow, and therefore
   // whether the form is forced open, locked, or done — see lib/paper/gate.ts.
   const paperFlow = paperFlowState({
@@ -218,7 +214,6 @@ export default async function EntryPage() {
           paperFlow={paperFlow}
           paperStatus={status}
           participation={school.paper_participation}
-          locked={locked}
         />
       </main>
     </div>
