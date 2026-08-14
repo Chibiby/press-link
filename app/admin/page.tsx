@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Building2, FileText, Newspaper, User, Users } from "lucide-react";
+import { Building2, FileText, Newspaper, User, UserCog, Users } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { adminSignOutAction } from "./actions";
@@ -159,6 +159,18 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                 <Link href="/admin/participants">
                   <Users className="size-4" />
                   Participants
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/admin/coaches">
+                  <UserCog className="size-4" />
+                  Coaches
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/admin/school-papers">
+                  <Newspaper className="size-4" />
+                  School Papers
                 </Link>
               </Button>
             </div>

@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { adminSignOutAction } from "../actions";
@@ -10,6 +12,7 @@ import {
   type RawAdminCoach,
 } from "@/lib/roster/admin-coach-rows";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -84,11 +87,19 @@ export default async function AdminCoachesPage({
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         <div className="flex flex-col gap-6">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">Roster</h2>
-            <p className="text-sm text-muted-foreground">
-              An asterisk marks a coach on more than one entry — {multiCount} shown.
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">Roster</h2>
+              <p className="text-sm text-muted-foreground">
+                An asterisk marks a coach on more than one entry — {multiCount} shown.
+              </p>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin">
+                <ArrowLeft className="size-4" />
+                Back to entries
+              </Link>
+            </Button>
           </div>
 
           <CoachFilterBar

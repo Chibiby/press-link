@@ -3,8 +3,8 @@
 --
 -- Deletes: entries (and their participant/coach links), the roster of
 --          participants and coaches, and every school paper.
--- Keeps:   districts, schools and their logins, the events / event_types
---          catalog, and app_settings.
+-- Keeps:   districts, schools and their logins, and the events / event_types
+--          catalog.
 --
 -- Run in the Supabase SQL Editor. Everything is inside one transaction, so a
 -- failure part-way leaves the data untouched.

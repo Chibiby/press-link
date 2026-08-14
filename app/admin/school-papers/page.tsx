@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { adminSignOutAction } from "../actions";
@@ -12,6 +14,7 @@ import {
 } from "@/lib/paper/admin-papers";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -91,6 +94,15 @@ export default async function AdminSchoolPapersPage({
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         <div className="flex flex-col gap-6">
+          <div className="flex justify-end">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin">
+                <ArrowLeft className="size-4" />
+                Back to entries
+              </Link>
+            </Button>
+          </div>
+
           <SchoolPaperFilterBar districts={districts ?? []} schools={schools ?? []} />
 
           <div className="overflow-x-auto rounded-xl border">
