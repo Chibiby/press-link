@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Building2, FileText, Newspaper, User, UserCog, Users } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "./guard";
 import { adminSignOutAction } from "./actions";
 import { FilterBar } from "./FilterBar";
 import { DashboardHeader } from "@/components/dashboard-header";
@@ -58,18 +57,7 @@ interface EntryRow {
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/admin/login");
-
-  const { data: profile } = await supabase.from("admin_profiles").select("user_id").eq("user_id", user.id).single();
-  if (!profile) {
-    await supabase.auth.signOut();
-    redirect("/admin/login");
-  }
+  const { supabase } = await requireAdmin();
 
   const [
     { data: districts },
@@ -154,7 +142,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                 Every entry submitted across the division.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button asChild variant="outline" size="sm">
                 <Link href="/admin/participants">
                   <Users className="size-4" />

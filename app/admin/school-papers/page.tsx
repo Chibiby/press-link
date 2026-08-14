@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "../guard";
 import { adminSignOutAction } from "../actions";
 import { SchoolPaperFilterBar } from "./SchoolPaperFilterBar";
 import { UnlockPaperButton } from "./UnlockPaperButton";
@@ -13,6 +12,7 @@ import {
   type RawAdminSchoolPaper,
 } from "@/lib/paper/admin-papers";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
+import { LANGUAGE_LABEL } from "@/lib/events-catalog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,11 +32,6 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-PH", {
   minute: "2-digit",
 });
 
-const LANGUAGE_LABEL: Record<"english" | "filipino", string> = {
-  english: "English",
-  filipino: "Filipino",
-};
-
 interface SearchParams {
   district?: string;
   school?: string;
@@ -51,22 +46,7 @@ export default async function AdminSchoolPapersPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/admin/login");
-
-  const { data: profile } = await supabase
-    .from("admin_profiles")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .single();
-  if (!profile) {
-    await supabase.auth.signOut();
-    redirect("/admin/login");
-  }
+  const { supabase } = await requireAdmin();
 
   const [{ data: districts }, { data: schools }, { data: raw }] = await Promise.all([
     supabase.from("districts").select("id, name").order("name"),
