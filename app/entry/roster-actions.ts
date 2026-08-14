@@ -48,9 +48,9 @@ async function assertPaperSettled(
   const [{ data: school }, { data: papers }] = await Promise.all([
     supabase
       .from("schools")
-      .select("paper_participation")
+      .select("paper_participation, paper_locked_at")
       .eq("id", schoolId)
-      .single<{ paper_participation: PaperParticipation }>(),
+      .single<{ paper_participation: PaperParticipation; paper_locked_at: string | null }>(),
     supabase
       .from("school_papers")
       .select("language")
@@ -62,10 +62,11 @@ async function assertPaperSettled(
   const state = paperFlowState({
     participation: school.paper_participation,
     savedLanguages: (papers ?? []).map((p) => p.language),
+    lockedAt: school.paper_locked_at,
   });
   return state.rosterEnabled
     ? null
-    : "Submit your School Paper entry before adding people.";
+    : "Finish your School Paper before adding people.";
 }
 
 export async function addParticipantAction(
@@ -201,6 +202,22 @@ export async function setPaperParticipationAction(
   if (error) {
     console.error("setPaperParticipationAction", error);
     return { error: "Could not save your answer." };
+  }
+
+  revalidatePath("/entry");
+  return { success: true as const };
+}
+
+export async function lockSchoolPaperAction(): Promise<
+  { error: string } | { success: true }
+> {
+  const supabase = await createClient();
+  // Definer RPC: it refuses a school that has not answered the contest
+  // question, and stamps the lock only once, so a double click is harmless.
+  const { error } = await supabase.rpc("lock_school_paper");
+  if (error) {
+    console.error("lockSchoolPaperAction", error);
+    return { error: "Could not lock your school paper." };
   }
 
   revalidatePath("/entry");

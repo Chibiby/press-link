@@ -27,7 +27,7 @@ async function getSchoolId() {
 
   const { data: school } = await supabase
     .from("schools")
-    .select("id, paper_participation")
+    .select("id, paper_participation, paper_locked_at")
     .eq("auth_user_id", user.id)
     .single();
   if (!school) throw new Error("School not found");
@@ -36,6 +36,7 @@ async function getSchoolId() {
     supabase,
     schoolId: school.id as string,
     paperParticipation: school.paper_participation as "undecided" | "yes" | "no",
+    paperLockedAt: (school.paper_locked_at as string | null) ?? null,
   };
 }
 
@@ -53,18 +54,18 @@ export async function saveSchoolPaperAction(
     const message = parsed.error.issues[0]?.message;
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
-  const { supabase, schoolId, paperParticipation } = await getSchoolId();
+  const { supabase, schoolId, paperLockedAt } = await getSchoolId();
   const { data: settings } = await supabase.from("app_settings").select("submissions_locked").single();
   if (settings?.submissions_locked) {
     return { error: "Submissions are locked." };
   }
-  // Under the old flow a No closed this form for good. It is now the opposite:
-  // a No school is *required* to save these papers again, with N/A accepted,
-  // before its roster opens. A Yes is what freezes them, because those are the
-  // papers the school submitted — only an admin reset reopens them.
-  if (paperParticipation === "yes") {
+  // Neither answer freezes anything now — a school that is not entering the
+  // contest still keeps its information current, and one that is may correct a
+  // typo. Only the school's own lock closes this form, and only the division
+  // office can undo that.
+  if (paperLockedAt !== null) {
     return {
-      error: "Your school paper has been submitted. Ask the division office to reopen it.",
+      error: "Your school paper is locked. Ask the division office to reopen it.",
     };
   }
 
