@@ -1,4 +1,6 @@
 import { formatParticipantNumber } from "./limits";
+import type { PaperParticipation } from "@/lib/paper/gate";
+import { paperStatus, type PaperStatus } from "@/lib/paper/status";
 
 /** A `participants` row joined to its school and entry links, as fetched by /admin/participants. */
 export interface RawAdminParticipant {
@@ -13,6 +15,9 @@ export interface RawAdminParticipant {
     name: string;
     district_id: string;
     paper_participation: string;
+    paper_locked_at: string | null;
+    /** From the `school_papers(count)` aggregate on the page's query. */
+    paper_count: number;
     districts: { name: string } | null;
   } | null;
   entry_participants: { entry_id: string }[];
@@ -31,7 +36,8 @@ export interface AdminParticipantRow {
   districtName: string;
   eventCount: number;
   isMultiEvent: boolean;
-  paperParticipation: string;
+  paperStatus: PaperStatus;
+  paperLocked: boolean;
 }
 
 export function toAdminParticipantRows(raw: RawAdminParticipant[]): AdminParticipantRow[] {
@@ -53,7 +59,13 @@ export function toAdminParticipantRows(raw: RawAdminParticipant[]): AdminPartici
         districtName: row.schools?.districts?.name ?? "",
         eventCount,
         isMultiEvent,
-        paperParticipation: row.schools?.paper_participation ?? "undecided",
+        paperStatus: paperStatus({
+          participation: (row.schools?.paper_participation ??
+            "undecided") as PaperParticipation,
+          paperCount: row.schools?.paper_count ?? 0,
+          lockedAt: row.schools?.paper_locked_at ?? null,
+        }),
+        paperLocked: (row.schools?.paper_locked_at ?? null) !== null,
       };
     })
     .sort((a, b) => a.numberLabel.localeCompare(b.numberLabel));

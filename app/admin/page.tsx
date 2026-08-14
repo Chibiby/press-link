@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Building2, FileText, User, Users } from "lucide-react";
+import { Building2, FileText, Newspaper, User, Users } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { adminSignOutAction } from "./actions";
@@ -9,6 +9,8 @@ import { LockToggle } from "./LockToggle";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { LanguageBadge, LevelBadge } from "@/components/entry-badges";
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
+import type { PaperParticipation } from "@/lib/paper/gate";
+import { PAPER_STATUS_LABEL, paperStatus } from "@/lib/paper/status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,11 +72,27 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     redirect("/admin/login");
   }
 
-  const [{ data: districts }, { data: schools }, { data: events }, { data: settings }] = await Promise.all([
+  const [
+    { data: districts },
+    { data: schools },
+    { data: events },
+    { data: settings },
+    { data: paperSchools },
+  ] = await Promise.all([
     supabase.from("districts").select("id, name").order("name"),
     supabase.from("schools").select("id, name, district_id").order("name"),
     supabase.from("events").select("id, name").order("sort_order"),
     supabase.from("app_settings").select("submissions_locked").single(),
+    supabase
+      .from("schools")
+      .select("paper_participation, paper_locked_at, school_papers(count)")
+      .overrideTypes<
+        {
+          paper_participation: PaperParticipation;
+          paper_locked_at: string | null;
+          school_papers: { count: number }[];
+        }[]
+      >(),
   ]);
 
   let query = supabase
@@ -105,6 +123,21 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     individual: filteredEntries.filter((e) => e.events?.category === "individual").length,
     group: filteredEntries.filter((e) => e.events?.category === "group").length,
   };
+
+  // How the division's schools stand on their school papers, independent of the
+  // entry filters above — this counts schools, not entries.
+  const paperStats = (paperSchools ?? []).reduce(
+    (acc, row) => {
+      const status = paperStatus({
+        participation: row.paper_participation,
+        paperCount: row.school_papers?.[0]?.count ?? 0,
+        lockedAt: row.paper_locked_at,
+      });
+      acc[status] += 1;
+      return acc;
+    },
+    { incomplete: 0, saved: 0, submitted: 0 }
+  );
 
   const locked = settings?.submissions_locked ?? false;
 
@@ -144,6 +177,24 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             <Stat icon={<Building2 className="size-4" />} label="Schools" value={stats.schools} />
             <Stat icon={<User className="size-4" />} label="Individual" value={stats.individual} />
             <Stat icon={<Users className="size-4" />} label="Group" value={stats.group} />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Stat
+              icon={<Newspaper className="size-4" />}
+              label={PAPER_STATUS_LABEL.submitted}
+              value={paperStats.submitted}
+            />
+            <Stat
+              icon={<Newspaper className="size-4" />}
+              label={PAPER_STATUS_LABEL.saved}
+              value={paperStats.saved}
+            />
+            <Stat
+              icon={<Newspaper className="size-4" />}
+              label={PAPER_STATUS_LABEL.incomplete}
+              value={paperStats.incomplete}
+            />
           </div>
 
           <FilterBar districts={districts ?? []} schools={schools ?? []} events={events ?? []} />

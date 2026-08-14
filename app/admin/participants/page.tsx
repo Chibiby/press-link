@@ -11,6 +11,7 @@ import {
   toAdminParticipantRows,
   type RawAdminParticipant,
 } from "@/lib/roster/admin-rows";
+import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,13 +59,26 @@ export default async function AdminParticipantsPage({
     supabase
       .from("participants")
       .select(
-        "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, districts(name)), entry_participants(entry_id)"
+        "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, paper_locked_at, school_papers(count), districts(name)), entry_participants(entry_id)"
       )
       .order("participant_number")
       .overrideTypes<RawAdminParticipant[]>(),
   ]);
 
-  let rows = toAdminParticipantRows(raw ?? []);
+  // `school_papers(count)` arrives as a one-element array; the row mapper wants
+  // a plain number, so it is unwrapped here rather than inside the pure module.
+  const rawWithCounts: RawAdminParticipant[] = (raw ?? []).map((row) => ({
+    ...row,
+    schools: row.schools
+      ? {
+          ...row.schools,
+          paper_count:
+            (row.schools as unknown as { school_papers?: { count: number }[] }).school_papers?.[0]
+              ?.count ?? 0,
+        }
+      : null,
+  }));
+  let rows = toAdminParticipantRows(rawWithCounts);
   if (params.district) rows = rows.filter((r) => r.districtId === params.district);
   if (params.school) rows = rows.filter((r) => r.schoolId === params.school);
   if (params.multi === "1") rows = rows.filter((r) => r.isMultiEvent);
@@ -132,14 +146,28 @@ export default async function AdminParticipantsPage({
                       )}
                     </TableCell>
                     <TableCell>
-                      {row.paperParticipation === "undecided" ? (
-                        <span className="text-sm text-muted-foreground">Not answered</span>
+                      {row.paperStatus === "incomplete" ? (
+                        <span className="text-sm text-muted-foreground">
+                          {PAPER_STATUS_LABEL.incomplete}
+                        </span>
                       ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">
-                            {row.paperParticipation === "yes" ? "Submitting" : "Not submitting"}
-                          </span>
-                          <ResetPaperButton schoolId={row.schoolId} schoolName={row.schoolName} />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant={row.paperStatus === "submitted" ? "default" : "secondary"}
+                            className="text-[10px]"
+                          >
+                            {PAPER_STATUS_LABEL[row.paperStatus]}
+                          </Badge>
+                          {row.paperLocked && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Locked
+                            </Badge>
+                          )}
+                          <ResetPaperButton
+                            schoolId={row.schoolId}
+                            schoolName={row.schoolName}
+                            locked={row.paperLocked}
+                          />
                         </div>
                       )}
                     </TableCell>

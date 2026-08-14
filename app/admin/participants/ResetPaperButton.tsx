@@ -11,9 +11,12 @@ import { Button } from "@/components/ui/button";
 export function ResetPaperButton({
   schoolId,
   schoolName,
+  locked,
 }: {
   schoolId: string;
   schoolName: string;
+  /** A locked school is only reopened by this button, so say so. */
+  locked?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -25,7 +28,11 @@ export function ResetPaperButton({
         toast.error(result.error);
         return;
       }
-      toast.success(`${schoolName} will be asked again.`);
+      toast.success(
+        locked
+          ? `${schoolName} can edit its school paper again.`
+          : `${schoolName} will be asked again.`
+      );
       router.refresh();
     });
   }
@@ -33,7 +40,7 @@ export function ResetPaperButton({
   return (
     <Button type="button" variant="outline" size="sm" disabled={isPending} onClick={handleReset}>
       {isPending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
-      Reset answer
+      {locked ? "Reopen" : "Reset answer"}
     </Button>
   );
 }
