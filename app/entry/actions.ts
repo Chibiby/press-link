@@ -27,7 +27,7 @@ async function getSchoolId() {
 
   const { data: school } = await supabase
     .from("schools")
-    .select("id, paper_participation, paper_locked_at")
+    .select("id, paper_locked_at")
     .eq("auth_user_id", user.id)
     .single();
   if (!school) throw new Error("School not found");
@@ -35,7 +35,6 @@ async function getSchoolId() {
   return {
     supabase,
     schoolId: school.id as string,
-    paperParticipation: school.paper_participation as "undecided" | "yes" | "no",
     paperLockedAt: (school.paper_locked_at as string | null) ?? null,
   };
 }

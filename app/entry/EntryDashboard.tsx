@@ -10,12 +10,12 @@ import { RosterPanel } from "./RosterPanel";
 import { SchoolPaperDialog } from "./SchoolPaperDialog";
 import type {
   EntryRow,
+  PaperParticipation,
   RosterCoach,
   RosterParticipant,
   SchoolPaperRow,
 } from "./types";
 import type { PaperFlowState } from "@/lib/paper/gate";
-import type { PaperParticipation } from "./types";
 import { PAPER_STATUS_LABEL, type PaperStatus } from "@/lib/paper/status";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { type UsageMap } from "@/lib/roster/limits";
@@ -60,7 +60,6 @@ export function EntryDashboard({
   // school open it itself.
   const paperOpen = paperFlow.paperFormOpen || (paperOpenOverride ?? false);
   const gateOpen = paperFlow.askQuestion || gateOpenOverride;
-  const paperStatusValue = paperStatus;
 
   function openCreate() {
     setEditing(null);
@@ -103,10 +102,10 @@ export function EntryDashboard({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge
-              variant={paperStatusValue === "submitted" ? "default" : "secondary"}
+              variant={paperStatus === "submitted" ? "default" : "secondary"}
               className="gap-1"
             >
-              {PAPER_STATUS_LABEL[paperStatusValue]}
+              {PAPER_STATUS_LABEL[paperStatus]}
             </Badge>
             {paperFlow.paperFormLocked && (
               <Badge variant="outline" className="gap-1">
@@ -114,7 +113,7 @@ export function EntryDashboard({
                 Locked
               </Badge>
             )}
-            {paperFlow.canAnswer && !paperFlow.askQuestion && (
+            {paperFlow.canAnswer && !paperFlow.askQuestion && !locked && (
               <Button variant="ghost" size="sm" onClick={() => setGateOpenOverride(true)}>
                 Change contest answer
               </Button>
@@ -182,12 +181,14 @@ export function EntryDashboard({
         entry={editing}
       />
 
+      {/* A globally locked school cannot fill the form, so trapping it behind an
+          undismissable dialog would only hide the dashboard it can still read. */}
       <SchoolPaperDialog
         open={paperOpen}
         onOpenChange={setPaperOpenOverride}
         papers={papers}
         locked={locked || paperFlow.paperFormLocked}
-        required={paperFlow.paperFormOpen}
+        required={paperFlow.paperFormOpen && !locked}
         canLock={paperFlow.canLock && !locked}
       />
     </div>

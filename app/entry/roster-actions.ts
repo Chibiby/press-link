@@ -186,6 +186,26 @@ export async function deleteCoachAction(
   return { success: true as const };
 }
 
+/**
+ * The paper RPCs raise their own exceptions, and a stale tab hits them for
+ * reasons the school can act on — another tab locked the details, or the form
+ * was never saved. Postgres hands those back as one opaque failure, so match
+ * the sentences we raised and keep the generic line for anything else.
+ */
+function rpcMessage(error: { message?: string }, fallback: string): string {
+  const raised = error.message ?? "";
+  if (raised.includes("school paper is locked")) {
+    return "Your school paper is locked. Ask the division office to reopen it.";
+  }
+  if (raised.includes("save your school paper information first")) {
+    return "Save your school paper information first.";
+  }
+  if (raised.includes("answer the school paper contest question first")) {
+    return "Answer the school paper contest question first.";
+  }
+  return fallback;
+}
+
 export async function setPaperParticipationAction(
   choice: unknown
 ): Promise<{ error: string } | { success: true }> {
@@ -194,14 +214,14 @@ export async function setPaperParticipationAction(
 
   const supabase = await createClient();
   // Definer RPC: a school may write this answer and nothing else on its row.
-  // It also refuses unless both papers exist, so the roster cannot be unlocked
-  // by calling this before the form has been filled.
+  // It also refuses unless at least one language is on file, so the roster
+  // cannot be unlocked by calling this before the form has been filled.
   const { error } = await supabase.rpc("set_paper_participation", {
     choice: parsed.data,
   });
   if (error) {
     console.error("setPaperParticipationAction", error);
-    return { error: "Could not save your answer." };
+    return { error: rpcMessage(error, "Could not save your answer.") };
   }
 
   revalidatePath("/entry");
@@ -217,7 +237,7 @@ export async function lockSchoolPaperAction(): Promise<
   const { error } = await supabase.rpc("lock_school_paper");
   if (error) {
     console.error("lockSchoolPaperAction", error);
-    return { error: "Could not lock your school paper." };
+    return { error: rpcMessage(error, "Could not lock your school paper.") };
   }
 
   revalidatePath("/entry");

@@ -29,6 +29,12 @@ describe("paperStatus", () => {
     ).toBe("submitted");
   });
 
+  it("trusts a locked school's no even with no paper rows left", () => {
+    expect(
+      paperStatus({ participation: "no", paperCount: 0, lockedAt: "2026-08-14T02:00:00.000Z" })
+    ).toBe("saved");
+  });
+
   it("falls back to incomplete when an answer has lost its papers", () => {
     expect(paperStatus({ participation: "yes", paperCount: 0, lockedAt: null })).toBe("incomplete");
   });

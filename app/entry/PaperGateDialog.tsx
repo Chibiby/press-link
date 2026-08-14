@@ -66,8 +66,8 @@ export function PaperGateDialog({
           </DialogTitle>
           <DialogDescription>
             Yes enters the details you saved in the school paper contest. No keeps them on
-            record for the division office without entering the contest. Either way your
-            participants and coaches open, and you can change this answer until you lock
+            record for the division office without entering the contest. Either way, your
+            participants and coaches will open, and you can change this answer until you lock
             your details in.
           </DialogDescription>
         </DialogHeader>
