@@ -8,7 +8,9 @@ export const rosterParticipantSchema = z.object({
 });
 
 export const rosterCoachSchema = z.object({
-  fullName: z.string().trim().min(1, "Coach name is required"),
+  firstName: z.string().trim().min(1, "First name is required"),
+  middleName: z.string().trim().optional(),
+  lastName: z.string().trim().min(1, "Last name is required"),
   gender: z.enum(["M", "F"]),
 });
 

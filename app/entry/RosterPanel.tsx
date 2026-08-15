@@ -234,17 +234,21 @@ function ParticipantsTab({
 function CoachesTab({ coaches, locked }: { coaches: RosterCoach[]; locked: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState<"M" | "F">("M");
 
   function handleAdd() {
     startTransition(async () => {
-      const result = await addCoachAction({ fullName, gender });
+      const result = await addCoachAction({ firstName, middleName, lastName, gender });
       if ("error" in result) {
         toast.error(result.error);
         return;
       }
-      setFullName("");
+      setFirstName("");
+      setMiddleName("");
+      setLastName("");
       setGender("M");
       toast.success("Coach added.");
       router.refresh();
@@ -266,16 +270,34 @@ function CoachesTab({ coaches, locked }: { coaches: RosterCoach[]; locked: boole
   return (
     <div className="flex flex-col gap-5">
       <div className="grid gap-3 rounded-xl border p-4 sm:grid-cols-3">
-        <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <Label htmlFor="roster-coach-name">Complete name</Label>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="roster-coach-first-name">First name</Label>
           <Input
-            id="roster-coach-name"
-            value={fullName}
+            id="roster-coach-first-name"
+            value={firstName}
             disabled={locked}
-            onChange={(e) => setFullName(e.target.value)}
+            onChange={(e) => setFirstName(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1.5">
+          <Label htmlFor="roster-coach-middle-name">Middle name</Label>
+          <Input
+            id="roster-coach-middle-name"
+            value={middleName}
+            disabled={locked}
+            onChange={(e) => setMiddleName(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="roster-coach-last-name">Last name</Label>
+          <Input
+            id="roster-coach-last-name"
+            value={lastName}
+            disabled={locked}
+            onChange={(e) => setLastName(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label>Gender</Label>
           <RadioGroup
             value={gender}
@@ -297,8 +319,13 @@ function CoachesTab({ coaches, locked }: { coaches: RosterCoach[]; locked: boole
             </div>
           </RadioGroup>
         </div>
-        <div className="sm:col-span-3">
-          <Button type="button" disabled={locked || isPending} onClick={handleAdd}>
+        <div className="flex items-end">
+          <Button
+            type="button"
+            className="w-full"
+            disabled={locked || isPending}
+            onClick={handleAdd}
+          >
             {isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
             Add coach
           </Button>

@@ -44,13 +44,21 @@ describe("rosterParticipantSchema", () => {
 });
 
 describe("rosterCoachSchema", () => {
-  it("accepts a complete name", () => {
-    const result = rosterCoachSchema.safeParse({ fullName: "Mr. Reyes", gender: "M" });
+  it("accepts a coach without a middle name", () => {
+    const result = rosterCoachSchema.safeParse({
+      firstName: "Juan",
+      lastName: "Reyes",
+      gender: "M",
+    });
     expect(result.success).toBe(true);
   });
 
-  it("rejects a blank name", () => {
-    const result = rosterCoachSchema.safeParse({ fullName: "", gender: "M" });
+  it("rejects a blank last name", () => {
+    const result = rosterCoachSchema.safeParse({
+      firstName: "Juan",
+      lastName: "   ",
+      gender: "M",
+    });
     expect(result.success).toBe(false);
   });
 });

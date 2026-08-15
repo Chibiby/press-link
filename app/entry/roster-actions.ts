@@ -159,7 +159,9 @@ export async function addCoachAction(
 
   const { error } = await supabase.from("coaches").insert({
     school_id: schoolId,
-    full_name: parsed.data.fullName,
+    first_name: parsed.data.firstName,
+    middle_name: parsed.data.middleName || null,
+    last_name: parsed.data.lastName,
     gender: parsed.data.gender,
   });
   if (error) {

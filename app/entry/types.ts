@@ -16,8 +16,12 @@ export interface RosterParticipant {
 
 export interface RosterCoach {
   id: string;
-  full_name: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
   gender: "M" | "F";
+  /** "Dela Cruz, Ana M." — built once on the server. */
+  full_name: string;
 }
 
 export interface EntryRow {

@@ -35,6 +35,14 @@ interface RawParticipant {
   gender: "M" | "F";
 }
 
+interface RawCoach {
+  id: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  gender: "M" | "F";
+}
+
 interface RawEntry {
   id: string;
   event_id: string;
@@ -47,7 +55,7 @@ interface RawEntry {
     event_type_id: string;
   } | null;
   entry_participants: { participants: RawParticipant | null }[];
-  entry_coaches: { coaches: RosterCoach | null }[];
+  entry_coaches: { coaches: RawCoach | null }[];
 }
 
 /** "Dela Cruz, Ana M." — surname first, the way the division office lists people. */
@@ -62,6 +70,10 @@ function toRosterParticipant(row: RawParticipant): RosterParticipant {
     gender: row.gender,
     full_name: surnameFirst(row),
   };
+}
+
+function toRosterCoach(row: RawCoach): RosterCoach {
+  return { ...row, full_name: surnameFirst(row) };
 }
 
 export default async function EntryPage() {
@@ -133,14 +145,14 @@ export default async function EntryPage() {
       .overrideTypes<RawParticipant[]>(),
     supabase
       .from("coaches")
-      .select("id, full_name, gender")
+      .select("id, first_name, middle_name, last_name, gender")
       .eq("school_id", school.id)
-      .order("full_name")
-      .overrideTypes<RosterCoach[]>(),
+      .order("last_name")
+      .overrideTypes<RawCoach[]>(),
     supabase
       .from("entries")
       .select(
-        "id, event_id, submitted_at, events(name, category, level, language, event_type_id), entry_participants(participants(id, participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(id, full_name, gender))"
+        "id, event_id, submitted_at, events(name, category, level, language, event_type_id), entry_participants(participants(id, participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(id, first_name, middle_name, last_name, gender))"
       )
       .eq("school_id", school.id)
       .order("submitted_at", { ascending: false })
@@ -165,7 +177,8 @@ export default async function EntryPage() {
       .map(toRosterParticipant),
     coaches: row.entry_coaches
       .map((link) => link.coaches)
-      .filter((c): c is RosterCoach => c !== null),
+      .filter((c): c is RawCoach => c !== null)
+      .map(toRosterCoach),
   }));
 
   // How many entries each participant already sits in, so the wizard can grey
@@ -210,7 +223,7 @@ export default async function EntryPage() {
           events={events ?? []}
           papers={papers ?? []}
           participants={(rawParticipants ?? []).map(toRosterParticipant)}
-          coaches={rawCoaches ?? []}
+          coaches={(rawCoaches ?? []).map(toRosterCoach)}
           usage={usage}
           paperFlow={paperFlow}
           paperStatus={status}
