@@ -15,7 +15,7 @@ export interface RawAdminParticipant {
     name: string;
     district_id: string;
     paper_participation: string;
-    paper_locked_at: string | null;
+    submission_locked_at: string | null;
     /** From the `school_papers(count)` aggregate on the page's query. */
     paper_count: number;
     districts: { name: string } | null;
@@ -37,7 +37,7 @@ export interface AdminParticipantRow {
   eventCount: number;
   isMultiEvent: boolean;
   paperStatus: PaperStatus;
-  paperLocked: boolean;
+  submissionLocked: boolean;
 }
 
 export function toAdminParticipantRows(raw: RawAdminParticipant[]): AdminParticipantRow[] {
@@ -63,9 +63,9 @@ export function toAdminParticipantRows(raw: RawAdminParticipant[]): AdminPartici
           participation: (row.schools?.paper_participation ??
             "undecided") as PaperParticipation,
           paperCount: row.schools?.paper_count ?? 0,
-          lockedAt: row.schools?.paper_locked_at ?? null,
+          lockedAt: row.schools?.submission_locked_at ?? null,
         }),
-        paperLocked: row.schools?.paper_locked_at != null,
+        submissionLocked: row.schools?.submission_locked_at != null,
       };
     })
     .sort((a, b) => a.numberLabel.localeCompare(b.numberLabel));

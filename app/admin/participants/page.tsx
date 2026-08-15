@@ -56,7 +56,7 @@ export default async function AdminParticipantsPage({
     supabase
       .from("participants")
       .select(
-        "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, paper_locked_at, school_papers(count), districts(name)), entry_participants(entry_id)"
+        "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, submission_locked_at, school_papers(count), districts(name)), entry_participants(entry_id)"
       )
       .order("participant_number")
       .overrideTypes<RawAdminParticipantWithAggregate[]>(),
@@ -153,7 +153,7 @@ export default async function AdminParticipantsPage({
                           >
                             {PAPER_STATUS_LABEL[row.paperStatus]}
                           </Badge>
-                          {row.paperLocked && (
+                          {row.submissionLocked && (
                             <Badge variant="outline" className="text-[10px]">
                               Locked
                             </Badge>
@@ -161,7 +161,7 @@ export default async function AdminParticipantsPage({
                           <ResetPaperButton
                             schoolId={row.schoolId}
                             schoolName={row.schoolName}
-                            locked={row.paperLocked}
+                            locked={row.submissionLocked}
                           />
                         </div>
                       )}

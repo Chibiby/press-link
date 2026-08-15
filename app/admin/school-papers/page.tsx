@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireAdmin } from "../guard";
 import { adminSignOutAction } from "../actions";
 import { SchoolPaperFilterBar } from "./SchoolPaperFilterBar";
-import { UnlockPaperButton } from "./UnlockPaperButton";
+import { UnlockSubmissionButton } from "./UnlockSubmissionButton";
 import { DashboardHeader } from "@/components/dashboard-header";
 import {
   toAdminSchoolPaperRows,
@@ -54,7 +54,7 @@ export default async function AdminSchoolPapersPage({
     supabase
       .from("schools")
       .select(
-        "id, name, district_id, paper_participation, paper_answered_at, paper_locked_at, districts(name), school_papers(language)"
+        "id, name, district_id, paper_participation, paper_answered_at, submission_locked_at, districts(name), school_papers(language)"
       )
       .order("name")
       .overrideTypes<RawAdminSchoolPaper[]>(),
@@ -67,7 +67,7 @@ export default async function AdminSchoolPapersPage({
     <div className="flex min-h-screen flex-col">
       <DashboardHeader
         title="School Papers"
-        subtitle="Every school's paper on record"
+        subtitle="Every school's submission on record"
         badge={`${rows.length} of ${allRows.length}`}
         signOutAction={adminSignOutAction}
       />
@@ -135,7 +135,7 @@ export default async function AdminSchoolPapersPage({
                     </TableCell>
                     <TableCell>
                       {row.locked && (
-                        <UnlockPaperButton schoolId={row.id} schoolName={row.schoolName} />
+                        <UnlockSubmissionButton schoolId={row.id} schoolName={row.schoolName} />
                       )}
                     </TableCell>
                   </TableRow>

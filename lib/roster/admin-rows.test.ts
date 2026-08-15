@@ -13,7 +13,7 @@ const raw = (overrides: Partial<RawAdminParticipant> = {}): RawAdminParticipant 
     name: "Bagumbayan ES",
     district_id: "d1",
     paper_participation: "yes",
-    paper_locked_at: null,
+    submission_locked_at: null,
     paper_count: 2,
     districts: { name: "District I" },
   },
@@ -71,14 +71,14 @@ describe("toAdminParticipantRows", () => {
           name: "Bagumbayan ES",
           district_id: "d1",
           paper_participation: "no",
-          paper_locked_at: null,
+          submission_locked_at: null,
           paper_count: 1,
           districts: { name: "District I" },
         },
       }),
     ]);
     expect(row.paperStatus).toBe("saved");
-    expect(row.paperLocked).toBe(false);
+    expect(row.submissionLocked).toBe(false);
   });
 
   it("labels a locked contest submission", () => {
@@ -89,19 +89,19 @@ describe("toAdminParticipantRows", () => {
           name: "Bagumbayan ES",
           district_id: "d1",
           paper_participation: "yes",
-          paper_locked_at: "2026-08-14T02:00:00.000Z",
+          submission_locked_at: "2026-08-14T02:00:00.000Z",
           paper_count: 2,
           districts: { name: "District I" },
         },
       }),
     ]);
     expect(row.paperStatus).toBe("submitted");
-    expect(row.paperLocked).toBe(true);
+    expect(row.submissionLocked).toBe(true);
   });
 
   it("falls back to incomplete when a participant has no school", () => {
     const [row] = toAdminParticipantRows([raw({ schools: null })]);
     expect(row.paperStatus).toBe("incomplete");
-    expect(row.paperLocked).toBe(false);
+    expect(row.submissionLocked).toBe(false);
   });
 });

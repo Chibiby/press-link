@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { checkAdmin } from "../guard";
 
-export async function unlockSchoolPaperAction(
+export async function unlockSubmissionAction(
   schoolId: string
 ): Promise<{ error: string } | { success: true }> {
   // The RPC re-checks admin_profiles itself; checking here too means a caller
@@ -20,12 +20,12 @@ export async function unlockSchoolPaperAction(
   }
   const supabase = check.supabase;
 
-  const { error } = await supabase.rpc("admin_unlock_school_paper", {
+  const { error } = await supabase.rpc("admin_unlock_submission", {
     target_school: schoolId,
   });
   if (error) {
-    console.error("unlockSchoolPaperAction", error);
-    return { error: "Could not unlock that school's paper." };
+    console.error("unlockSubmissionAction", error);
+    return { error: "Could not unlock that school's submission." };
   }
 
   revalidatePath("/admin/school-papers");

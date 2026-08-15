@@ -9,7 +9,7 @@ export interface RawAdminSchoolPaper {
   district_id: string;
   paper_participation: PaperParticipation;
   paper_answered_at: string | null;
-  paper_locked_at: string | null;
+  submission_locked_at: string | null;
   districts: { name: string } | null;
   school_papers: { language: EventLanguage }[];
 }
@@ -51,9 +51,9 @@ export function toAdminSchoolPaperRows(
         status: paperStatus({
           participation: row.paper_participation,
           paperCount: saved.size,
-          lockedAt: row.paper_locked_at,
+          lockedAt: row.submission_locked_at,
         }),
-        locked: row.paper_locked_at != null,
+        locked: row.submission_locked_at != null,
         languages: LANGUAGE_ORDER.filter((lang) => saved.has(lang)),
         answeredAt: row.paper_answered_at,
       };

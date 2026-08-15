@@ -70,11 +70,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     supabase.from("events").select("id, name").order("sort_order"),
     supabase
       .from("schools")
-      .select("paper_participation, paper_locked_at, school_papers(count)")
+      .select("paper_participation, submission_locked_at, school_papers(count)")
       .overrideTypes<
         {
           paper_participation: PaperParticipation;
-          paper_locked_at: string | null;
+          submission_locked_at: string | null;
           school_papers: { count: number }[];
         }[]
       >(),
@@ -116,7 +116,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       const status = paperStatus({
         participation: row.paper_participation,
         paperCount: row.school_papers?.[0]?.count ?? 0,
-        lockedAt: row.paper_locked_at,
+        lockedAt: row.submission_locked_at,
       });
       acc[status] += 1;
       return acc;

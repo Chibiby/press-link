@@ -68,7 +68,7 @@ export function SchoolPaperFilterBar({
           ]}
         />
         <FilterSelect
-          label="Lock"
+          label="Submission lock"
           value={searchParams.get("lock") ?? ANY}
           onChange={(v) => setParam("lock", v)}
           placeholder="Locked + unlocked"

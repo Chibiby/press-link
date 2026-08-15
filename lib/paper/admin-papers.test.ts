@@ -12,7 +12,7 @@ const raw = (overrides: Partial<RawAdminSchoolPaper> = {}): RawAdminSchoolPaper 
   district_id: "d1",
   paper_participation: "yes",
   paper_answered_at: "2026-08-14T02:00:00.000Z",
-  paper_locked_at: null,
+  submission_locked_at: null,
   districts: { name: "District I" },
   school_papers: [{ language: "english" }],
   ...overrides,
@@ -37,7 +37,7 @@ describe("toAdminSchoolPaperRows", () => {
 
   it("marks a locked school", () => {
     const [row] = toAdminSchoolPaperRows([
-      raw({ paper_locked_at: "2026-08-14T03:00:00.000Z" }),
+      raw({ submission_locked_at: "2026-08-14T03:00:00.000Z" }),
     ]);
     expect(row.locked).toBe(true);
   });
@@ -77,7 +77,7 @@ describe("filterSchoolPaperRows", () => {
       id: "locked",
       name: "C",
       paper_participation: "yes",
-      paper_locked_at: "2026-08-14T03:00:00.000Z",
+      submission_locked_at: "2026-08-14T03:00:00.000Z",
       district_id: "d2",
       school_papers: [{ language: "english" }, { language: "filipino" }],
     }),

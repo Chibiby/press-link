@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, LockOpen } from "lucide-react";
 
-import { unlockSchoolPaperAction } from "./actions";
+import { unlockSubmissionAction } from "./actions";
 import { Button } from "@/components/ui/button";
 
-export function UnlockPaperButton({
+export function UnlockSubmissionButton({
   schoolId,
   schoolName,
 }: {
@@ -20,12 +20,12 @@ export function UnlockPaperButton({
 
   function handleUnlock() {
     startTransition(async () => {
-      const result = await unlockSchoolPaperAction(schoolId);
+      const result = await unlockSubmissionAction(schoolId);
       if ("error" in result) {
         toast.error(result.error);
         return;
       }
-      toast.success(`${schoolName} can edit its school paper again.`);
+      toast.success(`${schoolName} can edit its submission again.`);
       router.refresh();
     });
   }
