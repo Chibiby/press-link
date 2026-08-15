@@ -5,6 +5,7 @@ import { Lock, Newspaper, Plus } from "lucide-react";
 
 import { EntriesTable } from "./EntriesTable";
 import { EntryWizard } from "./EntryWizard";
+import { LockSubmissionDialog } from "./LockSubmissionDialog";
 import { PaperGateDialog } from "./PaperGateDialog";
 import { RosterPanel } from "./RosterPanel";
 import { SchoolPaperDialog } from "./SchoolPaperDialog";
@@ -69,7 +70,8 @@ export function EntryDashboard({
     setWizardOpen(true);
   }
 
-  const canCreateEntry = participants.length > 0 && coaches.length > 0;
+  const canCreateEntry =
+    !paperFlow.submissionLocked && participants.length > 0 && coaches.length > 0;
 
   return (
     <div className="flex flex-col gap-8">
@@ -79,6 +81,17 @@ export function EntryDashboard({
         required={paperFlow.askQuestion}
         current={participation}
       />
+
+      {paperFlow.submissionLocked && (
+        <Alert>
+          <Lock />
+          <AlertTitle>Your submission is locked</AlertTitle>
+          <AlertDescription>
+            Everything below is read-only. Contact the division office if you need a
+            change.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -95,7 +108,7 @@ export function EntryDashboard({
             >
               {PAPER_STATUS_LABEL[paperStatus]}
             </Badge>
-            {paperFlow.paperFormLocked && (
+            {paperFlow.submissionLocked && (
               <Badge variant="outline" className="gap-1">
                 <Lock className="size-3" />
                 Locked
@@ -106,6 +119,7 @@ export function EntryDashboard({
                 Change contest answer
               </Button>
             )}
+            {paperFlow.canLock && <LockSubmissionDialog />}
             <Button variant="outline" onClick={() => setPaperOpenOverride(true)}>
               <Newspaper className="size-4" />
               School Paper
@@ -129,7 +143,7 @@ export function EntryDashboard({
           participants={participants}
           coaches={coaches}
           usage={usage}
-          locked={!paperFlow.rosterEnabled}
+          locked={paperFlow.submissionLocked || !paperFlow.rosterEnabled}
         />
       </section>
 
@@ -153,6 +167,7 @@ export function EntryDashboard({
           entries={entries}
           onCreate={openCreate}
           onEdit={openEdit}
+          locked={paperFlow.submissionLocked}
         />
       </section>
 
@@ -172,9 +187,8 @@ export function EntryDashboard({
         open={paperOpen}
         onOpenChange={setPaperOpenOverride}
         papers={papers}
-        locked={paperFlow.paperFormLocked}
+        locked={paperFlow.submissionLocked}
         required={paperFlow.paperFormOpen}
-        canLock={paperFlow.canLock}
       />
     </div>
   );

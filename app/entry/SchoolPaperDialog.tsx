@@ -3,10 +3,9 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Loader2, Lock, Plus, Trash2 } from "lucide-react";
+import { Check, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { saveSchoolPaperAction } from "./actions";
-import { lockSchoolPaperAction } from "./roster-actions";
 import type { SchoolPaperRow } from "./types";
 import { schoolPaperSchema } from "@/lib/validation/school-paper";
 import type { EventLanguage } from "@/lib/events-catalog";
@@ -85,12 +84,11 @@ export function SchoolPaperDialog({
   papers,
   locked,
   required,
-  canLock,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   papers: SchoolPaperRow[];
-  /** The school-paper lock — true once the school (or the division office) has locked these details. */
+  /** True once the school's whole submission is locked — paper, roster and entries. */
   locked: boolean;
   /**
    * Stage 1 is unfinished: not one language is on file. Saving one is the only
@@ -98,8 +96,6 @@ export function SchoolPaperDialog({
    * dismisses it. A school that opened the form itself keeps its close button.
    */
   required?: boolean;
-  /** The contest question is answered, so the details may be frozen. */
-  canLock?: boolean;
 }) {
   const english = papers.find((p) => p.language === "english") ?? null;
   const filipino = papers.find((p) => p.language === "filipino") ?? null;
@@ -139,78 +135,8 @@ export function SchoolPaperDialog({
             <PaperForm language="filipino" existing={filipino} locked={locked} />
           </TabsContent>
         </Tabs>
-
-        {canLock && !locked && <LockPaperSection />}
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * The way out of "editable forever". Locking is deliberately a second click
- * behind a confirmation, because only the division office can undo it.
- */
-function LockPaperSection() {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  const [confirming, setConfirming] = useState(false);
-
-  function handleLock() {
-    startTransition(async () => {
-      const result = await lockSchoolPaperAction();
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success("Your school paper details are locked.");
-      setConfirming(false);
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-dashed p-4">
-      <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium">Done editing?</p>
-        <p className="text-sm text-muted-foreground">
-          Locking freezes your school paper details and your contest answer. Only the
-          division office can reopen them.
-        </p>
-      </div>
-      {confirming ? (
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button
-            type="button"
-            variant="destructive"
-            className="flex-1"
-            disabled={isPending}
-            onClick={handleLock}
-          >
-            {isPending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
-            Yes, lock them
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            disabled={isPending}
-            onClick={() => setConfirming(false)}
-          >
-            Keep editing
-          </Button>
-        </div>
-      ) : (
-        <Button
-          type="button"
-          variant="outline"
-          className="self-start"
-          onClick={() => setConfirming(true)}
-        >
-          <Lock className="size-4" />
-          Lock in details
-        </Button>
-      )}
-    </div>
   );
 }
 

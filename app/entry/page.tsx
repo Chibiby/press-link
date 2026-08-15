@@ -77,13 +77,13 @@ export default async function EntryPage() {
 
   const { data: school, error: schoolError } = await supabase
     .from("schools")
-    .select("id, name, paper_participation, paper_locked_at, districts(name)")
+    .select("id, name, paper_participation, submission_locked_at, districts(name)")
     .eq("auth_user_id", user.id)
     .single<{
       id: string;
       name: string;
       paper_participation: PaperParticipation;
-      paper_locked_at: string | null;
+      submission_locked_at: string | null;
       districts: { name: string } | null;
     }>();
 
@@ -185,13 +185,14 @@ export default async function EntryPage() {
   const paperFlow = paperFlowState({
     participation: school.paper_participation,
     savedLanguages: (papers ?? []).map((p) => p.language),
-    lockedAt: school.paper_locked_at,
+    lockedAt: school.submission_locked_at,
+    entryCount: entries.length,
   });
 
   const status = paperStatus({
     participation: school.paper_participation,
     paperCount: (papers ?? []).length,
-    lockedAt: school.paper_locked_at,
+    lockedAt: school.submission_locked_at,
   });
 
   return (

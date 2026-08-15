@@ -44,10 +44,12 @@ export function EntriesTable({
   entries,
   onCreate,
   onEdit,
+  locked,
 }: {
   entries: EntryRow[];
   onCreate: () => void;
   onEdit: (entry: EntryRow) => void;
+  locked: boolean;
 }) {
   const router = useRouter();
   const [pendingDelete, setPendingDelete] = useState<EntryRow | null>(null);
@@ -80,7 +82,7 @@ export function EntriesTable({
             Add the contests your school is joining.
           </p>
         </div>
-        <Button onClick={onCreate}>
+        <Button onClick={onCreate} disabled={locked}>
           Create your first entry
         </Button>
       </div>
@@ -127,12 +129,13 @@ export function EntriesTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit(entry)}>
+                      <DropdownMenuItem disabled={locked} onClick={() => onEdit(entry)}>
                         <Pencil className="size-4" />
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
+                        disabled={locked}
                         onClick={() => setPendingDelete(entry)}
                       >
                         <Trash2 className="size-4" />
