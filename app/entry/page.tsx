@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { surnameFirst } from "@/lib/roster/names";
 import { signOutAction } from "./actions";
 import { EntryDashboard } from "./EntryDashboard";
 import type {
@@ -51,7 +52,6 @@ interface RawEntry {
 
 /** "Dela Cruz, Ana M." — surname first, the way the division office lists people. */
 function toRosterParticipant(row: RawParticipant): RosterParticipant {
-  const given = [row.first_name, row.middle_name].filter(Boolean).join(" ");
   return {
     id: row.id,
     participant_number: row.participant_number,
@@ -60,7 +60,7 @@ function toRosterParticipant(row: RawParticipant): RosterParticipant {
     middle_name: row.middle_name,
     last_name: row.last_name,
     gender: row.gender,
-    full_name: [row.last_name, given].filter(Boolean).join(", "),
+    full_name: surnameFirst(row),
   };
 }
 
