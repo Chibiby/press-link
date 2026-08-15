@@ -15,7 +15,7 @@ export async function unlockSubmissionAction(
       error:
         check.reason === "unauthenticated"
           ? "Not authenticated."
-          : "You are not authorized to unlock a school's paper.",
+          : "You are not authorized to unlock a school's submission.",
     };
   }
   const supabase = check.supabase;

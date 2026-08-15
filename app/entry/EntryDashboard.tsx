@@ -152,9 +152,11 @@ export function EntryDashboard({
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-semibold tracking-tight">Entries</h2>
             <p className="text-sm text-muted-foreground">
-              {canCreateEntry
-                ? "Every contest your school is competing in."
-                : "Add at least one participant and one coach before creating an entry."}
+              {paperFlow.submissionLocked
+                ? "Your submission is locked. Contact the division office if you need a change."
+                : canCreateEntry
+                  ? "Every contest your school is competing in."
+                  : "Add at least one participant and one coach before creating an entry."}
             </p>
           </div>
           <Button onClick={openCreate} disabled={!canCreateEntry}>
