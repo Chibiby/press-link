@@ -11,19 +11,23 @@
 
 begin;
 
--- Link tables first. Both cascade from `entries`, but deleting them explicitly
--- keeps this readable and safe to re-run.
-delete from entry_participants;
-delete from entry_coaches;
-delete from entries;
-
--- The lock guard would refuse these deletes for any school that locked in, so
--- the flags are cleared before the rows go. This also puts every school back at
--- stage 1, which is what a reset means.
+-- Unlock first. A locked school's rows are refused by the guard triggers on
+-- every table below, so nothing may be deleted until the flags are down. This
+-- also puts every school back at stage 1, which is what a reset means.
+--
+-- Run as the service role in the SQL editor, `auth.uid()` is null and the
+-- guards do not fire at all — but the ordering must not depend on who happens
+-- to be running the script.
 update schools
   set paper_participation = 'undecided',
       paper_answered_at = null,
       submission_locked_at = null;
+
+-- Link tables next. Both cascade from `entries`, but deleting them explicitly
+-- keeps this readable and safe to re-run.
+delete from entry_participants;
+delete from entry_coaches;
+delete from entries;
 
 -- Paper staff cascades from school_papers; same reasoning as above.
 delete from paper_staff;
