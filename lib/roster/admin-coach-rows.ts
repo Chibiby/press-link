@@ -1,9 +1,12 @@
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
+import { surnameFirst } from "./names";
 
 /** A `coaches` row joined to its school and entries, as `/admin/coaches` fetches it. */
 export interface RawAdminCoach {
   id: string;
-  full_name: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
   gender: "M" | "F";
   schools: {
     id: string;
@@ -77,10 +80,12 @@ export function toAdminCoachRows(raw: RawAdminCoach[]): AdminCoachRow[] {
         ...new Set(entries.map((e) => e.events?.language).filter((v): v is EventLanguage => !!v)),
       ];
 
+      const fullName = surnameFirst(row);
+
       return {
         id: row.id,
-        fullName: row.full_name,
-        displayName: isMultiEntry ? `*${row.full_name}` : row.full_name,
+        fullName,
+        displayName: isMultiEntry ? `*${fullName}` : fullName,
         gender: row.gender,
         schoolId: row.schools?.id ?? "",
         schoolName: row.schools?.name ?? "",

@@ -50,9 +50,9 @@ export default async function AdminCoachesPage({
       supabase
         .from("coaches")
         .select(
-          "id, full_name, gender, schools(id, name, district_id, districts(name)), entry_coaches(entries(id, event_id, events(category, level, language)))"
+          "id, first_name, middle_name, last_name, gender, schools(id, name, district_id, districts(name)), entry_coaches(entries(id, event_id, events(category, level, language)))"
         )
-        .order("full_name")
+        .order("last_name")
         .overrideTypes<RawAdminCoach[]>(),
     ]);
 

@@ -17,7 +17,9 @@ const entry = (overrides: Partial<RawEntry> = {}): RawEntry => ({
 
 const raw = (overrides: Partial<RawAdminCoach> = {}): RawAdminCoach => ({
   id: "c1",
-  full_name: "Reyes, Mario",
+  first_name: "Mario",
+  middle_name: null,
+  last_name: "Reyes",
   gender: "M",
   schools: {
     id: "s1",
@@ -87,19 +89,26 @@ describe("toAdminCoachRows", () => {
 
   it("sorts by name", () => {
     const rows = toAdminCoachRows([
-      raw({ id: "b", full_name: "Zamora, Ana" }),
-      raw({ id: "a", full_name: "Aquino, Ben" }),
+      raw({ id: "b", last_name: "Zamora" }),
+      raw({ id: "a", last_name: "Aquino" }),
     ]);
     expect(rows.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("derives the surname-first name from the parts", () => {
+    const [row] = toAdminCoachRows([
+      raw({ first_name: "Ana", middle_name: "Mercado", last_name: "Dela Cruz" }),
+    ]);
+    expect(row.fullName).toBe("Dela Cruz, Ana Mercado");
   });
 });
 
 describe("filterCoachRows", () => {
   const rows = toAdminCoachRows([
-    raw({ id: "solo", full_name: "A", gender: "M" }),
+    raw({ id: "solo", last_name: "A", gender: "M" }),
     raw({
       id: "multi",
-      full_name: "B",
+      last_name: "B",
       gender: "F",
       entry_coaches: [
         { entries: entry() },
@@ -112,10 +121,10 @@ describe("filterCoachRows", () => {
         },
       ],
     }),
-    raw({ id: "idle", full_name: "C", gender: "F", entry_coaches: [] }),
+    raw({ id: "idle", last_name: "C", gender: "F", entry_coaches: [] }),
     raw({
       id: "other",
-      full_name: "D",
+      last_name: "D",
       schools: { id: "s2", name: "Zamora ES", district_id: "d2", districts: { name: "District II" } },
     }),
   ]);
