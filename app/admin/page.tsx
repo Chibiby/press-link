@@ -9,6 +9,7 @@ import { LanguageBadge, LevelBadge } from "@/components/entry-badges";
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import type { PaperParticipation } from "@/lib/paper/gate";
 import { PAPER_STATUS_LABEL, paperStatus } from "@/lib/paper/status";
+import { surnameFirst } from "@/lib/roster/names";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,9 @@ interface EntryRow {
   entry_participants: {
     participants: { participant_number: number; first_name: string; last_name: string } | null;
   }[];
-  entry_coaches: { coaches: { full_name: string } | null }[];
+  entry_coaches: {
+    coaches: { first_name: string; middle_name: string | null; last_name: string } | null;
+  }[];
 }
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -83,7 +86,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   let query = supabase
     .from("entries")
     .select(
-      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, last_name)), entry_coaches(coaches(full_name))"
+      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, last_name)), entry_coaches(coaches(first_name, middle_name, last_name))"
     )
     .order("submitted_at", { ascending: false });
 
@@ -247,7 +250,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                       {entry.entry_coaches
                         .map((link) => link.coaches)
                         .filter((c) => c !== null)
-                        .map((c) => c.full_name)
+                        .map((c) => surnameFirst(c))
                         .join(", ")}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">

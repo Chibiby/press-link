@@ -26,7 +26,7 @@ async function main() {
       run: async () => {
         const { error } = await supabase
           .from("coaches")
-          .select("id, school_id, full_name, gender")
+          .select("id, school_id, first_name, middle_name, last_name, gender")
           .limit(1);
         return error ? error.message : null;
       },

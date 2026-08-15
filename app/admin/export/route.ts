@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/server";
 import { buildEntriesWorkbook, type ExportEntry } from "@/lib/export/entries-workbook";
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
+import { surnameFirst } from "@/lib/roster/names";
 
 const DATE_FORMAT = new Intl.DateTimeFormat("en-PH", {
   year: "numeric",
@@ -32,7 +33,14 @@ interface EntryRow {
       gender: "M" | "F";
     } | null;
   }[];
-  entry_coaches: { coaches: { full_name: string; gender: "M" | "F" } | null }[];
+  entry_coaches: {
+    coaches: {
+      first_name: string;
+      middle_name: string | null;
+      last_name: string;
+      gender: "M" | "F";
+    } | null;
+  }[];
 }
 
 export async function GET(request: NextRequest) {
@@ -60,7 +68,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("entries")
     .select(
-      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(full_name, gender))"
+      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(first_name, middle_name, last_name, gender))"
     )
     .order("submitted_at", { ascending: false });
 
@@ -109,7 +117,7 @@ export async function GET(request: NextRequest) {
     coaches: entry.entry_coaches
       .map((link) => link.coaches)
       .filter((c) => c !== null)
-      .map((c) => ({ fullName: c.full_name, gender: c.gender })),
+      .map((c) => ({ fullName: surnameFirst(c), gender: c.gender })),
   }));
 
   const book = buildEntriesWorkbook(exportEntries);
