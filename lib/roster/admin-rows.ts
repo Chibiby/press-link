@@ -1,4 +1,5 @@
 import { formatParticipantNumber } from "./limits";
+import { surnameFirst } from "./names";
 import type { PaperParticipation } from "@/lib/paper/gate";
 import { paperStatus, type PaperStatus } from "@/lib/paper/status";
 
@@ -46,12 +47,11 @@ export function toAdminParticipantRows(raw: RawAdminParticipant[]): AdminPartici
       const eventCount = row.entry_participants.length;
       const isMultiEvent = eventCount > 1;
       const numberLabel = formatParticipantNumber(row.participant_number);
-      const given = [row.first_name, row.middle_name].filter(Boolean).join(" ");
       return {
         id: row.id,
         numberLabel,
         displayNumber: isMultiEvent ? `*${numberLabel}` : numberLabel,
-        fullName: [row.last_name, given].filter(Boolean).join(", "),
+        fullName: surnameFirst(row),
         gender: row.gender,
         schoolId: row.schools?.id ?? "",
         schoolName: row.schools?.name ?? "",

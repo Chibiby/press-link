@@ -61,6 +61,15 @@ describe("rosterCoachSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects a blank first name", () => {
+    const result = rosterCoachSchema.safeParse({
+      firstName: "   ",
+      lastName: "Reyes",
+      gender: "M",
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("paperParticipationSchema", () => {

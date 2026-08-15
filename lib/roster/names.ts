@@ -17,3 +17,19 @@ export function surnameFirst(parts: NameParts): string {
   const given = [parts.first_name, parts.middle_name].filter(Boolean).join(" ");
   return [parts.last_name, given].filter(Boolean).join(", ");
 }
+
+/** The name fields camelCase call sites (exports, client-shaped data) carry instead of `NameParts`. */
+export interface CamelNameParts {
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+}
+
+/** Same ordering as {@link surnameFirst}, for call sites that already carry camelCase fields. */
+export function surnameFirstCamel(parts: CamelNameParts): string {
+  return surnameFirst({
+    first_name: parts.firstName,
+    middle_name: parts.middleName,
+    last_name: parts.lastName,
+  });
+}

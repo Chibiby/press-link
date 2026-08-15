@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { formatParticipantNumber } from "@/lib/roster/limits";
+import { surnameFirstCamel } from "@/lib/roster/names";
 
 export interface ExportEntry {
   schoolName: string;
@@ -37,11 +38,7 @@ export interface ExportRow {
 
 const titleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
-function fullName(p: ExportEntry["participants"][number]): string {
-  return [p.lastName, [p.firstName, p.middleName].filter(Boolean).join(" ")]
-    .filter(Boolean)
-    .join(", ");
-}
+const fullName = surnameFirstCamel;
 
 /**
  * One row per participant — a 3-member group entry becomes 3 rows carrying
