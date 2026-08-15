@@ -119,7 +119,10 @@ export function EntryDashboard({
                 Change contest answer
               </Button>
             )}
-            {paperFlow.canLock && <LockSubmissionDialog />}
+            <LockSubmissionDialog
+              canLock={paperFlow.canLock}
+              locked={paperFlow.submissionLocked}
+            />
             <Button variant="outline" onClick={() => setPaperOpenOverride(true)}>
               <Newspaper className="size-4" />
               School Paper

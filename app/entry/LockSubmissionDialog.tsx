@@ -22,8 +22,21 @@ import { Button } from "@/components/ui/button";
  * Locking is the one thing on this dashboard a school cannot undo for itself,
  * so the confirmation names every part of the submission it freezes rather than
  * asking a general "are you sure?".
+ *
+ * The button is always on the page, disabled until the school may actually use
+ * it. A control that appears only once its preconditions are met leaves a school
+ * hunting for a feature it was told exists; a disabled one that explains itself
+ * tells it what is still missing.
  */
-export function LockSubmissionDialog() {
+export function LockSubmissionDialog({
+  canLock,
+  locked,
+}: {
+  /** The school has answered the contest question and has at least one entry. */
+  canLock: boolean;
+  /** Already locked — the button stays, but only to report that state. */
+  locked: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -43,9 +56,20 @@ export function LockSubmissionDialog() {
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      <Button
+        variant="outline"
+        disabled={!canLock}
+        title={
+          locked
+            ? "Only the division office can reopen your submission."
+            : canLock
+              ? undefined
+              : "Create at least one entry before locking your submission."
+        }
+        onClick={() => setOpen(true)}
+      >
         <Lock className="size-4" />
-        Lock Submission
+        {locked ? "Submission Locked" : "Lock Submission"}
       </Button>
 
       <AlertDialog open={open} onOpenChange={setOpen}>
