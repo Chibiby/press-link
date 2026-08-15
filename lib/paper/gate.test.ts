@@ -10,6 +10,7 @@ describe("paperFlowState", () => {
       participation: "undecided",
       savedLanguages: [],
       lockedAt: null,
+      entryCount: 1,
     });
     expect(state.phase).toBe("fill");
     expect(state.paperFormOpen).toBe(true);
@@ -23,6 +24,7 @@ describe("paperFlowState", () => {
       participation: "undecided",
       savedLanguages: ["filipino"],
       lockedAt: null,
+      entryCount: 1,
     });
     expect(state.phase).toBe("question");
     expect(state.paperFormOpen).toBe(false);
@@ -36,11 +38,12 @@ describe("paperFlowState", () => {
       participation: "yes",
       savedLanguages: [...both],
       lockedAt: null,
+      entryCount: 1,
     });
     expect(state.phase).toBe("done");
     expect(state.rosterEnabled).toBe(true);
     expect(state.askQuestion).toBe(false);
-    expect(state.paperFormLocked).toBe(false);
+    expect(state.submissionLocked).toBe(false);
   });
 
   it("opens the roster on no as well, and keeps the papers editable", () => {
@@ -48,11 +51,12 @@ describe("paperFlowState", () => {
       participation: "no",
       savedLanguages: ["english"],
       lockedAt: null,
+      entryCount: 1,
     });
     expect(state.phase).toBe("done");
     expect(state.rosterEnabled).toBe(true);
     expect(state.askQuestion).toBe(false);
-    expect(state.paperFormLocked).toBe(false);
+    expect(state.submissionLocked).toBe(false);
     expect(state.canAnswer).toBe(true);
   });
 
@@ -61,8 +65,9 @@ describe("paperFlowState", () => {
       participation: "no",
       savedLanguages: [...both],
       lockedAt: "2026-08-14T02:00:00.000Z",
+      entryCount: 1,
     });
-    expect(state.paperFormLocked).toBe(true);
+    expect(state.submissionLocked).toBe(true);
     expect(state.canAnswer).toBe(false);
     expect(state.canLock).toBe(false);
     expect(state.rosterEnabled).toBe(true);
@@ -70,11 +75,20 @@ describe("paperFlowState", () => {
 
   it("offers the lock only once the question has been answered", () => {
     expect(
-      paperFlowState({ participation: "undecided", savedLanguages: ["english"], lockedAt: null })
-        .canLock
+      paperFlowState({
+        participation: "undecided",
+        savedLanguages: ["english"],
+        lockedAt: null,
+        entryCount: 1,
+      }).canLock
     ).toBe(false);
     expect(
-      paperFlowState({ participation: "yes", savedLanguages: ["english"], lockedAt: null }).canLock
+      paperFlowState({
+        participation: "yes",
+        savedLanguages: ["english"],
+        lockedAt: null,
+        entryCount: 1,
+      }).canLock
     ).toBe(true);
   });
 
@@ -83,6 +97,7 @@ describe("paperFlowState", () => {
       participation: "yes",
       savedLanguages: [],
       lockedAt: null,
+      entryCount: 1,
     });
     expect(state.phase).toBe("fill");
     expect(state.paperFormOpen).toBe(true);
@@ -94,9 +109,10 @@ describe("paperFlowState", () => {
       participation: "yes",
       savedLanguages: [],
       lockedAt: "2026-08-14T02:00:00.000Z",
+      entryCount: 1,
     });
     expect(state.paperFormOpen).toBe(false);
-    expect(state.paperFormLocked).toBe(true);
+    expect(state.submissionLocked).toBe(true);
     expect(state.rosterEnabled).toBe(true);
   });
 
@@ -105,7 +121,29 @@ describe("paperFlowState", () => {
       participation: "no",
       savedLanguages: ["filipino", "english", "filipino"],
       lockedAt: null,
+      entryCount: 1,
     });
     expect(state.savedLanguages).toEqual(["english", "filipino"]);
+  });
+
+  it("refuses the lock until the school has an entry", () => {
+    const state = paperFlowState({
+      participation: "yes",
+      savedLanguages: ["english"],
+      lockedAt: null,
+      entryCount: 0,
+    });
+    expect(state.canLock).toBe(false);
+    expect(state.rosterEnabled).toBe(true);
+  });
+
+  it("offers the lock once an entry exists", () => {
+    const state = paperFlowState({
+      participation: "yes",
+      savedLanguages: ["english"],
+      lockedAt: null,
+      entryCount: 1,
+    });
+    expect(state.canLock).toBe(true);
   });
 });

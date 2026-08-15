@@ -17,13 +17,13 @@ export interface PaperFlowState {
   phase: PaperPhase;
   /** Force the School Paper form open and refuse to let it be dismissed. */
   paperFormOpen: boolean;
-  /** Read-only: the school locked its details in. */
-  paperFormLocked: boolean;
+  /** Read-only: the school locked its whole submission — paper, roster and entries. */
+  submissionLocked: boolean;
   /** Ask the contest question with no way out — it has never been answered. */
   askQuestion: boolean;
   /** The answer may still be given or changed. */
   canAnswer: boolean;
-  /** Answered, so the details can be frozen. */
+  /** Answered, with at least one entry, so the submission can be frozen. */
   canLock: boolean;
   /** Participants and coaches, open once both stages are behind the school. */
   rosterEnabled: boolean;
@@ -41,14 +41,16 @@ export interface PaperFlowState {
  *      submission, No retains the information only, and neither signs the
  *      school out.
  *
- * Everything stays editable afterwards until the school locks its details in,
- * which is the only thing that freezes them — and only the division office can
- * reopen a locked school, with `admin_reset_paper_participation`.
+ * Everything stays editable afterwards until the school locks its whole
+ * submission, which is the only thing that freezes it — and only the division
+ * office can reopen a locked school, with `admin_unlock_submission`.
  */
 export function paperFlowState(input: {
   participation: PaperParticipation;
   savedLanguages: EventLanguage[];
   lockedAt: string | null;
+  /** The school's current entry count. */
+  entryCount: number;
 }): PaperFlowState {
   const { participation, lockedAt } = input;
   const saved = new Set(input.savedLanguages);
@@ -61,7 +63,7 @@ export function paperFlowState(input: {
     return {
       phase: "done",
       paperFormOpen: false,
-      paperFormLocked: true,
+      submissionLocked: true,
       askQuestion: false,
       canAnswer: false,
       canLock: false,
@@ -74,7 +76,7 @@ export function paperFlowState(input: {
     return {
       phase: "fill",
       paperFormOpen: true,
-      paperFormLocked: false,
+      submissionLocked: false,
       askQuestion: false,
       canAnswer: false,
       canLock: false,
@@ -87,7 +89,7 @@ export function paperFlowState(input: {
     return {
       phase: "question",
       paperFormOpen: false,
-      paperFormLocked: false,
+      submissionLocked: false,
       askQuestion: true,
       canAnswer: true,
       canLock: false,
@@ -99,10 +101,10 @@ export function paperFlowState(input: {
   return {
     phase: "done",
     paperFormOpen: false,
-    paperFormLocked: false,
+    submissionLocked: false,
     askQuestion: false,
     canAnswer: true,
-    canLock: true,
+    canLock: input.entryCount > 0,
     rosterEnabled: true,
     savedLanguages,
   };
