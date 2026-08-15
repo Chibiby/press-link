@@ -3,15 +3,34 @@
 --
 -- Locking freezes the paper, the contest answer, participants, coaches and
 -- entries together — everything the school owns — and only the division office
--- can lift it. The column is renamed to say so, but additively: the running
--- deployment still selects paper_locked_at by name, so the old column stays
--- until 0012 drops it after this code ships.
+-- can lift it. The column is replaced by a better-named one, additively: the
+-- running deployment still selects paper_locked_at by name, so the old column
+-- stays until 0012 drops it after this code ships.
 
-alter table schools add column if not exists submission_locked_at timestamptz;
+-- The backfill runs exactly once, on the first application. This file is
+-- re-run by hand, and a `where submission_locked_at is null` guard alone would
+-- not be enough: a school locked before this migration and later reopened by
+-- the division office would have submission_locked_at null again, and the
+-- next hand re-run would read its still-set paper_locked_at and silently
+-- re-freeze it. The presence of submission_locked_at is the marker for "this
+-- migration has already run", so the column is added inside the same block
+-- that decides whether the backfill is due.
+do $migrate$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'schools'
+      and column_name = 'submission_locked_at'
+  ) then
+    alter table schools add column submission_locked_at timestamptz;
 
-update schools
-  set submission_locked_at = paper_locked_at
-  where paper_locked_at is not null and submission_locked_at is null;
+    update schools
+      set submission_locked_at = paper_locked_at
+      where paper_locked_at is not null;
+  end if;
+end
+$migrate$;
 
 -- A lockdown needs something to lock down. The contest answer alone was enough
 -- when this only froze the paper; an empty submission frozen by a mis-click is
@@ -120,6 +139,9 @@ $fn$;
 -- Three guard functions, because the seven guarded tables reach their school by
 -- three different routes. Each keeps the TG_OP branching from 0008: NEW is
 -- unassigned on DELETE and OLD on INSERT, and coalesce would evaluate both.
+-- Every school paper save rewrites paper_staff as a delete followed by an
+-- insert, and rosters and entries see similar delete/insert churn on edit, so
+-- both branches run constantly, not just on rare deletes.
 
 create or replace function reject_locked_submission()
 returns trigger
