@@ -8,9 +8,9 @@
 -- Additive on purpose: the running deployment still selects full_name by name,
 -- so it stays (nullable) until 0014 drops it after this code ships.
 
-alter table coaches add column if not exists first_name text;
+alter table coaches add column if not exists first_name text default '';
 alter table coaches add column if not exists middle_name text;
-alter table coaches add column if not exists last_name text;
+alter table coaches add column if not exists last_name text default '';
 
 -- The division office reports no coaches registered yet, so this is expected to
 -- touch nothing. It is written anyway, and deliberately does not guess at word
