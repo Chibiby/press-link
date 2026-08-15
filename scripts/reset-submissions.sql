@@ -23,7 +23,7 @@ delete from entries;
 update schools
   set paper_participation = 'undecided',
       paper_answered_at = null,
-      paper_locked_at = null;
+      submission_locked_at = null;
 
 -- Paper staff cascades from school_papers; same reasoning as above.
 delete from paper_staff;

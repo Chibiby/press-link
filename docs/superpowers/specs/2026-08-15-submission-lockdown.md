@@ -102,3 +102,9 @@ Between steps 1 and 2 the old column stops being updated, so a lock applied in
 that window would be invisible to the old code until the deploy lands. The
 window is a deploy long and the consequence is a school briefly still able to
 edit, which is why this is acceptable and an outage is not.
+
+The same window runs in reverse for unlocks: `admin_reset_paper_participation`
+now clears only `submission_locked_at`, so a school the office reopens in that
+window still has `paper_locked_at` set and still looks locked to the old code
+until the deploy lands — the same deploy-length window and the same acceptable
+consequence, just the opposite direction.
