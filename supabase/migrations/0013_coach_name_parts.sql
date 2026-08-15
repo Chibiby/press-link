@@ -18,9 +18,9 @@ alter table coaches add column if not exists last_name text default '';
 -- and a middle name of "Dela", silently. Putting the whole string in last_name
 -- is lossless and visibly wrong, which a school can correct in seconds.
 update coaches
-  set last_name = coalesce(last_name, full_name),
-      first_name = coalesce(first_name, '')
-  where full_name is not null and last_name is null;
+  set last_name = coalesce(nullif(last_name, ''), full_name),
+      first_name = coalesce(nullif(first_name, ''), '')
+  where full_name is not null and coalesce(last_name, '') = '';
 
 -- Any row that arrived without either name is not worth a not-null violation.
 update coaches set first_name = '' where first_name is null;
