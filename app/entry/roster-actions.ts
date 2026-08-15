@@ -77,7 +77,8 @@ async function assertUnlocked(
     .select("submission_locked_at")
     .eq("id", schoolId)
     .single<{ submission_locked_at: string | null }>();
-  return school?.submission_locked_at
+  if (!school) return "School not found.";
+  return school.submission_locked_at !== null
     ? "Your submission is locked. Ask the division office to reopen it."
     : null;
 }
@@ -207,14 +208,17 @@ export async function deleteCoachAction(
  */
 function rpcMessage(error: { message?: string }, fallback: string): string {
   const raised = error.message ?? "";
-  if (raised.includes("school paper is locked")) {
-    return "Your school paper is locked. Ask the division office to reopen it.";
+  if (raised.includes("submission is locked")) {
+    return "Your submission is locked. Ask the division office to reopen it.";
   }
   if (raised.includes("save your school paper information first")) {
     return "Save your school paper information first.";
   }
   if (raised.includes("answer the school paper contest question first")) {
     return "Answer the school paper contest question first.";
+  }
+  if (raised.includes("create at least one entry first")) {
+    return "Create at least one entry before locking your submission.";
   }
   return fallback;
 }
@@ -251,7 +255,7 @@ export async function lockSubmissionAction(): Promise<
   const { error } = await supabase.rpc("lock_submission");
   if (error) {
     console.error("lockSubmissionAction", error);
-    return { error: "Could not lock your submission." };
+    return { error: rpcMessage(error, "Could not lock your submission.") };
   }
 
   revalidatePath("/entry");
