@@ -27,7 +27,7 @@ async function getSchoolId() {
 
   const { data: school } = await supabase
     .from("schools")
-    .select("id, paper_locked_at")
+    .select("id, submission_locked_at")
     .eq("auth_user_id", user.id)
     .single();
   if (!school) throw new Error("School not found");
@@ -35,7 +35,7 @@ async function getSchoolId() {
   return {
     supabase,
     schoolId: school.id as string,
-    paperLockedAt: (school.paper_locked_at as string | null) ?? null,
+    submissionLockedAt: (school.submission_locked_at as string | null) ?? null,
   };
 }
 
@@ -53,14 +53,14 @@ export async function saveSchoolPaperAction(
     const message = parsed.error.issues[0]?.message;
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
-  const { supabase, schoolId, paperLockedAt } = await getSchoolId();
+  const { supabase, schoolId, submissionLockedAt } = await getSchoolId();
   // Neither answer freezes anything now — a school that is not entering the
   // contest still keeps its information current, and one that is may correct a
   // typo. Only the school's own lock closes this form, and only the division
   // office can undo that.
-  if (paperLockedAt !== null) {
+  if (submissionLockedAt !== null) {
     return {
-      error: "Your school paper is locked. Ask the division office to reopen it.",
+      error: "Your submission is locked. Ask the division office to reopen it.",
     };
   }
 
@@ -113,7 +113,12 @@ export async function saveEntryAction(
     const message = parsed.error.issues[0]?.message;
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
-  const { supabase, schoolId } = await getSchoolId();
+  const { supabase, schoolId, submissionLockedAt } = await getSchoolId();
+  if (submissionLockedAt !== null) {
+    return {
+      error: "Your submission is locked. Ask the division office to reopen it.",
+    };
+  }
 
   const { participantIds, coachIds, eventId } = parsed.data;
 
@@ -356,7 +361,12 @@ export async function saveEntryAction(
 }
 
 export async function deleteEntryAction(entryId: string): Promise<{ error: string } | { success: true }> {
-  const { supabase, schoolId } = await getSchoolId();
+  const { supabase, schoolId, submissionLockedAt } = await getSchoolId();
+  if (submissionLockedAt !== null) {
+    return {
+      error: "Your submission is locked. Ask the division office to reopen it.",
+    };
+  }
   const { error } = await supabase.from("entries").delete().eq("id", entryId).eq("school_id", schoolId);
   if (error) {
     console.error("deleteEntryAction", error);

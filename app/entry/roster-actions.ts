@@ -35,28 +35,51 @@ async function assertPaperSettled(
   supabase: Awaited<ReturnType<typeof createClient>>,
   schoolId: string
 ): Promise<string | null> {
-  const [{ data: school }, { data: papers }] = await Promise.all([
+  const [{ data: school }, { data: papers }, { count: entryCount }] = await Promise.all([
     supabase
       .from("schools")
-      .select("paper_participation, paper_locked_at")
+      .select("paper_participation, submission_locked_at")
       .eq("id", schoolId)
-      .single<{ paper_participation: PaperParticipation; paper_locked_at: string | null }>(),
+      .single<{ paper_participation: PaperParticipation; submission_locked_at: string | null }>(),
     supabase
       .from("school_papers")
       .select("language")
       .eq("school_id", schoolId)
       .overrideTypes<{ language: EventLanguage }[]>(),
+    supabase
+      .from("entries")
+      .select("id", { count: "exact", head: true })
+      .eq("school_id", schoolId),
   ]);
   if (!school) return "School not found.";
 
   const state = paperFlowState({
     participation: school.paper_participation,
     savedLanguages: (papers ?? []).map((p) => p.language),
-    lockedAt: school.paper_locked_at,
+    lockedAt: school.submission_locked_at,
+    entryCount: entryCount ?? 0,
   });
   return state.rosterEnabled
     ? null
     : "Finish your School Paper before adding people.";
+}
+
+/**
+ * A locked submission is read-only. The triggers refuse these writes anyway;
+ * this turns the refusal into a sentence the school can act on.
+ */
+async function assertUnlocked(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  schoolId: string
+): Promise<string | null> {
+  const { data: school } = await supabase
+    .from("schools")
+    .select("submission_locked_at")
+    .eq("id", schoolId)
+    .single<{ submission_locked_at: string | null }>();
+  return school?.submission_locked_at
+    ? "Your submission is locked. Ask the division office to reopen it."
+    : null;
 }
 
 export async function addParticipantAction(
@@ -68,6 +91,8 @@ export async function addParticipantAction(
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
   const { supabase, schoolId } = await getSchoolId();
+  const locked = await assertUnlocked(supabase, schoolId);
+  if (locked) return { error: locked };
   const unsettled = await assertPaperSettled(supabase, schoolId);
   if (unsettled) return { error: unsettled };
 
@@ -92,6 +117,8 @@ export async function deleteParticipantAction(
   participantId: string
 ): Promise<{ error: string } | { success: true }> {
   const { supabase, schoolId } = await getSchoolId();
+  const locked = await assertUnlocked(supabase, schoolId);
+  if (locked) return { error: locked };
 
   const { count } = await supabase
     .from("entry_participants")
@@ -124,6 +151,8 @@ export async function addCoachAction(
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
   const { supabase, schoolId } = await getSchoolId();
+  const locked = await assertUnlocked(supabase, schoolId);
+  if (locked) return { error: locked };
   const unsettled = await assertPaperSettled(supabase, schoolId);
   if (unsettled) return { error: unsettled };
 
@@ -145,6 +174,8 @@ export async function deleteCoachAction(
   coachId: string
 ): Promise<{ error: string } | { success: true }> {
   const { supabase, schoolId } = await getSchoolId();
+  const locked = await assertUnlocked(supabase, schoolId);
+  if (locked) return { error: locked };
 
   const { count } = await supabase
     .from("entry_coaches")
@@ -210,16 +241,17 @@ export async function setPaperParticipationAction(
   return { success: true as const };
 }
 
-export async function lockSchoolPaperAction(): Promise<
+export async function lockSubmissionAction(): Promise<
   { error: string } | { success: true }
 > {
   const supabase = await createClient();
-  // Definer RPC: it refuses a school that has not answered the contest
-  // question, and stamps the lock only once, so a double click is harmless.
-  const { error } = await supabase.rpc("lock_school_paper");
+  // Definer RPC: it refuses a school that has not answered the contest question
+  // or has no entries, and stamps the lock only once, so a double click is
+  // harmless.
+  const { error } = await supabase.rpc("lock_submission");
   if (error) {
-    console.error("lockSchoolPaperAction", error);
-    return { error: rpcMessage(error, "Could not lock your school paper.") };
+    console.error("lockSubmissionAction", error);
+    return { error: "Could not lock your submission." };
   }
 
   revalidatePath("/entry");
