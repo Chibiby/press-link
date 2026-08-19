@@ -85,7 +85,11 @@
      palette. The order is the colourblind-safety mechanism, not a preference:
      each slot is chosen so neighbouring slices stay separable under simulated
      protanopia and deuteranopia. Re-ordering or re-stepping these invalidates
-     that guarantee — re-run scripts/validate_palette.js if you touch them. */
+     that guarantee. The validator lives in the dataviz skill bundle, at
+     scripts/validate_palette.js there — it is not in this repo's scripts/.
+     If you cannot run it, the contract to re-verify by hand is adjacent-pair
+     CVD dE >= 8 and normal-vision dE >= 15 (OKLab x100). Measured when these
+     values were set: CVD 9.1 light / 8.4 dark, normal-vision 19.6 / 19.3. */
   --chart-1: #2a78d6; /* blue */
   --chart-2: #eb6834; /* orange */
   --chart-3: #1baf7a; /* aqua */
@@ -139,7 +143,7 @@
   --chart-3: #199e70;
   --chart-4: #c98500;
   --chart-5: #d55181;
-  --chart-6: #008300;
+  --chart-6: #008300; /* green - same value in both columns, per the reference palette */
   --chart-7: #9085e9;
   --chart-8: #e66767;
   --sidebar: oklch(0.222 0.028 264);
