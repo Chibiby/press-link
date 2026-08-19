@@ -18,6 +18,10 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chart-other: var(--chart-other);
+  --color-chart-8: var(--chart-8);
+  --color-chart-7: var(--chart-7);
+  --color-chart-6: var(--chart-6);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -77,11 +81,24 @@
   --border: oklch(0.929 0.013 255.508);
   --input: oklch(0.929 0.013 255.508);
   --ring: oklch(0.6 0.118 184.704);
-  --chart-1: oklch(0.6 0.118 184.704);
-  --chart-2: oklch(0.769 0.188 70.08);
-  --chart-3: oklch(0.511 0.096 186.391);
-  --chart-4: oklch(0.777 0.152 181.912);
-  --chart-5: oklch(0.554 0.046 257.417);
+  /* Categorical chart slots — the validated order from the dataviz reference
+     palette. The order is the colourblind-safety mechanism, not a preference:
+     each slot is chosen so neighbouring slices stay separable under simulated
+     protanopia and deuteranopia. Re-ordering or re-stepping these invalidates
+     that guarantee — re-run scripts/validate_palette.js if you touch them. */
+  --chart-1: #2a78d6; /* blue */
+  --chart-2: #eb6834; /* orange */
+  --chart-3: #1baf7a; /* aqua */
+  --chart-4: #eda100; /* yellow */
+  --chart-5: #e87ba4; /* magenta */
+  --chart-6: #008300; /* green */
+  --chart-7: #4a3aa7; /* violet */
+  --chart-8: #e34948; /* red */
+  /* The de-emphasis fill for the folded "Other" slice. Deliberately not a
+     categorical hue, and deliberately the same in both modes — it is the muted
+     ink from the reference palette's chrome, which is mode-invariant, so `.dark`
+     does not redefine it. */
+  --chart-other: #898781;
   --radius: 0.75rem;
   --sidebar: oklch(0.984 0.003 247.858);
   --sidebar-foreground: oklch(0.208 0.042 265.755);
@@ -114,11 +131,17 @@
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.777 0.152 181.912);
-  --chart-1: oklch(0.777 0.152 181.912);
-  --chart-2: oklch(0.828 0.189 84.429);
-  --chart-3: oklch(0.6 0.118 184.704);
-  --chart-4: oklch(0.9 0.08 182);
-  --chart-5: oklch(0.704 0.04 256.788);
+  /* The same eight hues stepped for the dark surface — a selected dark column,
+     not an automatic lightening of the light one. --chart-other is inherited
+     from :root by design. */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
   --sidebar: oklch(0.222 0.028 264);
   --sidebar-foreground: oklch(0.899 0.019 254.008);
   --sidebar-primary: oklch(0.777 0.152 181.912);
