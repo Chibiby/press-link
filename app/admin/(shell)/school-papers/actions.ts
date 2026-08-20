@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { checkAdmin } from "../guard";
+import { checkAdmin } from "@/app/admin/guard";
 
-export async function resetPaperParticipationAction(
+export async function unlockSubmissionAction(
   schoolId: string
 ): Promise<{ error: string } | { success: true }> {
   // The RPC re-checks admin_profiles itself; checking here too means a caller
@@ -15,20 +15,20 @@ export async function resetPaperParticipationAction(
       error:
         check.reason === "unauthenticated"
           ? "Not authenticated."
-          : "You are not authorized to reset a school's answer.",
+          : "You are not authorized to unlock a school's submission.",
     };
   }
   const supabase = check.supabase;
 
-  const { error } = await supabase.rpc("admin_reset_paper_participation", {
+  const { error } = await supabase.rpc("admin_unlock_submission", {
     target_school: schoolId,
   });
   if (error) {
-    console.error("resetPaperParticipationAction", error);
-    return { error: "Could not reset that school's answer." };
+    console.error("unlockSubmissionAction", error);
+    return { error: "Could not unlock that school's submission." };
   }
 
-  revalidatePath("/admin/participants");
+  revalidatePath("/admin/school-papers");
   revalidatePath("/entry");
   return { success: true as const };
 }
