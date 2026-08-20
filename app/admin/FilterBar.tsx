@@ -34,7 +34,7 @@ export function FilterBar({
       params.delete(key);
     }
     const qs = params.toString();
-    router.push(qs ? `/admin?${qs}` : "/admin");
+    router.push(qs ? `/admin/entries?${qs}` : "/admin/entries");
   }
 
   const activeCount = FILTER_KEYS.filter((k) => searchParams.get(k)).length;
@@ -96,7 +96,7 @@ export function FilterBar({
 
         <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-6">
           {activeCount > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => router.push("/admin")}>
+            <Button variant="ghost" size="sm" onClick={() => router.push("/admin/entries")}>
               <X className="size-4" />
               Clear {activeCount} filter{activeCount === 1 ? "" : "s"}
             </Button>
