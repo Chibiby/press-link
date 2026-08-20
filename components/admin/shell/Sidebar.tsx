@@ -59,15 +59,20 @@ const ICONS: Record<NavIcon, LucideIcon> = {
  * nothing. `collapsed` is the rail's icon-only mode — the drawer never sets it,
  * because a drawer that hid its own labels would be pointless.
  *
- * The `id` and `aria-label` are hardcoded rather than props because the rail
- * (`lg:flex`) and the drawer (`lg:hidden`) are mutually exclusive, so exactly
- * one is ever displayed and the id stays unique. Rendering both at once would
- * duplicate it.
+ * `id` is the caller's to supply, not hardcoded: both navs can be mounted at
+ * once (see MobileNav's effect for why `lg:hidden` does not unmount), so a
+ * literal here would put two of the same id in the document. The rail passes
+ * one because the collapse toggle's `aria-controls` must resolve to the rail's
+ * own nav; the drawer passes none. `aria-label` stays hardcoded — a hidden
+ * landmark is not in the accessibility tree, so its name cannot collide, and
+ * the drawer's nav needs a name just as much as the rail's.
  */
 export function AdminNav({
+  id,
   onNavigate,
   collapsed = false,
 }: {
+  id?: string;
   onNavigate?: () => void;
   collapsed?: boolean;
 }) {
@@ -75,7 +80,7 @@ export function AdminNav({
 
   return (
     <nav
-      id="admin-nav"
+      id={id}
       aria-label="Admin sections"
       className={cn("flex-1 overflow-y-auto pb-6", collapsed ? "px-1.5" : "px-2")}
     >
@@ -189,7 +194,7 @@ export function SidebarFooter({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <div className="mt-auto border-t border-sidebar-border px-3 py-3">
       {collapsed ? null : (
-        <div className="flex items-center justify-center gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-black/5">
+        <div className="flex items-center justify-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm ring-1 ring-black/5">
           {LOCKUP.map((logo) => (
             <Image
               key={logo.src}
@@ -284,7 +289,7 @@ export function Sidebar() {
           )}
         </Button>
       </div>
-      <AdminNav collapsed={collapsed} />
+      <AdminNav id="admin-nav" collapsed={collapsed} />
       <SidebarFooter collapsed={collapsed} />
     </aside>
   );
