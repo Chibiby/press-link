@@ -58,6 +58,11 @@ const ICONS: Record<NavIcon, LucideIcon> = {
  * `onNavigate` lets the drawer close itself on a link click; the rail passes
  * nothing. `collapsed` is the rail's icon-only mode — the drawer never sets it,
  * because a drawer that hid its own labels would be pointless.
+ *
+ * The `id` and `aria-label` are hardcoded rather than props because the rail
+ * (`lg:flex`) and the drawer (`lg:hidden`) are mutually exclusive, so exactly
+ * one is ever displayed and the id stays unique. Rendering both at once would
+ * duplicate it.
  */
 export function AdminNav({
   onNavigate,
@@ -69,13 +74,21 @@ export function AdminNav({
   const pathname = usePathname();
 
   return (
-    <nav className={cn("flex-1 overflow-y-auto pb-6", collapsed ? "px-1.5" : "px-2")}>
+    <nav
+      id="admin-nav"
+      aria-label="Admin sections"
+      className={cn("flex-1 overflow-y-auto pb-6", collapsed ? "px-1.5" : "px-2")}
+    >
       {ADMIN_NAV.map((group) => (
         <div key={group.label} className="mb-4">
           {/* Collapsed, the group label has nowhere to go. A rule keeps the
-              grouping visible without it. */}
+              grouping visible without it — and the label stays, sr-only, so a
+              screen reader does not get sixteen items as one flat list. */}
           {collapsed ? (
-            <div className="mx-2 mb-1 border-t border-sidebar-border" />
+            <>
+              <div className="mx-2 mb-1 border-t border-sidebar-border" />
+              <p className="sr-only">{group.label}</p>
+            </>
           ) : (
             <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
               {group.label}
@@ -176,7 +189,7 @@ export function SidebarFooter({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <div className="mt-auto border-t border-sidebar-border px-3 py-3">
       {collapsed ? null : (
-        <div className="flex items-center justify-center gap-3 rounded-lg bg-white px-3 py-2">
+        <div className="flex items-center justify-center gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-black/5">
           {LOCKUP.map((logo) => (
             <Image
               key={logo.src}
@@ -227,15 +240,16 @@ export function Sidebar() {
   }, []);
 
   function toggle() {
-    setCollapsed((wasCollapsed) => {
-      const next = !wasCollapsed;
-      window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      return next;
-    });
+    // The write stays out of the updater: React may call an updater more than
+    // once (StrictMode does), and updaters must be pure.
+    const next = !collapsed;
+    setCollapsed(next);
+    window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
   }
 
   return (
     <aside
+      aria-label="Admin sidebar"
       className={cn(
         "sticky top-0 hidden h-svh shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex",
         collapsed ? "w-16" : "w-64"
@@ -258,6 +272,7 @@ export function Sidebar() {
           variant="ghost"
           onClick={toggle}
           aria-expanded={!collapsed}
+          aria-controls="admin-nav"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="size-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
