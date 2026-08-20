@@ -35,6 +35,7 @@ interface SearchParams {
   district?: string;
   school?: string;
   multi?: string;
+  unassigned?: string;
 }
 
 export default async function AdminParticipantsPage({
@@ -72,6 +73,11 @@ export default async function AdminParticipantsPage({
   if (params.district) rows = rows.filter((r) => r.districtId === params.district);
   if (params.school) rows = rows.filter((r) => r.schoolId === params.school);
   if (params.multi === "1") rows = rows.filter((r) => r.isMultiEvent);
+  // Same parameter and same meaning as /admin/coaches?unassigned=1: registered
+  // but on no entry. An unrecognised value is no filter, matching the sibling
+  // pages — a hand-edited URL should not show an empty table as if the division
+  // had no learners.
+  if (params.unassigned === "1") rows = rows.filter((r) => r.eventCount === 0);
 
   const multiCount = rows.filter((r) => r.isMultiEvent).length;
 
