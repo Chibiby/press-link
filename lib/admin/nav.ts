@@ -29,7 +29,13 @@ export interface NavItem {
   label: string;
   href: string;
   icon: NavIcon;
+  /** No route exists yet. Shown in the nav, never linked. */
   soon?: boolean;
+  /**
+   * The route exists but the feature does not: it renders a Soon page. Linked,
+   * and still labelled, so the nav is honest in both directions.
+   */
+  stub?: boolean;
 }
 
 export interface NavGroup {
@@ -75,16 +81,16 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     label: "Adjudication",
     items: [
-      { label: "Judges Portal", href: "/admin/judges", icon: "judges", soon: true },
-      { label: "Tabulators", href: "/admin/tabulators", icon: "tabulators", soon: true },
+      { label: "Judges Portal", href: "/admin/judges", icon: "judges", stub: true },
+      { label: "Tabulators", href: "/admin/tabulators", icon: "tabulators", stub: true },
     ],
   },
   {
     label: "System",
     items: [
-      { label: "Users & Access", href: "/admin/users", icon: "users", soon: true },
-      { label: "Settings", href: "/admin/settings", icon: "settings", soon: true },
-      { label: "Audit Logs", href: "/admin/audit-logs", icon: "audit", soon: true },
+      { label: "Users & Access", href: "/admin/users", icon: "users", stub: true },
+      { label: "Settings", href: "/admin/settings", icon: "settings", stub: true },
+      { label: "Audit Logs", href: "/admin/audit-logs", icon: "audit", stub: true },
     ],
   },
 ];

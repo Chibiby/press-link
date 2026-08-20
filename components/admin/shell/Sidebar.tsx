@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -77,6 +77,12 @@ export function AdminNav({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
+  // Group labels are paired to their items below via `aria-labelledby`, which
+  // needs a real id. It cannot be derived from the label alone: both navs can
+  // be mounted at once (see MobileNav's effect), and duplicate ids would let
+  // the drawer's heading name the rail's items. `useId` gives each instance of
+  // this component its own prefix, and is stable across server and client.
+  const uid = useId();
 
   return (
     <nav
@@ -84,83 +90,106 @@ export function AdminNav({
       aria-label="Admin sections"
       className={cn("flex-1 overflow-y-auto pb-6", collapsed ? "px-1.5" : "px-2")}
     >
-      {ADMIN_NAV.map((group) => (
-        <div key={group.label} className="mb-4">
-          {/* Collapsed, the group label has nowhere to go. A rule keeps the
-              grouping visible without it — and the label stays, sr-only, so a
-              screen reader does not get sixteen items as one flat list. */}
-          {collapsed ? (
-            <>
-              <div className="mx-2 mb-1 border-t border-sidebar-border" />
-              <p className="sr-only">{group.label}</p>
-            </>
-          ) : (
-            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-              {group.label}
-            </p>
-          )}
-          <ul className="flex flex-col gap-0.5">
-            {group.items.map((item) => {
-              const Icon = ICONS[item.icon];
+      {ADMIN_NAV.map((group) => {
+        // A visible heading is not an accessible name. Without this pairing the
+        // seven labels are decoration and a screen reader reads sixteen flat
+        // links; `role="group"` plus `aria-labelledby` makes each label name
+        // the items beneath it, in both the expanded and collapsed rails.
+        const labelId = `${uid}-${group.label.toLowerCase()}`;
 
-              // A page that does not exist yet is shown, but never linked.
-              if (item.soon) {
+        return (
+          <div key={group.label} role="group" aria-labelledby={labelId} className="mb-4">
+            {/* Collapsed, the group label has nowhere to go. A rule keeps the
+                grouping visible without it — and the label stays, sr-only, so a
+                screen reader does not get sixteen items as one flat list. */}
+            {collapsed ? (
+              <>
+                <div className="mx-2 mb-1 border-t border-sidebar-border" />
+                <p id={labelId} className="sr-only">
+                  {group.label}
+                </p>
+              </>
+            ) : (
+              <p
+                id={labelId}
+                className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50"
+              >
+                {group.label}
+              </p>
+            )}
+            <ul className="flex flex-col gap-0.5">
+              {group.items.map((item) => {
+                const Icon = ICONS[item.icon];
+
+                // Two different facts: `soon` has no page to open, `stub` has a page
+                // that explains itself. Both keep the label. Collapsed, both lose it
+                // to a tooltip, so the pill has nothing to sit beside and drops out
+                // with it — the icon plus "coming soon" in the tooltip carries it.
+                const pill = collapsed ? null : (
+                  <span className="shrink-0 rounded border border-sidebar-border px-1 py-px text-[9px] font-medium uppercase tracking-wide">
+                    Soon
+                  </span>
+                );
+
+                const label = collapsed ? (
+                  <span className="sr-only">{item.label} — coming soon</span>
+                ) : (
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                );
+
+                if (item.soon) {
+                  return (
+                    <li key={item.href}>
+                      <span
+                        aria-disabled="true"
+                        title={collapsed ? `${item.label} — coming soon` : undefined}
+                        className={cn(
+                          "flex cursor-not-allowed items-center gap-2.5 rounded-md py-2 text-sm text-sidebar-foreground/40",
+                          collapsed ? "justify-center px-2" : "px-3"
+                        )}
+                      >
+                        <Icon className="size-4 shrink-0" />
+                        {label}
+                        {pill}
+                      </span>
+                    </li>
+                  );
+                }
+
+                const active = isNavActive(pathname, item.href);
+                // A stub's tooltip says so; a finished page's is just its name.
+                const hint = item.stub ? `${item.label} — coming soon` : item.label;
+
                 return (
                   <li key={item.href}>
-                    <span
-                      aria-disabled="true"
-                      title={collapsed ? `${item.label} — coming soon` : undefined}
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      title={collapsed ? hint : undefined}
                       className={cn(
-                        "flex cursor-not-allowed items-center gap-2.5 rounded-md py-2 text-sm text-sidebar-foreground/40",
-                        collapsed ? "justify-center px-2" : "px-3"
+                        "flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
+                        collapsed ? "justify-center px-2" : "px-3",
+                        active
+                          ? "bg-sidebar-primary/15 font-medium text-sidebar-primary"
+                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       )}
                     >
                       <Icon className="size-4 shrink-0" />
                       {collapsed ? (
-                        <span className="sr-only">{item.label} — coming soon</span>
+                        <span className="sr-only">{hint}</span>
                       ) : (
-                        <>
-                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                          <span className="shrink-0 rounded border border-sidebar-border px-1 py-px text-[9px] font-medium uppercase tracking-wide">
-                            Soon
-                          </span>
-                        </>
+                        <span className="min-w-0 flex-1 truncate">{item.label}</span>
                       )}
-                    </span>
+                      {item.stub ? pill : null}
+                    </Link>
                   </li>
                 );
-              }
-
-              const active = isNavActive(pathname, item.href);
-
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    onClick={onNavigate}
-                    aria-current={active ? "page" : undefined}
-                    title={collapsed ? item.label : undefined}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
-                      collapsed ? "justify-center px-2" : "px-3",
-                      active
-                        ? "bg-sidebar-primary/15 font-medium text-sidebar-primary"
-                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    )}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    {collapsed ? (
-                      <span className="sr-only">{item.label}</span>
-                    ) : (
-                      <span className="truncate">{item.label}</span>
-                    )}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+              })}
+            </ul>
+          </div>
+        );
+      })}
     </nav>
   );
 }
