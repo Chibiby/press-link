@@ -151,6 +151,11 @@ export default async function AdminDashboardPage() {
         <Panel
           title="Recent activity"
           description="The newest changes the division's schools have made."
+          action={
+            <Button asChild size="sm" variant="ghost">
+              <Link href="/admin/activity">View all</Link>
+            </Button>
+          }
         >
           {/* `truncated` is passed, not omitted: six sources capped at 8 rows each merge
               down to 5 shown, so the feed is always holding something back and the

@@ -75,7 +75,7 @@ export const ADMIN_NAV: NavGroup[] = [
     items: [
       { label: "School Summary", href: "/admin/summary", icon: "summary" },
       { label: "Overall Data", href: "/admin/overall-data", icon: "overall" },
-      { label: "Activity Log", href: "/admin/activity", icon: "activity", soon: true },
+      { label: "Activity Log", href: "/admin/activity", icon: "activity" },
     ],
   },
   {
