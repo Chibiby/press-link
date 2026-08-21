@@ -67,7 +67,7 @@ export const ADMIN_NAV: NavGroup[] = [
     items: [
       { label: "Schools", href: "/admin/schools", icon: "schools", soon: true },
       { label: "Districts", href: "/admin/districts", icon: "districts", soon: true },
-      { label: "Events", href: "/admin/events", icon: "events", soon: true },
+      { label: "Events", href: "/admin/events", icon: "events" },
     ],
   },
   {
