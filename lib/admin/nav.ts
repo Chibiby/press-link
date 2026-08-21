@@ -65,7 +65,7 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     label: "Reference",
     items: [
-      { label: "Schools", href: "/admin/schools", icon: "schools", soon: true },
+      { label: "Schools", href: "/admin/schools", icon: "schools" },
       { label: "Districts", href: "/admin/districts", icon: "districts", soon: true },
       { label: "Events", href: "/admin/events", icon: "events" },
     ],

@@ -33,7 +33,7 @@ describe("buildAttention", () => {
     const byKey = Object.fromEntries(buildAttention(FULL).map((i) => [i.key, i.href]));
     expect(byKey).toEqual({
       "learners-no-entry": "/admin/participants?unassigned=1",
-      "schools-no-entry": null,
+      "schools-no-entry": "/admin/schools?status=learners-no-entry",
       "coaches-no-entry": "/admin/coaches?unassigned=1",
       "paper-not-started": "/admin/school-papers?status=incomplete",
     });

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { requireAdmin } from "@/app/admin/guard";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { PerSchoolTable } from "@/components/dashboard/PerSchoolTable";
@@ -120,9 +122,14 @@ export default async function OverallDataPage({
           <PerSchoolTable summary={perSchool} />
           {withoutData > 0 ? (
             <p className="text-xs text-muted-foreground">
-              {withoutData} of the {perSchool.registeredSchools} registered schools have no
-              learners, coaches or entries yet, so they have no row above. They are still
-              counted in the division total&apos;s denominator.
+              <Link
+                href={`/admin/schools?status=no-data${district ? `&district=${district}` : ""}`}
+                className="underline underline-offset-4"
+              >
+                {withoutData} of the {perSchool.registeredSchools} registered schools
+              </Link>{" "}
+              have no learners, coaches or entries yet, so they have no row above. They are
+              still counted in the division total&apos;s denominator.
             </p>
           ) : null}
         </CardContent>

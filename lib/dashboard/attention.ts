@@ -46,9 +46,7 @@ export function buildAttention(input: AttentionInput): AttentionItem[] {
       label: "Schools with learners but no entry",
       detail: "A roster was built and then nothing was submitted.",
       count: input.schoolsWithLearnersButNoEntry,
-      // No destination yet: /admin/schools arrives with the detail pages. The
-      // count is still worth showing, so the row renders unlinked until then.
-      href: null,
+      href: "/admin/schools?status=learners-no-entry",
       tone: "warn",
     },
     {
