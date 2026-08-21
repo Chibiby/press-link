@@ -9,6 +9,7 @@ import { KpiTile } from "@/components/dashboard/KpiTile";
 import { PerSchoolTable } from "@/components/dashboard/PerSchoolTable";
 import { PortalCard } from "@/components/dashboard/PortalCard";
 import { RegistrationPortalCard } from "@/components/dashboard/RegistrationPortalCard";
+import { SummaryPortalCard } from "@/components/dashboard/SummaryPortalCard";
 import { SubmissionTimeline } from "@/components/dashboard/SubmissionTimeline";
 import { Button } from "@/components/ui/button";
 import {
@@ -170,11 +171,7 @@ export default async function AdminDashboardPage() {
 
       <section className="grid gap-4 sm:grid-cols-2">
         <RegistrationPortalCard groups={data.eventGroups} />
-        <PortalCard
-          title="School Paper"
-          description="Which schools are joining the school paper contest, how far each has got, and what they have submitted."
-          actions={[{ label: "Go to portal", href: "/admin/school-papers" }]}
-        />
+        <SummaryPortalCard schools={data.schoolOptions} />
         <PortalCard
           title="Judges"
           description="Judging panels, per-event assignments, and the sheets judges score on."

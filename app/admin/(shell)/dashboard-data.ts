@@ -73,6 +73,11 @@ export interface EventOptionGroup {
   options: EventOption[];
 }
 
+export interface SchoolOption {
+  id: string;
+  label: string;
+}
+
 export interface ShellFacts {
   adminName: string;
   attentionBadge: number;
@@ -84,6 +89,7 @@ export interface DashboardData {
   adminName: string;
   kpis: Kpi[];
   perSchool: PerSchoolSummary;
+  schoolOptions: SchoolOption[];
   perEvent: PerEventSummary;
   attention: AttentionItem[];
   /**
@@ -575,6 +581,13 @@ export const loadDashboardData = cache(async (): Promise<DashboardData> => {
       limit: PER_SCHOOL_LIMIT,
       registeredSchools: schools.registeredSchools,
     }),
+    // Every school with data, untruncated — the portal card's select is a dropdown, not
+    // a panel, so PER_SCHOOL_LIMIT does not apply to it. Already name-ordered:
+    // fetchSchoolFacts orders its query by name.
+    schoolOptions: schools.active.map((school) => ({
+      id: school.schoolId,
+      label: school.schoolName,
+    })),
     perEvent: summarisePerEvent(events.counts, {
       topN: DONUT_TOP_N,
       typesTotal: events.typesTotal,
