@@ -24,6 +24,14 @@ export function EventDonut({ summary }: { summary: PerEventSummary }) {
     );
   }
 
+  // A slice key that is no longer in `summary.slices` would match no segment, so every
+  // segment would dim at once and the ring would read as disabled. Unreachable while
+  // nothing re-renders this donut with a different dataset mid-hover, but it becomes
+  // reachable the moment a filter is added, so the stale key is resolved to "nothing
+  // hovered" rather than left to dim the whole ring.
+  const activeSlice =
+    active !== null && summary.slices.some((slice) => slice.key === active) ? active : null;
+
   const geometry = donutGeometry(
     summary.slices.map((slice) => ({
       key: slice.key,
@@ -75,7 +83,7 @@ export function EventDonut({ summary }: { summary: PerEventSummary }) {
                 strokeDasharray={segment.dashArray}
                 strokeDashoffset={segment.dashOffset}
                 strokeLinecap="butt"
-                opacity={active === null || active === segment.key ? 1 : 0.35}
+                opacity={activeSlice === null || activeSlice === segment.key ? 1 : 0.35}
                 className="transition-opacity duration-150"
                 onMouseEnter={() => setActive(segment.key)}
               />
@@ -116,7 +124,7 @@ export function EventDonut({ summary }: { summary: PerEventSummary }) {
               <tr
                 key={slice.key}
                 onMouseEnter={() => setActive(slice.key)}
-                className={active === slice.key ? "bg-muted/60" : undefined}
+                className={activeSlice === slice.key ? "bg-muted/60" : undefined}
               >
                 <td className="py-1.5 pr-3">
                   <span className="flex items-center gap-2">

@@ -55,7 +55,11 @@ interface EntryRow {
   }[];
 }
 
-export default async function AdminPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function AdminEntriesPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const params = await searchParams;
   const { supabase } = await requireAdmin();
 

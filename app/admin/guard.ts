@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+import { createClient, type SupabaseServerClient } from "@/lib/supabase/server";
 
 type AdminCheck =
   | { supabase: SupabaseServerClient; isAdmin: true }

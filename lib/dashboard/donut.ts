@@ -85,11 +85,22 @@
  *   total of 349. It is a bookkeeping overrun only: the eight tiny arcs are
  *   overpainted by their neighbours, so it changes no start angle.
  *
- * Measured production data on 2026-08-19 is 130 entries, where a one-entry slice
- * spans 4.688px and draws 2.688px — under the 153 needed for the clamp to engage
- * at all, so nothing on today's division is clamped, let alone overrun. Roughly
- * 2.3× today's volume, concentrated so that a one-entry event type still reaches
- * the top eight, is what brings the first sub-pixel overhang into range.
+ * The thresholds, stated as thresholds rather than as a snapshot — a division that keeps
+ * entering will cross them, and a comment anchored to one day's total goes false without
+ * anyone editing it:
+ *
+ * - Below 153 entries a one-entry slice spans more than `gap + minLength = 4`, so the
+ *   clamp does not engage at all. At 130 entries such a slice spans 4.688px and draws
+ *   2.688px.
+ * - From 153 entries the clamp is live: the slice still draws `minLength`, but eats into
+ *   its own separator. At 297 entries it spans 2.052px and draws the full 2px, so the
+ *   gap either side is gone.
+ * - From 305 entries a one-entry slice spans less than `minLength = 2` and the drawn arc
+ *   overhangs into its successor — by `minLength - span`, strictly under 2px, and
+ *   0.002px at the boundary.
+ *
+ * So whether anything is clamped today is a question about the current entry count, not
+ * a property of this module. Every numeric threshold above is exact.
  *
  * The legend beside the ring carries the exact counts, which is where the
  * accuracy the clamp trades away is recovered.

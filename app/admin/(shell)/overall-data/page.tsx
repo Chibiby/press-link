@@ -145,53 +145,51 @@ export default async function OverallDataPage({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* No colour swatches in this table, on purpose: summarisePerEvent assigns
+              eight chart tokens by rank and wraps past the eighth, so beyond the donut's
+              top eight a swatch would repeat a hue and imply two types are the same
+              series. The donut's legend is where colour carries meaning; here the
+              numbers do. */}
           {perEvent.slices.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No entries in this selection yet.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              {/* No colour swatches in this table, on purpose: summarisePerEvent
-                  assigns eight chart tokens by rank and wraps past the eighth, so
-                  beyond the donut's top eight a swatch would repeat a hue and
-                  imply two types are the same series. The donut's legend is where
-                  colour carries meaning; here the numbers do. */}
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Event type</TableHead>
-                    <TableHead className="text-right">Entries</TableHead>
-                    <TableHead className="text-right">Share</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {perEvent.slices.map((slice) => (
-                    <TableRow key={slice.key}>
-                      <TableCell className="font-medium text-foreground">
-                        {slice.label}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {slice.entries}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {SHARE.format(slice.share)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                <TableFooter>
-                  <TableRow>
-                    <TableCell className="font-semibold text-foreground">Total</TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">
-                      {perEvent.totalEntries}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Event type</TableHead>
+                  <TableHead className="text-right">Entries</TableHead>
+                  <TableHead className="text-right">Share</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {perEvent.slices.map((slice) => (
+                  <TableRow key={slice.key}>
+                    <TableCell className="font-medium text-foreground">
+                      {slice.label}
                     </TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">
-                      {SHARE.format(perEvent.totalEntries === 0 ? 0 : 1)}
+                    <TableCell className="text-right tabular-nums">
+                      {slice.entries.toLocaleString("en-PH")}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {SHARE.format(slice.share)}
                     </TableCell>
                   </TableRow>
-                </TableFooter>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="font-semibold text-foreground">Total</TableCell>
+                  <TableCell className="text-right font-semibold tabular-nums">
+                    {perEvent.totalEntries.toLocaleString("en-PH")}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold tabular-nums">
+                    {SHARE.format(perEvent.totalEntries === 0 ? 0 : 1)}
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
           )}
         </CardContent>
       </Card>
