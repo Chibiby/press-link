@@ -1,12 +1,8 @@
 import { cache } from "react";
 
 import { requireAdmin } from "@/app/admin/guard";
-import {
-  joinMeta,
-  mergeActivityFeed,
-  personLabel,
-  type ActivityFeed,
-} from "@/lib/dashboard/activity";
+import type { ActivityFeed } from "@/lib/dashboard/activity";
+import { fetchActivity } from "@/lib/dashboard/activity-source";
 import {
   attentionBadge,
   buildAttention,
@@ -31,9 +27,6 @@ import {
   type EventLanguage,
   type EventLevel,
 } from "@/lib/events-catalog";
-import type { PaperParticipation } from "@/lib/paper/gate";
-import { formatParticipantNumber } from "@/lib/roster/limits";
-import { surnameFirst } from "@/lib/roster/names";
 
 /** Rows on screen in the Per School Summary panel. The totals row still sums all of them. */
 const PER_SCHOOL_LIMIT = 15;
@@ -365,185 +358,27 @@ export const loadEventFacts = cache(async (): Promise<EventFacts> => {
   };
 });
 
-interface EntryActivityRow {
-  id: string;
-  submitted_at: string;
-  school_id: string;
-  schools: { name: string } | null;
-  events: { name: string } | null;
-}
-
-interface ParticipantActivityRow {
-  id: string;
-  participant_number: number;
-  first_name: string;
-  middle_name: string | null;
-  last_name: string;
-  created_at: string;
-  school_id: string;
-  schools: { name: string } | null;
-}
-
-interface CoachActivityRow {
-  id: string;
-  first_name: string;
-  middle_name: string | null;
-  last_name: string;
-  created_at: string;
-  schools: { name: string } | null;
-}
-
-interface PaperAnswerActivityRow {
-  id: string;
-  name: string;
-  paper_participation: PaperParticipation;
-  paper_answered_at: string;
-}
-
-interface LockActivityRow {
-  id: string;
-  name: string;
-  submission_locked_at: string;
-}
-
-interface PaperUpdateActivityRow {
-  id: string;
-  paper_name: string | null;
-  updated_at: string;
-  schools: { name: string } | null;
-}
-
 /**
- * What a school said when it answered the contest question — an answer, not a state of
- * participation. 12 schools have answered "yes" against 295 still undecided, so
- * wording this as "is participating" would read as a division-wide tally and be wrong
- * by several times over.
- */
-const PARTICIPATION_LABEL: Record<PaperParticipation, string> = {
-  yes: "Joining the school paper contest",
-  no: "Not joining the school paper contest",
-  undecided: "Answered, still undecided",
-};
-
-/**
- * Six sources, each already ordered newest-first and capped, merged by
- * mergeActivityFeed() into one feed that also reports whether anything was held back.
+ * The dashboard's slice of the feed. The queries live in
+ * `lib/dashboard/activity-source.ts` because /admin/activity needs the same six with a
+ * larger limit, and 130 duplicated lines would drift on the first schema change.
  *
- * On the four nullable timestamps, `.not(column, "is", null)` is load-bearing rather
- * than defensive: Postgres sorts NULLs first on a descending order, so without it a
- * table full of unanswered schools would fill the whole page of results with rows that
- * have no timestamp to show. `entries.submitted_at` is `not null` (0001_init.sql:56),
- * so the guard there changes nothing today and is kept only so all six queries read
- * alike.
+ * Fetches ACTIVITY_FETCH_LIMIT per source so the newest ACTIVITY_SHOWN overall are
+ * certain to be among them, then cuts to ACTIVITY_SHOWN. Slicing a correctly-ordered
+ * list to a shorter prefix is always safe, which is what makes fetch-8-show-5
+ * legitimate while fetch-8-merge-50 would not be.
  *
- * Names go through personLabel(): `coaches.first_name` and `coaches.last_name` both
- * default to '' (0015_restore_coach_name_parts.sql), so surnameFirst() can legitimately
- * return an empty string and "Coach added — " is not a sentence. School names go
- * through joinMeta(), which yields null rather than an empty meta line.
+ * `truncated` is re-derived rather than passed through: the merge answered the question
+ * for a feed of ACTIVITY_FETCH_LIMIT, and this one is shorter still, so anything the
+ * slice drops counts too.
  */
 export const loadActivity = cache(async (): Promise<ActivityFeed> => {
-  const supabase = await getAdminClient();
-  const [entries, participants, coaches, answers, locks, papers] = await Promise.all([
-    supabase
-      .from("entries")
-      .select("id, submitted_at, school_id, schools(name), events(name)")
-      .not("submitted_at", "is", null)
-      .order("submitted_at", { ascending: false })
-      .limit(ACTIVITY_FETCH_LIMIT)
-      .overrideTypes<EntryActivityRow[]>(),
-    supabase
-      .from("participants")
-      .select(
-        "id, participant_number, first_name, middle_name, last_name, created_at, school_id, schools(name)"
-      )
-      .order("created_at", { ascending: false })
-      .limit(ACTIVITY_FETCH_LIMIT)
-      .overrideTypes<ParticipantActivityRow[]>(),
-    supabase
-      .from("coaches")
-      .select("id, first_name, middle_name, last_name, created_at, schools(name)")
-      .order("created_at", { ascending: false })
-      .limit(ACTIVITY_FETCH_LIMIT)
-      .overrideTypes<CoachActivityRow[]>(),
-    supabase
-      .from("schools")
-      .select("id, name, paper_participation, paper_answered_at")
-      .not("paper_answered_at", "is", null)
-      .order("paper_answered_at", { ascending: false })
-      .limit(ACTIVITY_FETCH_LIMIT)
-      .overrideTypes<PaperAnswerActivityRow[]>(),
-    supabase
-      .from("schools")
-      .select("id, name, submission_locked_at")
-      .not("submission_locked_at", "is", null)
-      .order("submission_locked_at", { ascending: false })
-      .limit(ACTIVITY_FETCH_LIMIT)
-      .overrideTypes<LockActivityRow[]>(),
-    supabase
-      .from("school_papers")
-      .select("id, paper_name, updated_at, schools(name)")
-      .order("updated_at", { ascending: false })
-      .limit(ACTIVITY_FETCH_LIMIT)
-      .overrideTypes<PaperUpdateActivityRow[]>(),
-  ]);
+  const feed = await fetchActivity(await getAdminClient(), ACTIVITY_FETCH_LIMIT);
 
-  return mergeActivityFeed(
-    [
-      (entries.data ?? []).map((row) => ({
-        id: `entry:${row.id}`,
-        kind: "entry" as const,
-        at: row.submitted_at,
-        title: `Entry submitted — ${row.events?.name ?? "event"}`,
-        meta: joinMeta(row.schools?.name),
-        href: `/admin/entries?school=${row.school_id}`,
-      })),
-      (participants.data ?? []).map((row) => ({
-        id: `participant:${row.id}`,
-        kind: "participant" as const,
-        at: row.created_at,
-        title: `Learner added — ${formatParticipantNumber(row.participant_number)} ${personLabel(
-          surnameFirst(row)
-        )}`,
-        meta: joinMeta(row.schools?.name),
-        href: `/admin/participants?school=${row.school_id}`,
-      })),
-      (coaches.data ?? []).map((row) => ({
-        id: `coach:${row.id}`,
-        kind: "coach" as const,
-        at: row.created_at,
-        title: `Coach added — ${personLabel(surnameFirst(row))}`,
-        meta: joinMeta(row.schools?.name),
-        // /admin/coaches has no school filter to link into, so this lands on the
-        // unfiltered list rather than on a parameter the page would ignore.
-        href: "/admin/coaches",
-      })),
-      (answers.data ?? []).map((row) => ({
-        id: `paper-answer:${row.id}`,
-        kind: "paper-answer" as const,
-        at: row.paper_answered_at,
-        title: `${row.name} answered the school paper question`,
-        meta: PARTICIPATION_LABEL[row.paper_participation],
-        href: "/admin/school-papers",
-      })),
-      (locks.data ?? []).map((row) => ({
-        id: `submission-lock:${row.id}`,
-        kind: "submission-lock" as const,
-        at: row.submission_locked_at,
-        title: `${row.name} locked its submissions`,
-        meta: "No further changes from the school",
-        href: "/admin/school-papers",
-      })),
-      (papers.data ?? []).map((row) => ({
-        id: `paper-update:${row.id}`,
-        kind: "paper-update" as const,
-        at: row.updated_at,
-        title: `School paper updated — ${row.paper_name?.trim() || "untitled"}`,
-        meta: joinMeta(row.schools?.name),
-        href: "/admin/school-papers",
-      })),
-    ],
-    ACTIVITY_SHOWN
-  );
+  return {
+    items: feed.items.slice(0, ACTIVITY_SHOWN),
+    truncated: feed.truncated || feed.items.length > ACTIVITY_SHOWN,
+  };
 });
 
 /** Everything the overview page renders, in one call. */
