@@ -1,5 +1,7 @@
 import type { EventLanguage } from "@/lib/events-catalog";
 
+import { levelBelongsTo, levelsForSchool, type PaperLevel } from "./level";
+
 export type PaperParticipation = "undecided" | "yes" | "no";
 
 /** The languages a school may publish in, in the order the tabs show them. */
@@ -29,6 +31,12 @@ export interface PaperFlowState {
   rosterEnabled: boolean;
   /** Languages actually on file, deduped and in PAPER_LANGUAGES order. */
   savedLanguages: EventLanguage[];
+  /**
+   * Levels this school owes a paper for and has not filed one at. Empty once
+   * stage 1 is cleared, and always empty for a locked school, which could not
+   * act on it anyway.
+   */
+  missingLevels: PaperLevel[];
 }
 
 /**
@@ -47,14 +55,31 @@ export interface PaperFlowState {
  */
 export function paperFlowState(input: {
   participation: PaperParticipation;
-  savedLanguages: EventLanguage[];
+  /** Every paper row on file for the school, with the level each one covers. */
+  savedPapers: { language: EventLanguage; level: PaperLevel }[];
+  /** Reads `schools.is_integrated`; decides how many levels the school owes. */
+  isIntegrated: boolean;
   lockedAt: string | null;
   /** The school's current entry count. */
   entryCount: number;
 }): PaperFlowState {
-  const { participation, lockedAt } = input;
-  const saved = new Set(input.savedLanguages);
+  const { participation, lockedAt, isIntegrated } = input;
+
+  // A row whose level contradicts its school is stale — left behind when the
+  // school was reclassified — and cannot stand in for a paper it owes.
+  const papers = input.savedPapers.filter((paper) =>
+    levelBelongsTo(paper.level, isIntegrated)
+  );
+  const saved = new Set(papers.map((paper) => paper.language));
   const savedLanguages = PAPER_LANGUAGES.filter((lang) => saved.has(lang));
+
+  // Stage 1 is per LEVEL, not per language. An ordinary school owes one paper
+  // and any language clears it, exactly as before. An integrated school owes an
+  // elementary paper and a secondary one, each in whichever language it likes —
+  // two elementary papers do not cover secondary.
+  const missingLevels = levelsForSchool(isIntegrated).filter(
+    (level) => !papers.some((paper) => paper.level === level)
+  );
   const locked = lockedAt !== null;
 
   // A locked school is finished with all of this. Re-opening the form or the
@@ -69,10 +94,11 @@ export function paperFlowState(input: {
       canLock: false,
       rosterEnabled: true,
       savedLanguages,
+      missingLevels: locked ? [] : missingLevels,
     };
   }
 
-  if (savedLanguages.length === 0) {
+  if (missingLevels.length > 0) {
     return {
       phase: "fill",
       paperFormOpen: true,
@@ -82,6 +108,7 @@ export function paperFlowState(input: {
       canLock: false,
       rosterEnabled: false,
       savedLanguages,
+      missingLevels: locked ? [] : missingLevels,
     };
   }
 
@@ -95,6 +122,7 @@ export function paperFlowState(input: {
       canLock: false,
       rosterEnabled: false,
       savedLanguages,
+      missingLevels: locked ? [] : missingLevels,
     };
   }
 
@@ -107,5 +135,9 @@ export function paperFlowState(input: {
     canLock: input.entryCount > 0,
     rosterEnabled: true,
     savedLanguages,
+    // Reached only when nothing is missing, so this is [] by construction — but
+    // written out rather than hardcoded, so a future branch cannot silently
+    // claim completeness it has not checked.
+    missingLevels,
   };
 }

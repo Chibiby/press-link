@@ -8,6 +8,7 @@ import {
   rosterParticipantSchema,
 } from "@/lib/validation/roster";
 import { paperFlowState, type PaperParticipation } from "@/lib/paper/gate";
+import type { PaperLevel } from "@/lib/paper/level";
 import type { EventLanguage } from "@/lib/events-catalog";
 
 async function getSchoolId() {
@@ -38,14 +39,18 @@ async function assertPaperSettled(
   const [{ data: school }, { data: papers }, { count: entryCount }] = await Promise.all([
     supabase
       .from("schools")
-      .select("paper_participation, submission_locked_at")
+      .select("paper_participation, submission_locked_at, is_integrated")
       .eq("id", schoolId)
-      .single<{ paper_participation: PaperParticipation; submission_locked_at: string | null }>(),
+      .single<{
+        paper_participation: PaperParticipation;
+        submission_locked_at: string | null;
+        is_integrated: boolean;
+      }>(),
     supabase
       .from("school_papers")
-      .select("language")
+      .select("language, level")
       .eq("school_id", schoolId)
-      .overrideTypes<{ language: EventLanguage }[]>(),
+      .overrideTypes<{ language: EventLanguage; level: PaperLevel }[]>(),
     supabase
       .from("entries")
       .select("id", { count: "exact", head: true })
@@ -55,7 +60,8 @@ async function assertPaperSettled(
 
   const state = paperFlowState({
     participation: school.paper_participation,
-    savedLanguages: (papers ?? []).map((p) => p.language),
+    savedPapers: papers ?? [],
+    isIntegrated: school.is_integrated ?? false,
     lockedAt: school.submission_locked_at,
     entryCount: entryCount ?? 0,
   });

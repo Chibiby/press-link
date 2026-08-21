@@ -18,6 +18,7 @@ import type {
   SchoolPaperRow,
 } from "./types";
 import type { PaperFlowState } from "@/lib/paper/gate";
+import { PAPER_LEVEL_LABEL } from "@/lib/paper/level";
 import { PAPER_STATUS_LABEL, type PaperStatus } from "@/lib/paper/status";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { type UsageMap } from "@/lib/roster/limits";
@@ -143,7 +144,12 @@ export function EntryDashboard({
             <AlertDescription>
               {paperFlow.phase === "question"
                 ? "Answer whether this school paper goes to the contest. Participants and coaches open either way."
-                : "Fill in your school paper — English, Filipino, or both. Participants and coaches open once at least one is saved and you have answered the contest question."}
+                : paperFlow.missingLevels.length > 0 &&
+                    !paperFlow.missingLevels.includes("whole")
+                  ? `Your school files a separate elementary and secondary paper. Still to file: ${paperFlow.missingLevels
+                      .map((level) => PAPER_LEVEL_LABEL[level])
+                      .join(" and ")} — either language. Participants and coaches open once both are saved.`
+                  : "Fill in your school paper — English, Filipino, or both. Participants and coaches open once at least one is saved and you have answered the contest question."}
             </AlertDescription>
           </Alert>
         )}

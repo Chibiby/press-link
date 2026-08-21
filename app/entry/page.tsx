@@ -222,7 +222,8 @@ export default async function EntryPage() {
   // which is still what the school has done when either level is saved.
   const paperFlow = paperFlowState({
     participation: school.paper_participation,
-    savedLanguages: (papers ?? []).map((p) => p.language),
+    savedPapers: (papers ?? []).map((p) => ({ language: p.language, level: p.level })),
+    isIntegrated: school.is_integrated,
     lockedAt: school.submission_locked_at,
     entryCount: entries.length,
   });

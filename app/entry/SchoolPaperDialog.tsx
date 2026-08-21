@@ -141,7 +141,7 @@ export function SchoolPaperDialog({
     ? "These details are locked. Contact the division office if they need a change."
     : isIntegrated
       ? required
-        ? "Your school files a separate elementary and secondary paper for each language. Save at least one to continue."
+        ? "Your school files a separate elementary and secondary paper. Save one of each — either language — to continue."
         : "Your school files a separate elementary and secondary paper for each language. Anything that does not apply can stay N/A."
       : required
         ? "Fill in your school paper — English, Filipino, or both. Save at least one to continue."
