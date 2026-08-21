@@ -1,4 +1,5 @@
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
+import type { PaperLevel } from "@/lib/paper/level";
 
 /** A person on the school's roster, ready to be picked into an entry. */
 export interface RosterParticipant {
@@ -51,6 +52,13 @@ export interface PaperStaffRow {
 export interface SchoolPaperRow {
   id: string;
   language: EventLanguage;
+  /**
+   * Which half of an integrated school this paper covers, or `whole` for the
+   * one paper every other school files. Carried on the row rather than inferred
+   * from the school, so the dialog can put each saved paper back in the field
+   * that produced it.
+   */
+  level: PaperLevel;
   /** Last save, used to tell a post-answer re-save from the original. */
   updated_at: string;
   paper_name: string;

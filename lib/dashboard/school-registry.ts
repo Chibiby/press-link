@@ -1,10 +1,28 @@
 /**
- * The five ways an officer asks "which schools?". Kept as a closed union rather than a
+ * The six ways an officer asks "which schools?". Kept as a closed union rather than a
  * free-text query param so a mistyped URL cannot produce a table nobody can explain.
+ *
+ * Five of them describe how far a school has got. "integrated" is different in kind: it
+ * asks what a school *is*, not what it has done. It shares the union anyway, because the
+ * registry is the page that answers "which schools are what", and a second filter control
+ * carrying a single boolean would cost the officer more than it told them.
  */
-export type SchoolStatus = "all" | "learners-no-entry" | "no-data" | "entered" | "locked";
+export type SchoolStatus =
+  | "all"
+  | "learners-no-entry"
+  | "no-data"
+  | "entered"
+  | "locked"
+  | "integrated";
 
-const STATUSES: SchoolStatus[] = ["all", "learners-no-entry", "no-data", "entered", "locked"];
+const STATUSES: SchoolStatus[] = [
+  "all",
+  "learners-no-entry",
+  "no-data",
+  "entered",
+  "locked",
+  "integrated",
+];
 
 export const SCHOOL_STATUS_LABEL: Record<SchoolStatus, string> = {
   all: "All schools",
@@ -12,6 +30,7 @@ export const SCHOOL_STATUS_LABEL: Record<SchoolStatus, string> = {
   "no-data": "Nothing on record",
   entered: "Has entries",
   locked: "Submission locked",
+  integrated: "Integrated schools",
 };
 
 export function isSchoolStatus(value: string | undefined): value is SchoolStatus {
@@ -26,6 +45,19 @@ export interface RegistryRow {
   schoolIdNumber: string;
   districtId: string;
   districtName: string;
+  /**
+   * `schools.is_integrated` — the school runs elementary and secondary under one id, so
+   * it publishes two papers per language instead of one.
+   *
+   * Read from the column, never re-derived from the name. `isIntegratedName` in
+   * lib/schools/integrated.ts seeds and audits that column; a hand-correction by the
+   * division office only survives if the runtime trusts what is stored.
+   *
+   * Required, not optional: every place that builds a RegistryRow has to say which it is,
+   * and a school silently defaulting to "not integrated" is exactly the mistake this page
+   * exists to catch.
+   */
+  isIntegrated: boolean;
   learners: number;
   coaches: number;
   entries: number;
@@ -58,6 +90,11 @@ function matches(row: RegistryRow, status: SchoolStatus): boolean {
       return row.entries > 0;
     case "locked":
       return row.lockedAt !== null;
+    // The stored column, on its own. Not crossed with progress: "integrated schools that
+    // have not entered" is a question this filter deliberately cannot ask, because the
+    // answer would depend on which of two filters won and no URL says which.
+    case "integrated":
+      return row.isIntegrated;
   }
 }
 

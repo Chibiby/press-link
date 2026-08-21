@@ -35,6 +35,7 @@ interface RegistrySchoolRow {
   name: string;
   school_id_number: string;
   district_id: string;
+  is_integrated: boolean;
   submission_locked_at: string | null;
   districts: { name: string } | null;
   participants: { count: number }[];
@@ -61,7 +62,7 @@ export default async function AdminSchoolsPage({
     supabase
       .from("schools")
       .select(
-        "id, name, school_id_number, district_id, submission_locked_at, districts(name), participants(count), coaches(count), entries(count)"
+        "id, name, school_id_number, district_id, is_integrated, submission_locked_at, districts(name), participants(count), coaches(count), entries(count)"
       )
       .order("name")
       .overrideTypes<RegistrySchoolRow[]>(),
@@ -76,6 +77,7 @@ export default async function AdminSchoolsPage({
     schoolIdNumber: row.school_id_number,
     districtId: row.district_id,
     districtName: row.districts?.name ?? "",
+    isIntegrated: row.is_integrated,
     learners: row.participants?.[0]?.count ?? 0,
     coaches: row.coaches?.[0]?.count ?? 0,
     entries: row.entries?.[0]?.count ?? 0,
@@ -133,9 +135,22 @@ export default async function AdminSchoolsPage({
                   <TableRow key={row.schoolId}>
                     <TableCell>
                       <p className="font-medium">{row.schoolName}</p>
-                      <p className="text-xs tabular-nums text-muted-foreground">
-                        {row.schoolIdNumber}
-                      </p>
+                      {/* The id number and the level marker share the second line: the
+                          registry is where an officer checks what a school *is*, and an
+                          integrated school has to be findable without opening it. */}
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs tabular-nums text-muted-foreground">
+                          {row.schoolIdNumber}
+                        </p>
+                        {row.isIntegrated ? (
+                          <Badge
+                            variant="outline"
+                            title="Runs elementary and secondary — two papers per language"
+                          >
+                            Integrated
+                          </Badge>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {row.districtName || "—"}

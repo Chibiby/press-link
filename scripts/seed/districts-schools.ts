@@ -46,10 +46,15 @@ export async function seedDistrictsAndSchools() {
   const districtIdByName = new Map(insertedDistricts.map((d) => [d.name, d.id]));
 
   const { error: schoolError } = await supabase.from("schools").upsert(
+    // Note that re-running the seeder rewrites `is_integrated` from the name, the same
+    // way it rewrites the name and the district. A hand-correction the division office
+    // made to a school the name test misses will not survive a re-seed; that is the
+    // existing behaviour of this upsert, not something new to this column.
     schools.map((s) => ({
       name: s.schoolName,
       school_id_number: s.schoolIdNumber,
       district_id: districtIdByName.get(s.districtName),
+      is_integrated: s.isIntegrated,
     })),
     { onConflict: "school_id_number" }
   );

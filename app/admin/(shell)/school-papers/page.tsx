@@ -8,6 +8,7 @@ import {
   type RawAdminSchoolPaper,
 } from "@/lib/paper/admin-papers";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
+import { PAPER_LEVEL_LABEL, type PaperSlot } from "@/lib/paper/level";
 import { LANGUAGE_LABEL } from "@/lib/events-catalog";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,6 +27,18 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-PH", {
   hour: "numeric",
   minute: "2-digit",
 });
+
+/**
+ * A `whole` paper is named by its language alone, the way it always has been —
+ * a non-integrated row must read exactly as it did before levels existed. Only
+ * an integrated school's papers carry the level, because only there does the
+ * language on its own fail to identify which paper is meant.
+ */
+function slotLabel(slot: PaperSlot): string {
+  return slot.level === "whole"
+    ? LANGUAGE_LABEL[slot.language]
+    : `${LANGUAGE_LABEL[slot.language]} · ${PAPER_LEVEL_LABEL[slot.level]}`;
+}
 
 interface SearchParams {
   district?: string;
@@ -49,7 +62,7 @@ export default async function AdminSchoolPapersPage({
     supabase
       .from("schools")
       .select(
-        "id, name, district_id, paper_participation, paper_answered_at, submission_locked_at, districts(name), school_papers(language)"
+        "id, name, district_id, is_integrated, paper_participation, paper_answered_at, submission_locked_at, districts(name), school_papers(language, level)"
       )
       .order("name")
       .overrideTypes<RawAdminSchoolPaper[]>(),
@@ -75,7 +88,7 @@ export default async function AdminSchoolPapersPage({
               <TableHead>School</TableHead>
               <TableHead>District</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Languages</TableHead>
+              <TableHead>Papers on file</TableHead>
               <TableHead>Answered</TableHead>
               <TableHead>Action</TableHead>
             </TableRow>
@@ -83,7 +96,16 @@ export default async function AdminSchoolPapersPage({
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.id}>
-                <TableCell className="font-medium">{row.schoolName}</TableCell>
+                <TableCell className="font-medium">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{row.schoolName}</span>
+                    {row.isIntegrated && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Integrated
+                      </Badge>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell className="text-muted-foreground">{row.districtName}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-2">
@@ -101,7 +123,29 @@ export default async function AdminSchoolPapersPage({
                   </div>
                 </TableCell>
                 <TableCell>
-                  {row.languages.length === 0 ? (
+                  {/*
+                    An integrated school owes four papers and the useful question
+                    about it is which of the four are missing, so all four slots
+                    are drawn and the empty ones are outlined. Every other school
+                    keeps the old cell exactly: the languages on file, or a dash.
+                  */}
+                  {row.isIntegrated ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {row.slots.map((slot) => (
+                        <Badge
+                          key={`${slot.language}:${slot.level}`}
+                          variant="outline"
+                          className={
+                            slot.filled
+                              ? "text-[10px]"
+                              : "border-dashed text-[10px] text-muted-foreground/60"
+                          }
+                        >
+                          {slotLabel(slot)}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : row.languages.length === 0 ? (
                     "—"
                   ) : (
                     <div className="flex flex-wrap items-center gap-2">

@@ -17,6 +17,7 @@ describe("transformSchoolRows", () => {
       schoolIdNumber: "500282",
       schoolName: "Alabel Integrated SPED Center",
       districtName: "Alabel 1",
+      isIntegrated: true,
     });
   });
 
@@ -76,5 +77,41 @@ describe("transformSchoolRows", () => {
       rawSchoolId: "No School ID yet",
       reason: "non-numeric-school-id",
     });
+  });
+
+  // A fresh environment has to end up with the same `is_integrated` values that
+  // migration 0016 backfills into an existing one, or the two diverge on day one.
+  // Both names below are real rows from the division roll.
+  it("flags integrated schools from the name, and only those", () => {
+    const rows: RawSchoolRow[] = [
+      { schoolId: "500282", schoolName: "Alabel Integrated SPED Center", district: "Alabel 1" },
+      { schoolId: "500289", schoolName: "Banlibato Integrated School", district: "Alabel 1" },
+      { schoolId: "130425", schoolName: "Famorcan ES", district: "Alabel 1" },
+      { schoolId: "130551", schoolName: "Del Hilado ES", district: "Malapatan 2" },
+    ];
+
+    const result = transformSchoolRows(rows);
+
+    expect(result.schools.map((s) => [s.schoolName, s.isIntegrated])).toEqual([
+      ["Alabel Integrated SPED Center", true],
+      ["Banlibato Integrated School", true],
+      ["Famorcan ES", false],
+      ["Del Hilado ES", false],
+    ]);
+  });
+
+  // Word boundaries, not a substring — the same predicate the migration spells as
+  // `name ~* '\yintegrated\y'`. A school called "Reintegrated" is not integrated.
+  it("does not flag a school whose name merely contains the letters", () => {
+    const rows: RawSchoolRow[] = [
+      { schoolId: "111111", schoolName: "Reintegrated Learning Center", district: "Alabel 1" },
+      { schoolId: "222222", schoolName: "Malapatan INTEGRATED School", district: "Malapatan 2" },
+    ];
+
+    const result = transformSchoolRows(rows);
+
+    expect(result.schools[0].isIntegrated).toBe(false);
+    // Case-insensitive, so the roll's shouty spellings are caught too.
+    expect(result.schools[1].isIntegrated).toBe(true);
   });
 });

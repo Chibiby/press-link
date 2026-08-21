@@ -10,6 +10,9 @@ function school(over: Partial<RegistryRow> = {}): RegistryRow {
     schoolIdNumber: "300001",
     districtId: "d1",
     districtName: "Alabel",
+    // Not read by summarisePerDistrict; RegistryRow requires it, so the fixture supplies
+    // it rather than casting the shape and hiding the day the rollup starts caring.
+    isIntegrated: false,
     learners: 0,
     coaches: 0,
     entries: 0,

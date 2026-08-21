@@ -9,7 +9,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SCHOOL_STATUS_LABEL, type SchoolStatus } from "@/lib/dashboard/school-registry";
 
 /** "all" is the placeholder, so it is not offered again as an item. */
-const STATUS_OPTIONS: SchoolStatus[] = ["learners-no-entry", "no-data", "entered", "locked"];
+const STATUS_OPTIONS: SchoolStatus[] = [
+  "learners-no-entry",
+  "no-data",
+  "entered",
+  "locked",
+  "integrated",
+];
 
 export function SchoolRegistryFilter({
   districts,

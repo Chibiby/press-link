@@ -89,13 +89,22 @@ export default async function EntryPage() {
 
   const { data: school, error: schoolError } = await supabase
     .from("schools")
-    .select("id, name, paper_participation, submission_locked_at, districts(name)")
+    .select(
+      "id, name, paper_participation, submission_locked_at, is_integrated, districts(name)"
+    )
     .eq("auth_user_id", user.id)
     .single<{
       id: string;
       name: string;
       paper_participation: PaperParticipation;
       submission_locked_at: string | null;
+      /**
+       * Whether this school runs elementary and secondary under one id, and so
+       * files two papers per language instead of one. Read from the column: it
+       * is seeded from the school's name but hand-correctable, and re-deriving
+       * it here would throw away a correction the division office made.
+       */
+      is_integrated: boolean;
       districts: { name: string } | null;
     }>();
 
@@ -123,7 +132,7 @@ export default async function EntryPage() {
     supabase
       .from("school_papers")
       .select(
-        "id, language, updated_at, paper_name, adviser_name, adviser_gender, principal_name, paper_staff(id, full_name, title)"
+        "id, language, level, updated_at, paper_name, adviser_name, adviser_gender, principal_name, paper_staff(id, full_name, title)"
       )
       .eq("school_id", school.id)
       .overrideTypes<SchoolPaperRow[]>(),
@@ -195,6 +204,10 @@ export default async function EntryPage() {
 
   // One place decides where the school is in the paper flow, and therefore
   // whether the form is forced open, locked, or done — see lib/paper/gate.ts.
+  // An integrated school has up to two rows per language, so this list repeats
+  // a language once per level. That is fine: `paperFlowState` dedupes, and
+  // stage 1 has always meant "at least one paper on file for this language",
+  // which is still what the school has done when either level is saved.
   const paperFlow = paperFlowState({
     participation: school.paper_participation,
     savedLanguages: (papers ?? []).map((p) => p.language),
@@ -228,6 +241,7 @@ export default async function EntryPage() {
           paperFlow={paperFlow}
           paperStatus={status}
           participation={school.paper_participation}
+          isIntegrated={school.is_integrated}
         />
       </main>
     </div>

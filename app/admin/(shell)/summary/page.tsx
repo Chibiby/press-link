@@ -32,6 +32,7 @@ import {
   type EventLevel,
 } from "@/lib/events-catalog";
 import type { PaperParticipation } from "@/lib/paper/gate";
+import { PAPER_LEVEL_LABEL, paperSlots, type PaperLevel } from "@/lib/paper/level";
 import { PAPER_STATUS_LABEL, paperStatus } from "@/lib/paper/status";
 import { surnameFirst } from "@/lib/roster/names";
 
@@ -54,6 +55,10 @@ interface SchoolHeadRow {
   name: string;
   school_id_number: string;
   paper_participation: PaperParticipation;
+  /** True when the school runs elementary and secondary under one school id, and so
+   *  files two papers per language instead of one. Read from the column, never
+   *  re-derived from the name — the office can correct the column by hand. */
+  is_integrated: boolean;
   submission_locked_at: string | null;
   districts: { name: string } | null;
   participants: { count: number }[];
@@ -93,6 +98,7 @@ interface EntryDetailRow {
 
 interface PaperDetailRow {
   language: EventLanguage;
+  level: PaperLevel;
   paper_name: string;
   adviser_name: string;
   principal_name: string;
@@ -110,6 +116,19 @@ function Fact({ label, value, note }: { label: string; value: string; note: stri
       <p className="text-xs text-muted-foreground">{note}</p>
     </div>
   );
+}
+
+/**
+ * How one paper is named on this sheet.
+ *
+ * A non-integrated school's only level is `whole`, and printing "English — School
+ * paper" beside every row of 300-odd schools says nothing. The level is spelled out
+ * exactly when there is a second paper it could be confused with.
+ */
+function paperLabel(language: EventLanguage, level: PaperLevel, withLevel: boolean) {
+  return withLevel
+    ? `${LANGUAGE_LABEL[language]} — ${PAPER_LEVEL_LABEL[level]}`
+    : LANGUAGE_LABEL[language];
 }
 
 export default async function AdminSummaryPage({
@@ -186,7 +205,7 @@ export default async function AdminSummaryPage({
     supabase
       .from("schools")
       .select(
-        "id, name, school_id_number, paper_participation, submission_locked_at, districts(name), participants(count), coaches(count), school_papers(count)"
+        "id, name, school_id_number, paper_participation, is_integrated, submission_locked_at, districts(name), participants(count), coaches(count), school_papers(count)"
       )
       .eq("id", params.school)
       .maybeSingle()
@@ -200,9 +219,12 @@ export default async function AdminSummaryPage({
       .overrideTypes<EntryDetailRow[]>(),
     supabase
       .from("school_papers")
-      .select("language, paper_name, adviser_name, principal_name, submitted_at")
+      .select("language, level, paper_name, adviser_name, principal_name, submitted_at")
       .eq("school_id", params.school)
+      // Language first, then level: an integrated school's two English papers sit
+      // together, elementary above secondary (which is also plain alphabetical order).
       .order("language")
+      .order("level")
       .overrideTypes<PaperDetailRow[]>(),
   ]);
 
@@ -271,11 +293,34 @@ export default async function AdminSummaryPage({
     lockedAt: school.submission_locked_at,
   });
 
+  // The single derivation of what this school owes, shared with the school's own paper
+  // form and the admin papers table. An ordinary school has two slots — English and
+  // Filipino, both `whole`; an integrated school has four, each language at each level.
+  const slots = paperSlots(school.is_integrated, papers ?? []);
+  const slotsOnFile = slots.filter((slot) => slot.filled).length;
+  const slotsMissing = slots.filter((slot) => !slot.filled);
+
+  // The Level column earns its place only when there is something to tell apart: an
+  // integrated school always, plus any school holding a row whose level contradicts it.
+  // That second case is stale data from a reclassification, and an officer should see it
+  // rather than have it silently flattened into an unlabelled duplicate.
+  const showLevel =
+    school.is_integrated || (papers ?? []).some((paper) => paper.level !== "whole");
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeading
         title="Summary of Registration"
-        subtitle={school.name}
+        subtitle={
+          school.is_integrated ? (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              {school.name}
+              <Badge variant="outline">Integrated</Badge>
+            </span>
+          ) : (
+            school.name
+          )
+        }
         badge={school.school_id_number}
         actions={
           <Button asChild size="sm" variant="outline">
@@ -291,6 +336,9 @@ export default async function AdminSummaryPage({
             {school.districts?.name
               ? `${school.districts.name} district`
               : "No district on file"}
+            {school.is_integrated
+              ? " · Integrated school: elementary and secondary run under this one school id, so it files a paper for each level in each language — four below, not two."
+              : ""}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -326,8 +374,20 @@ export default async function AdminSummaryPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">School paper</CardTitle>
-          <CardDescription>{PAPER_STATUS_LABEL[status]}</CardDescription>
+          <CardTitle className="text-base">
+            {school.is_integrated ? "School papers" : "School paper"}
+          </CardTitle>
+          <CardDescription>
+            {PAPER_STATUS_LABEL[status]} · {slotsOnFile} of {slots.length} on file
+            {/* Named, not counted, and deliberately not called "outstanding": one language
+                is enough to clear the paper gate, so a blank slot is a fact about the
+                sheet, not a debt the school has failed to pay. */}
+            {slotsMissing.length > 0
+              ? ` · nothing on file for ${slotsMissing
+                  .map((slot) => paperLabel(slot.language, slot.level, school.is_integrated))
+                  .join(", ")}`
+              : ""}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {(papers ?? []).length === 0 ? (
@@ -343,6 +403,7 @@ export default async function AdminSummaryPage({
               <TableHeader>
                 <TableRow>
                   <TableHead>Language</TableHead>
+                  {showLevel ? <TableHead>Level</TableHead> : null}
                   <TableHead>Paper</TableHead>
                   <TableHead>Adviser</TableHead>
                   <TableHead>Principal</TableHead>
@@ -351,8 +412,21 @@ export default async function AdminSummaryPage({
               </TableHeader>
               <TableBody>
                 {(papers ?? []).map((paper) => (
-                  <TableRow key={paper.language}>
+                  // Language stopped being unique at migration 0016. An integrated school
+                  // holds an Elementary English row and a Secondary English row, and
+                  // key={paper.language} would collide between them — React would reuse one
+                  // row's DOM for the other and drop the second from the list. The stored
+                  // constraint is unique (school_id, language, level); this page is a single
+                  // school, so language+level is exactly as unique here as the database is.
+                  <TableRow key={`${paper.language}:${paper.level}`}>
                     <TableCell>{LANGUAGE_LABEL[paper.language]}</TableCell>
+                    {showLevel ? (
+                      <TableCell>
+                        <Badge variant={paper.level === "secondary" ? "default" : "outline"}>
+                          {PAPER_LEVEL_LABEL[paper.level]}
+                        </Badge>
+                      </TableCell>
+                    ) : null}
                     <TableCell className="font-medium">{paper.paper_name}</TableCell>
                     <TableCell>{paper.adviser_name}</TableCell>
                     <TableCell>{paper.principal_name}</TableCell>

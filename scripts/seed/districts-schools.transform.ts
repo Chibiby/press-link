@@ -1,3 +1,5 @@
+import { isIntegratedName } from "../../lib/schools/integrated";
+
 export interface RawSchoolRow {
   schoolId: string | number | undefined;
   schoolName: string | undefined;
@@ -8,6 +10,12 @@ export interface NormalizedSchool {
   schoolIdNumber: string;
   schoolName: string;
   districtName: string;
+  /** Runs elementary and secondary under this one school id, and so files two school
+   * papers per language instead of one. The division roll carries no level column, so the
+   * name is the only signal there is — see `lib/schools/integrated.ts`. Seeding it here is
+   * what makes a fresh environment agree with what migration 0016 backfills in an existing
+   * one; after that the column is the truth and the office may correct it by hand. */
+  isIntegrated: boolean;
 }
 
 export interface SkippedRow {
@@ -58,7 +66,12 @@ export function transformSchoolRows(rows: RawSchoolRow[]): TransformResult {
     seenSchoolIds.add(schoolIdNumber);
 
     districtSet.add(districtName);
-    schools.push({ schoolIdNumber, schoolName, districtName });
+    schools.push({
+      schoolIdNumber,
+      schoolName,
+      districtName,
+      isIntegrated: isIntegratedName(schoolName),
+    });
   }
 
   return {

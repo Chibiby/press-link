@@ -77,8 +77,16 @@ export function SchoolPaperFilterBar({
             { value: "unlocked", label: "Unlocked" },
           ]}
         />
+        {/*
+          "any level" is in the label because the predicate is any-level: an
+          integrated school that has filed only its elementary English paper
+          matches "English". A plain "Language on file" would be read as "has
+          its English paper(s), finished" by anyone who knows an integrated
+          school owes two, and a filter whose name outruns its predicate is
+          worse than a long name.
+        */}
         <FilterSelect
-          label="Language on file"
+          label="Language on file (any level)"
           value={searchParams.get("language") ?? ANY}
           onChange={(v) => setParam("language", v)}
           placeholder={`${LANGUAGE_LABEL.english} + ${LANGUAGE_LABEL.filipino}`}

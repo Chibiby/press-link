@@ -21,6 +21,7 @@ interface DistrictSchoolRow {
   id: string;
   name: string;
   district_id: string;
+  is_integrated: boolean;
   participants: { count: number }[];
   coaches: { count: number }[];
   entries: { count: number }[];
@@ -38,19 +39,24 @@ export default async function AdminDistrictsPage() {
     supabase.from("districts").select("id, name").order("name").overrideTypes<DistrictRow[]>(),
     supabase
       .from("schools")
-      .select("id, name, district_id, participants(count), coaches(count), entries(count)")
+      .select("id, name, district_id, is_integrated, participants(count), coaches(count), entries(count)")
       .overrideTypes<DistrictSchoolRow[]>(),
   ]);
 
-  // RegistryRow's other three fields are not read by summarisePerDistrict, but filling them
-  // honestly beats casting: the type is shared with /admin/schools, and a lie here would be
-  // a lie there the first time someone reuses this mapping.
+  // summarisePerDistrict reads only districtId and the three counts, but the row type is
+  // shared with /admin/schools, so the rest is filled rather than cast away.
+  //
+  // schoolIdNumber and districtName are empty strings, and that is honest: empty reads as
+  // absent. isIntegrated is not, because `false` reads as *answered* — a placeholder there
+  // would be a lie that no test could catch, since every school would simply look
+  // non-integrated. So this select asks for the real column.
   const rows: RegistryRow[] = (schoolResult.data ?? []).map((row) => ({
     schoolId: row.id,
     schoolName: row.name,
     schoolIdNumber: "",
     districtId: row.district_id,
     districtName: "",
+    isIntegrated: row.is_integrated,
     learners: row.participants?.[0]?.count ?? 0,
     coaches: row.coaches?.[0]?.count ?? 0,
     entries: row.entries?.[0]?.count ?? 0,

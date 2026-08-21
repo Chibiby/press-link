@@ -8,6 +8,13 @@ import { Check, Loader2, Plus, Trash2 } from "lucide-react";
 import { saveSchoolPaperAction } from "./actions";
 import type { SchoolPaperRow } from "./types";
 import { schoolPaperSchema } from "@/lib/validation/school-paper";
+import {
+  INTEGRATED_LEVELS,
+  PAPER_LEVEL_LABEL,
+  paperSlots,
+  type PaperLevel,
+  type PaperSlot,
+} from "@/lib/paper/level";
 import type { EventLanguage } from "@/lib/events-catalog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +58,18 @@ interface PaperDraft {
  */
 const NOT_APPLICABLE = "N/A";
 
+const LANGUAGE_LABEL: Record<EventLanguage, string> = {
+  english: "English",
+  filipino: "Filipino",
+};
+
+/** What one form saves, spelled the way the school reads it: "English elementary paper". */
+function paperLabel(language: EventLanguage, level: PaperLevel): string {
+  return level === "whole"
+    ? `${LANGUAGE_LABEL[language]} paper`
+    : `${LANGUAGE_LABEL[language]} ${PAPER_LEVEL_LABEL[level].toLowerCase()} paper`;
+}
+
 const emptyStaff = (): StaffDraft => ({
   fullName: NOT_APPLICABLE,
   title: "section_head",
@@ -84,6 +103,7 @@ export function SchoolPaperDialog({
   papers,
   locked,
   required,
+  isIntegrated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -96,9 +116,34 @@ export function SchoolPaperDialog({
    * dismisses it. A school that opened the form itself keeps its close button.
    */
   required?: boolean;
+  /**
+   * An integrated school runs elementary and secondary under one id and files a
+   * separate paper for each, per language — four forms instead of two. Comes
+   * from the `schools.is_integrated` column, never re-derived from the name.
+   */
+  isIntegrated: boolean;
 }) {
-  const english = papers.find((p) => p.language === "english") ?? null;
-  const filipino = papers.find((p) => p.language === "filipino") ?? null;
+  // One source for what this school owes and what is on file, so the tab
+  // badges, the outstanding line and the forms cannot disagree. A saved row
+  // whose level contradicts its school fills nothing — see lib/paper/level.ts.
+  const slots = paperSlots(isIntegrated, papers);
+  const outstanding = slots.filter((slot) => !slot.filled);
+
+  const languageComplete = (language: EventLanguage) =>
+    slots.every((slot) => slot.language !== language || slot.filled);
+
+  // Lifted out of the JSX because there are now six wordings, not three: an
+  // integrated school is told it owes two papers per language, and every other
+  // school is told exactly what it was told before.
+  const description = locked
+    ? "These details are locked. Contact the division office if they need a change."
+    : isIntegrated
+      ? required
+        ? "Your school files a separate elementary and secondary paper for each language. Save at least one to continue."
+        : "Your school files a separate elementary and secondary paper for each language. Anything that does not apply can stay N/A."
+      : required
+        ? "Fill in your school paper — English, Filipino, or both. Save at least one to continue."
+        : "Fill in whichever languages your school publishes in. Anything that does not apply can stay N/A.";
 
   return (
     <Dialog open={open} onOpenChange={required ? () => {} : onOpenChange}>
@@ -108,35 +153,112 @@ export function SchoolPaperDialog({
       >
         <DialogHeader>
           <DialogTitle>School Paper</DialogTitle>
-          <DialogDescription>
-            {locked
-              ? "These details are locked. Contact the division office if they need a change."
-              : required
-                ? "Fill in your school paper — English, Filipino, or both. Save at least one to continue."
-                : "Fill in whichever languages your school publishes in. Anything that does not apply can stay N/A."}
-          </DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+
+        {/* Stated as a fact, not as a demand. `paperFlowState` clears the gate on one
+            language, so an integrated school that has filed both English papers owes
+            nothing further — "still to file" would tell it otherwise. This lists what
+            is blank so the school can see it, and says no more than that. */}
+        {isIntegrated && !locked && outstanding.length > 0 && (
+          <p className="text-sm text-muted-foreground">
+            Not yet filled in:{" "}
+            {outstanding.map((slot) => paperLabel(slot.language, slot.level)).join(", ")}.
+          </p>
+        )}
 
         <Tabs defaultValue="english">
           <TabsList className="w-full">
             <TabsTrigger value="english" className="flex-1 gap-2">
               English
-              <CompletionDot complete={Boolean(english)} />
+              <CompletionDot complete={languageComplete("english")} />
             </TabsTrigger>
             <TabsTrigger value="filipino" className="flex-1 gap-2">
               Filipino
-              <CompletionDot complete={Boolean(filipino)} />
+              <CompletionDot complete={languageComplete("filipino")} />
             </TabsTrigger>
           </TabsList>
           <TabsContent value="english" className="pt-4">
-            <PaperForm language="english" existing={english} locked={locked} />
+            <LanguagePanel
+              language="english"
+              papers={papers}
+              locked={locked}
+              isIntegrated={isIntegrated}
+              slots={slots}
+            />
           </TabsContent>
           <TabsContent value="filipino" className="pt-4">
-            <PaperForm language="filipino" existing={filipino} locked={locked} />
+            <LanguagePanel
+              language="filipino"
+              papers={papers}
+              locked={locked}
+              isIntegrated={isIntegrated}
+              slots={slots}
+            />
           </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * One language's worth of the form.
+ *
+ * A non-integrated school gets exactly what it has always got: a single form,
+ * no second row of tabs, no level anywhere in the markup. An integrated school
+ * gets its elementary and secondary papers as two tabs under this language,
+ * because they carry different names, advisers and section heads and cannot
+ * share one form.
+ */
+function LanguagePanel({
+  language,
+  papers,
+  locked,
+  isIntegrated,
+  slots,
+}: {
+  language: EventLanguage;
+  papers: SchoolPaperRow[];
+  locked: boolean;
+  isIntegrated: boolean;
+  slots: PaperSlot[];
+}) {
+  // Matched on level as well as language, so a row left behind by a
+  // reclassified school never loads into a form that cannot save it back.
+  const saved = (level: PaperLevel) =>
+    papers.find((paper) => paper.language === language && paper.level === level) ?? null;
+
+  if (!isIntegrated) {
+    return (
+      <PaperForm language={language} level="whole" existing={saved("whole")} locked={locked} />
+    );
+  }
+
+  const filled = (level: PaperLevel) =>
+    slots.some((slot) => slot.language === language && slot.level === level && slot.filled);
+
+  return (
+    <Tabs defaultValue={INTEGRATED_LEVELS[0]}>
+      <TabsList className="w-full">
+        {INTEGRATED_LEVELS.map((level) => (
+          <TabsTrigger key={level} value={level} className="flex-1 gap-2">
+            {PAPER_LEVEL_LABEL[level]}
+            <CompletionDot complete={filled(level)} />
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {INTEGRATED_LEVELS.map((level) => (
+        <TabsContent key={level} value={level} className="pt-4">
+          <PaperForm
+            language={language}
+            level={level}
+            existing={saved(level)}
+            locked={locked}
+          />
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }
 
@@ -150,10 +272,12 @@ function CompletionDot({ complete }: { complete: boolean }) {
 
 function PaperForm({
   language,
+  level,
   existing,
   locked,
 }: {
   language: EventLanguage;
+  level: PaperLevel;
   existing: SchoolPaperRow | null;
   locked: boolean;
 }) {
@@ -166,13 +290,20 @@ function PaperForm({
     setDraft(toDraft(existing));
   }, [existing]);
 
+  // A non-integrated school has one form per language, so its field ids stay
+  // exactly what they were before levels existed. Only the two forms an
+  // integrated school shows under one language need the level to tell them
+  // apart, and a duplicate id would point both labels at the first field.
+  const fieldId = level === "whole" ? language : `${language}-${level}`;
+  const label = paperLabel(language, level);
+
   function patch(patchObj: Partial<PaperDraft>) {
     setDraft((prev) => ({ ...prev, ...patchObj }));
   }
 
   function handleSave() {
     setError(null);
-    const input = { language, ...draft };
+    const input = { language, level, ...draft };
     const parsed = schoolPaperSchema.safeParse(input);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Please check the form.");
@@ -185,7 +316,7 @@ function PaperForm({
         setError(result.error);
         return;
       }
-      toast.success(`${language === "english" ? "English" : "Filipino"} paper saved.`);
+      toast.success(`${label.charAt(0).toUpperCase()}${label.slice(1)} saved.`);
       router.refresh();
     });
   }
@@ -193,9 +324,9 @@ function PaperForm({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${language}-paper-name`}>Name of School Paper</Label>
+        <Label htmlFor={`${fieldId}-paper-name`}>Name of School Paper</Label>
         <Input
-          id={`${language}-paper-name`}
+          id={`${fieldId}-paper-name`}
           value={draft.paperName}
           disabled={locked}
           onChange={(e) => patch({ paperName: e.target.value })}
@@ -204,9 +335,9 @@ function PaperForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${language}-adviser-name`}>School Paper Adviser</Label>
+          <Label htmlFor={`${fieldId}-adviser-name`}>School Paper Adviser</Label>
           <Input
-            id={`${language}-adviser-name`}
+            id={`${fieldId}-adviser-name`}
             value={draft.adviserName}
             disabled={locked}
             onChange={(e) => patch({ adviserName: e.target.value })}
@@ -221,14 +352,14 @@ function PaperForm({
             className="flex h-8 items-center gap-4"
           >
             <div className="flex items-center gap-2">
-              <RadioGroupItem value="M" id={`${language}-adviser-m`} />
-              <Label htmlFor={`${language}-adviser-m`} className="text-sm font-normal">
+              <RadioGroupItem value="M" id={`${fieldId}-adviser-m`} />
+              <Label htmlFor={`${fieldId}-adviser-m`} className="text-sm font-normal">
                 Male
               </Label>
             </div>
             <div className="flex items-center gap-2">
-              <RadioGroupItem value="F" id={`${language}-adviser-f`} />
-              <Label htmlFor={`${language}-adviser-f`} className="text-sm font-normal">
+              <RadioGroupItem value="F" id={`${fieldId}-adviser-f`} />
+              <Label htmlFor={`${fieldId}-adviser-f`} className="text-sm font-normal">
                 Female
               </Label>
             </div>
@@ -237,9 +368,9 @@ function PaperForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${language}-principal-name`}>School Principal</Label>
+        <Label htmlFor={`${fieldId}-principal-name`}>School Principal</Label>
         <Input
-          id={`${language}-principal-name`}
+          id={`${fieldId}-principal-name`}
           value={draft.principalName}
           disabled={locked}
           onChange={(e) => patch({ principalName: e.target.value })}
@@ -330,7 +461,7 @@ function PaperForm({
         ) : (
           <>
             <Check className="size-4" />
-            Save {language === "english" ? "English" : "Filipino"} paper
+            Save {label}
           </>
         )}
       </Button>

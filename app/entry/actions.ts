@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { schoolPaperSchema } from "@/lib/validation/school-paper";
 import { entrySchema } from "@/lib/validation/entry";
+import { levelBelongsTo, PAPER_LEVEL_LABEL } from "@/lib/paper/level";
 import { capReason, validateEntryCounts, type UsageMap } from "@/lib/roster/limits";
 
 const DUPLICATE_EVENT_MESSAGE = "Your school already has an entry for this event.";
@@ -27,7 +28,7 @@ async function getSchoolId() {
 
   const { data: school } = await supabase
     .from("schools")
-    .select("id, submission_locked_at")
+    .select("id, submission_locked_at, is_integrated")
     .eq("auth_user_id", user.id)
     .single();
   if (!school) throw new Error("School not found");
@@ -36,6 +37,10 @@ async function getSchoolId() {
     supabase,
     schoolId: school.id as string,
     submissionLockedAt: (school.submission_locked_at as string | null) ?? null,
+    // Read from the column, never re-derived from the school's name: the
+    // division office can correct a school the name test got wrong, and a
+    // second derivation here would quietly overrule that correction.
+    isIntegrated: (school.is_integrated as boolean | null) ?? false,
   };
 }
 
@@ -53,7 +58,7 @@ export async function saveSchoolPaperAction(
     const message = parsed.error.issues[0]?.message;
     return { error: typeof message === "string" ? message : "Invalid input" };
   }
-  const { supabase, schoolId, submissionLockedAt } = await getSchoolId();
+  const { supabase, schoolId, submissionLockedAt, isIntegrated } = await getSchoolId();
   // Neither answer freezes anything now — a school that is not entering the
   // contest still keeps its information current, and one that is may correct a
   // typo. Only the school's own lock closes this form, and only the division
@@ -64,12 +69,28 @@ export async function saveSchoolPaperAction(
     };
   }
 
+  // The level arrives from the client, so it is a claim, not a fact. An
+  // integrated school owes an elementary and a secondary paper per language and
+  // never a `whole` one; every other school owes the reverse. Checked against
+  // this school's own `is_integrated`, read fresh above, so a forged level
+  // cannot write a row that no surface would show and the school could never
+  // edit again.
+  const { level } = parsed.data;
+  if (!levelBelongsTo(level, isIntegrated)) {
+    return {
+      error: isIntegrated
+        ? "This school files a separate elementary and secondary paper. Pick one of those."
+        : `This school files one paper per language, not a ${PAPER_LEVEL_LABEL[level].toLowerCase()} one.`,
+    };
+  }
+
   const { data: paper, error: upsertError } = await supabase
     .from("school_papers")
     .upsert(
       {
         school_id: schoolId,
         language: parsed.data.language,
+        level,
         paper_name: parsed.data.paperName,
         adviser_name: parsed.data.adviserName,
         adviser_gender: parsed.data.adviserGender,
@@ -77,7 +98,11 @@ export async function saveSchoolPaperAction(
         submitted_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "school_id,language" }
+      // Matches `school_papers_school_id_language_level_key`, the unique
+      // constraint migration 0016 put in place of (school_id, language). Naming
+      // the old pair here would make each save from an integrated school
+      // overwrite the other level's paper instead of sitting beside it.
+      { onConflict: "school_id,language,level" }
     )
     .select("id")
     .single();

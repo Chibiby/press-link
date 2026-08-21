@@ -27,4 +27,22 @@ describe("schoolPaperSchema", () => {
     const result = schoolPaperSchema.safeParse({ ...validInput, paperName: "  " });
     expect(result.success).toBe(false);
   });
+
+  // Every row on file before migration 0016 is a whole-school paper, and so is
+  // every save from a non-integrated school. Input that names no level has to
+  // keep meaning exactly that, or 300-odd schools save a level they never chose.
+  it("defaults a missing level to whole", () => {
+    const result = schoolPaperSchema.safeParse(validInput);
+    expect(result.success && result.data.level).toBe("whole");
+  });
+
+  it("keeps an explicit level", () => {
+    const result = schoolPaperSchema.safeParse({ ...validInput, level: "secondary" });
+    expect(result.success && result.data.level).toBe("secondary");
+  });
+
+  it("rejects a level that is not one of the three", () => {
+    const result = schoolPaperSchema.safeParse({ ...validInput, level: "junior_high" });
+    expect(result.success).toBe(false);
+  });
 });

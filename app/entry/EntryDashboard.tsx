@@ -35,6 +35,7 @@ export function EntryDashboard({
   paperFlow,
   paperStatus,
   participation,
+  isIntegrated,
 }: {
   entries: EntryRow[];
   types: EventTypeRow[];
@@ -48,6 +49,8 @@ export function EntryDashboard({
   /** The three-state label shared with the admin pages. */
   paperStatus: PaperStatus;
   participation: PaperParticipation;
+  /** Integrated schools file two papers per language — see lib/paper/level.ts. */
+  isIntegrated: boolean;
 }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<EntryRow | null>(null);
@@ -194,6 +197,7 @@ export function EntryDashboard({
         papers={papers}
         locked={paperFlow.submissionLocked}
         required={paperFlow.paperFormOpen}
+        isIntegrated={isIntegrated}
       />
     </div>
   );

@@ -59,7 +59,7 @@ export function levelBelongsTo(level: PaperLevel, isIntegrated: boolean): boolea
   return isIntegrated ? level !== "whole" : level === "whole";
 }
 
-/** One paper a school owes: a language at a level, and whether it is on file. */
+/** One paper a school could file: a language at a level, and whether it is on file. */
 export interface PaperSlot {
   language: EventLanguage;
   level: PaperLevel;
@@ -67,16 +67,23 @@ export interface PaperSlot {
 }
 
 /**
- * Every paper a school owes, in display order, marked filled or not.
+ * The full grid of papers a school *could* file, in display order, marked
+ * filled or not.
  *
- * An ordinary school owes two — English and Filipino, both `whole`. An
- * integrated school owes four: each language at each level. Language-major
+ * An ordinary school has two cells — English and Filipino, both `whole`. An
+ * integrated school has four: each language at each level. Language-major
  * order, so the two levels of one language sit together and the form reads
  * "English: elementary, secondary".
  *
  * Shared rather than derived per surface because three places ask this question
  * — the school's own form, the admin papers table and the summary sheet — and
  * three derivations is three chances to disagree about what a school still owes.
+ *
+ * **An unfilled cell is not a debt.** `paperFlowState` is explicit that one
+ * language is enough to clear the gate, so a school that filed only English is
+ * finished, not delinquent, and an empty Filipino cell must never be rendered
+ * as "1 outstanding". This returns the grid; deciding what a school still owes
+ * is the gate’s job, not this function’s.
  *
  * A stored row whose level contradicts its school (see `levelBelongsTo`) fills
  * nothing: it is stale data from before a school was reclassified, and counting
