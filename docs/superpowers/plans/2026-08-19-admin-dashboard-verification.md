@@ -305,9 +305,30 @@ catch it because both sides would have to be wrong in the same way to pass.
    tested. The brief predated it.
 2. The two `actions.ts` files in the diff are **renames with one forced import change**,
    not signature changes. §9.4 holds.
+## The final fix wave
 
-One item is parked from Task 14's review and is not a release blocker (Ruling 54):
-`EventDonut:78,119` — if `active` holds a slice key no longer in `summary.slices`, every
-segment dims at once. Unreachable today, because nothing re-renders the donut with a
-different dataset while a slice is selected. It becomes reachable the moment a filter is
-added to the dashboard donut, and it is a one-line guard.
+Applied after this verification pass, in one commit, with all four gates re-run clean
+(tsc, lint at baseline, 262 tests, production build). These are the items earlier reviews
+parked with a named destination rather than dropped:
+
+| Item | Origin | Change |
+|---|---|---|
+| `ParticipantFilterBar` `activeCount` omitted `unassigned` | Ruling 41 | `FILTER_KEYS` now matches `CoachFilterBar`'s; "Unassigned only" toggle added, mutually exclusive with "Multi-event only" |
+| `EventDonut` stale `active` key dimmed every segment | Ruling 54 | resolved to `null` when the key is not in `summary.slices` |
+| `donut.ts` docstring concluded "nothing is clamped" | Task 14 | restated as thresholds — clamp engages at 153 entries, first overhang at 305 |
+| `guard.ts` re-declared `SupabaseServerClient` | Task 17 note | imports the canonical export instead |
+| entries page exported `AdminPage` | Ruling 32 M2 | renamed `AdminEntriesPage` |
+| `PerSchoolTable` numbers had no thousands separator | Task 14 | `toLocaleString("en-PH")`, matching `KpiTile` and `EventDonut` |
+| `PerSchoolTable` and overall-data redundant `overflow-x-auto` | Task 14 | removed — `ui/table.tsx` already wraps every `Table` in a scroll container |
+
+**The `ParticipantFilterBar` item was the only one with live user impact**, and it is worth
+naming as a §9.9-adjacent defect that the automated gates could never have caught: arriving
+from the dashboard's "Learners with no entry" row cut the table from 645 rows to 74 with
+nothing on screen saying it was filtered and no control to clear it. The count was right;
+the screen did not admit it was a subset.
+
+**Still open, and not fixed here:** Ruling 32's M1, pinned to this task. The entries page's
+badge derives its denominator from rows actually returned, so a division large enough to hit
+PostgREST's row cap would read "N of N entries" while more exist. True today at 130 entries,
+far below any plausible cap, and confirming it against the live database needs a query this
+session did not run. It stays a forward-looking concern with a known trigger.
