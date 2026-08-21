@@ -11,6 +11,7 @@ function row(
   return {
     schoolId: schoolName.toLowerCase().replace(/\s+/g, "-"),
     schoolName,
+    districtId: "district-1",
     districtName: "District I",
     learners,
     coaches,

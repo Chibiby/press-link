@@ -18,6 +18,8 @@
 export interface SchoolRollupRow {
   schoolId: string;
   schoolName: string;
+  /** Needed by the overall-data filter; the table itself shows the name. */
+  districtId: string;
   districtName: string;
   learners: number;
   coaches: number;

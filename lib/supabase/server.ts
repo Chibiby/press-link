@@ -25,3 +25,10 @@ export async function createClient() {
     }
   );
 }
+
+/**
+ * The client `createClient()` returns. Exported because modules that take a client as
+ * an argument — rather than building their own — need to name it, and a private alias
+ * in each of them would be the same type spelled three times.
+ */
+export type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { PageHeading } from "@/components/admin/shell/PageHeading";
@@ -52,9 +53,9 @@ const EVENT_TITLE = "Schools Press Conference 2026";
  * set, and it is what lets the "Needs attention" panel carry an id the topbar bell can
  * link to.
  *
- * `action` is unused on this page. Task 17 fills it on the per-school panel (an Excel
- * button) and Task 22 fills it on the activity panel (a "View all" link); leaving the
- * slot here means neither task has to reopen this helper.
+ * `action` carries the per-school panel's two links. Task 22 fills the activity panel's
+ * slot with a "View all" link; the slot exists so neither task has to reopen this
+ * helper.
  */
 function Panel({
   id,
@@ -112,6 +113,20 @@ export default async function AdminDashboardPage() {
           className="lg:col-span-2"
           title="Registration by school"
           description="Learners, coaches and entries per school, the busiest first."
+          action={
+            <div className="flex items-center gap-2">
+              <Button asChild size="sm" variant="ghost">
+                <Link href="/admin/overall-data">
+                  View all {data.perSchool.activeSchools} schools
+                </Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                {/* A route handler, so a plain anchor — next/link would build a
+                    workbook on every hover. */}
+                <a href="/admin/overall-data/export">Export to Excel</a>
+              </Button>
+            </div>
+          }
         >
           <PerSchoolTable summary={data.perSchool} />
         </Panel>

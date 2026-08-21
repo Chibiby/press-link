@@ -94,3 +94,32 @@ export function summarisePerEvent(
     otherTypes: tail.length,
   };
 }
+
+/** One entry's event type, as the overall-data page selects them. */
+export interface EventTypeRow {
+  typeId: string;
+  typeName: string;
+}
+
+/**
+ * Rows to counts, for the surfaces that must narrow by district — which a `count`-only
+ * grouped query cannot express, so they fetch one row per entry and fold here.
+ *
+ * Order is first-seen and deliberately not sorted: `summarisePerEvent` ranks, and two
+ * functions ranking the same list is how two surfaces end up disagreeing about which
+ * type is biggest.
+ */
+export function countByEventType(rows: EventTypeRow[]): EventTypeCount[] {
+  const byType = new Map<string, EventTypeCount>();
+
+  for (const row of rows) {
+    const found = byType.get(row.typeId);
+    if (found) {
+      found.entries += 1;
+    } else {
+      byType.set(row.typeId, { typeId: row.typeId, typeName: row.typeName, entries: 1 });
+    }
+  }
+
+  return [...byType.values()];
+}

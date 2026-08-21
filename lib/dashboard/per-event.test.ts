@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarisePerEvent, type EventTypeCount } from "./per-event";
+import { countByEventType, summarisePerEvent, type EventTypeCount } from "./per-event";
 
 function type(typeName: string, entries: number): EventTypeCount {
   return { typeId: typeName.toLowerCase().replace(/\s+/g, "-"), typeName, entries };
@@ -91,5 +91,35 @@ describe("summarisePerEvent", () => {
     const counts = [type("Bravo", 1), type("Alfa", 9)];
     summarisePerEvent(counts, { topN: 8, typesTotal: 16 });
     expect(counts.map((c) => c.typeName)).toEqual(["Bravo", "Alfa"]);
+  });
+});
+
+describe("countByEventType", () => {
+  it("counts one row per entry into one row per type", () => {
+    const counts = countByEventType([
+      { typeId: "t1", typeName: "News Writing" },
+      { typeId: "t2", typeName: "Editorial Writing" },
+      { typeId: "t1", typeName: "News Writing" },
+    ]);
+
+    expect(counts).toEqual([
+      { typeId: "t1", typeName: "News Writing", entries: 2 },
+      { typeId: "t2", typeName: "Editorial Writing", entries: 1 },
+    ]);
+  });
+
+  it("returns an empty list for no rows, not a zero-filled one", () => {
+    // A district with no entries must produce an empty table, not sixteen zeroes.
+    expect(countByEventType([])).toEqual([]);
+  });
+
+  it("keeps first-seen order, leaving the ranking to summarisePerEvent", () => {
+    const counts = countByEventType([
+      { typeId: "b", typeName: "Bravo" },
+      { typeId: "a", typeName: "Alpha" },
+      { typeId: "a", typeName: "Alpha" },
+    ]);
+
+    expect(counts.map((c) => c.typeId)).toEqual(["b", "a"]);
   });
 });

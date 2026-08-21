@@ -22,8 +22,8 @@ import {
 import {
   summarisePerSchool,
   type PerSchoolSummary,
-  type SchoolRollupRow,
 } from "@/lib/dashboard/per-school";
+import { fetchSchoolFacts, type SchoolFacts } from "@/lib/dashboard/school-facts";
 import { buildTimeline, type Timeline } from "@/lib/dashboard/timeline";
 import {
   LANGUAGE_LABEL,
@@ -32,7 +32,6 @@ import {
   type EventLevel,
 } from "@/lib/events-catalog";
 import type { PaperParticipation } from "@/lib/paper/gate";
-import { paperStatus } from "@/lib/paper/status";
 import { formatParticipantNumber } from "@/lib/roster/limits";
 import { surnameFirst } from "@/lib/roster/names";
 
@@ -133,124 +132,18 @@ export const loadAdminName = cache(async (): Promise<string> => {
 
   return data?.full_name?.trim() || "Division Admin";
 });
-
-interface SchoolFactRow {
-  id: string;
-  name: string;
-  district_id: string | null;
-  paper_participation: PaperParticipation;
-  submission_locked_at: string | null;
-  districts: { name: string } | null;
-  participants: { count: number }[];
-  coaches: { count: number }[];
-  entries: { count: number }[];
-  school_papers: { count: number }[];
-}
-
-interface SchoolFacts {
-  /**
-   * Every school that has engaged with the system at all, ranked by the panel. See
-   * the union in the loader for what "engaged" means and why it is four tables.
-   */
-  active: SchoolRollupRow[];
-  registeredSchools: number;
-  schoolsWithEntries: number;
-  districtsRegistered: number;
-  districtsWithEntries: number;
-  schoolsLocked: number;
-  schoolsOpenWithEntries: number;
-  schoolsPaperNotStarted: number;
-  schoolsWithLearnersButNoEntry: number;
-}
-
 /**
- * One query, nine facts. Each `(count)` is an embedded aggregate, which PostgREST
- * returns as a one-element array — the same shape `/admin/entries` already unwraps for
- * its `school_papers(count)`.
+ * The dashboard's slice of the schools query. The query itself lives in
+ * `lib/dashboard/school-facts.ts` because `/admin/overall-data` and its export route
+ * need the same numbers, and a route handler cannot come through this file:
+ * `requireAdmin()` redirects, and a redirect answered to a click that expected a
+ * spreadsheet returns a login page with a 200.
  *
- * The 332 rows are filtered in JavaScript because PostgREST cannot filter or order on
- * an embedded aggregate: `participants(count) > 0` is not expressible as a query. One
- * request for 332 narrow rows is cheaper than the alternatives.
- *
- * `count: "exact"` rides along on the same request. `registeredSchools` comes from that
- * header total rather than from `rows.length`, so the "of N registered" denominator
- * stays right even if PostgREST's row cap ever truncated the window.
+ * cache() still belongs here, not there — it keys on arguments, and the shared function
+ * takes a client, so memoising it there would key on a different object per caller.
  */
 export const loadSchoolFacts = cache(async (): Promise<SchoolFacts> => {
-  const supabase = await getAdminClient();
-  const { data, count } = await supabase
-    .from("schools")
-    .select(
-      "id, name, district_id, paper_participation, submission_locked_at, districts(name), participants(count), coaches(count), entries(count), school_papers(count)",
-      { count: "exact" }
-    )
-    .order("name")
-    .overrideTypes<SchoolFactRow[]>();
-
-  const rows = (data ?? []).map((row) => ({
-    schoolId: row.id,
-    schoolName: row.name,
-    districtId: row.district_id,
-    districtName: row.districts?.name ?? "",
-    learners: row.participants?.[0]?.count ?? 0,
-    coaches: row.coaches?.[0]?.count ?? 0,
-    entries: row.entries?.[0]?.count ?? 0,
-    paperCount: row.school_papers?.[0]?.count ?? 0,
-    participation: row.paper_participation,
-    lockedAt: row.submission_locked_at,
-  }));
-
-  const withEntries = rows.filter((row) => row.entries > 0);
-
-  return {
-    // "Engaged" is the union of four tables, not one table as a proxy for the rest.
-    // Entries, participants, coaches and school_papers overlap without coinciding:
-    // measured against production today, 39 schools are engaged and 2 of them reach
-    // that set through school_papers alone. This filter *is* the panel's
-    // "N of 332 schools" line — summarisePerSchool() takes `active.length` verbatim
-    // and does no filtering of its own — so dropping school_papers here would quietly
-    // understate engagement. A paper-only school contributes 0 to all three numeric
-    // columns, so no total moves; only the school count does.
-    active: rows
-      .filter(
-        (row) =>
-          row.learners > 0 || row.coaches > 0 || row.entries > 0 || row.paperCount > 0
-      )
-      .map(({ schoolId, schoolName, districtName, learners, coaches, entries }) => ({
-        schoolId,
-        schoolName,
-        districtName,
-        learners,
-        coaches,
-        entries,
-      })),
-    registeredSchools: count ?? rows.length,
-    schoolsWithEntries: withEntries.length,
-    // A school with no district still counts as registered, so the id is only
-    // deduplicated where it exists.
-    districtsRegistered: new Set(rows.map((row) => row.districtId).filter(Boolean)).size,
-    districtsWithEntries: new Set(withEntries.map((row) => row.districtId).filter(Boolean))
-      .size,
-    schoolsLocked: rows.filter((row) => row.lockedAt !== null).length,
-    // The number buildTimeline() needs: a school still holding the door open on real
-    // work. A locked school with no entries does not keep registration open, and an
-    // unlocked school with no entries has nothing to submit.
-    schoolsOpenWithEntries: rows.filter((row) => row.entries > 0 && row.lockedAt === null)
-      .length,
-    // paperStatus() is the same derivation /admin/school-papers filters on, so this
-    // count and `?status=incomplete` cannot disagree: `paperCount < 1` there is a
-    // distinct-language set, and no rows means no languages either way.
-    schoolsPaperNotStarted: rows.filter(
-      (row) =>
-        paperStatus({
-          participation: row.participation,
-          paperCount: row.paperCount,
-          lockedAt: row.lockedAt,
-        }) === "incomplete"
-    ).length,
-    schoolsWithLearnersButNoEntry: rows.filter((row) => row.learners > 0 && row.entries === 0)
-      .length,
-  };
+  return fetchSchoolFacts(await getAdminClient());
 });
 
 interface RosterFacts {
