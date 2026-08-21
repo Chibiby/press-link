@@ -25,8 +25,10 @@ export default async function AuditLogsPage() {
         <CardContent>
           <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
             <li>
-              <code className="text-xs">created_at</code> on schools, participants, coaches
-              and entries — which the dashboard&apos;s Recent activity panel already reads.
+              <code className="text-xs">entries.submitted_at</code>,{" "}
+              <code className="text-xs">participants.created_at</code> and{" "}
+              <code className="text-xs">coaches.created_at</code> — three of the six columns
+              the dashboard&apos;s Recent activity panel already reads.
             </li>
             <li>
               <code className="text-xs">submission_locked_at</code> and the school-paper

@@ -27,10 +27,11 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            There is no division-wide switch. Locking and unlocking is done one school at a
-            time from the school papers page — it is a write, and this dashboard does not
-            make writes. That page is also where the current per-school lock state is read,
-            so this one does not restate a tally it cannot keep in step.
+            There is no division-wide switch. A school locks its own submission; the
+            division office cannot lock one, only reopen one. Unlocking on the school
+            papers page and resetting a school&apos;s paper answer on the participants page
+            both clear the lock, one school at a time — the only two writes this dashboard
+            makes to division data.
           </p>
           <Button asChild variant="outline" size="sm">
             <Link href="/admin/school-papers">Go to School Papers</Link>
