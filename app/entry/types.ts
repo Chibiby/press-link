@@ -67,3 +67,23 @@ export interface SchoolPaperRow {
   principal_name: string;
   paper_staff: PaperStaffRow[];
 }
+
+
+/**
+ * A school paper retired by migration 0017 because the school turned out to be
+ * integrated and now owes one paper per level.
+ *
+ * Read-only, and shown to the school so it is not asked to re-type an adviser and
+ * a set of section heads it already submitted once. Staff is jsonb here rather
+ * than a joined table: the archive inlines it, because paper_staff cascades away
+ * with the row it belonged to.
+ */
+export interface ArchivedPaperRow {
+  id: string;
+  language: EventLanguage;
+  paper_name: string;
+  adviser_name: string;
+  principal_name: string;
+  archived_at: string;
+  staff: { full_name: string; title: string }[];
+}

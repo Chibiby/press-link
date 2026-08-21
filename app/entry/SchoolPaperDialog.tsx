@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Check, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { saveSchoolPaperAction } from "./actions";
-import type { SchoolPaperRow } from "./types";
+import type { ArchivedPaperRow, SchoolPaperRow } from "./types";
 import { schoolPaperSchema } from "@/lib/validation/school-paper";
 import {
   INTEGRATED_LEVELS,
@@ -104,6 +104,7 @@ export function SchoolPaperDialog({
   locked,
   required,
   isIntegrated,
+  archivedPapers,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -122,6 +123,7 @@ export function SchoolPaperDialog({
    * from the `schools.is_integrated` column, never re-derived from the name.
    */
   isIntegrated: boolean;
+  archivedPapers: ArchivedPaperRow[];
 }) {
   // One source for what this school owes and what is on file, so the tab
   // badges, the outstanding line and the forms cannot disagree. A saved row
@@ -165,6 +167,34 @@ export function SchoolPaperDialog({
             Not yet filled in:{" "}
             {outstanding.map((slot) => paperLabel(slot.language, slot.level)).join(", ")}.
           </p>
+        )}
+
+        {archivedPapers.length > 0 && (
+          /* The school filed these before it was known to be integrated. They were
+             retired rather than deleted, and are shown here so nobody has to
+             reconstruct an adviser and a set of section heads from memory. */
+          <div className="rounded-md border border-dashed p-3 text-sm">
+            <p className="font-medium">Your earlier school paper needs re-filing</p>
+            <p className="mt-1 text-muted-foreground">
+              Your school files a separate elementary and secondary paper, so what you
+              submitted before could not be split between them. It is kept here for
+              reference — copy from it as you fill in the forms below.
+            </p>
+            <ul className="mt-2 space-y-1 text-muted-foreground">
+              {archivedPapers.map((paper) => (
+                <li key={paper.id}>
+                  <span className="font-medium text-foreground">
+                    {LANGUAGE_LABEL[paper.language]}
+                  </span>{" "}
+                  — {paper.paper_name}, adviser {paper.adviser_name}, principal{" "}
+                  {paper.principal_name}
+                  {paper.staff.length > 0 && (
+                    <> · {paper.staff.map((member) => member.full_name).join(", ")}</>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <Tabs defaultValue="english">

@@ -37,10 +37,11 @@ select s.name,
 - **No rows** — nothing is stranded. Apply the migration as written; there is nothing to decide.
 - **Some rows** — pick one of these, and say which so the choice is on the record:
 
-  1. **Assign the existing paper to a level.** One `UPDATE` per affected school, choosing elementary or secondary from what the paper actually is. Preserves the data and the school keeps editing it. Requires someone to look at each paper — there are unlikely to be many.
-  2. **Leave them stranded and tell the schools to re-file.** Nothing is deleted; the rows stay in the table and can be read by hand or reassigned later. Cheapest, but a school that already did the work is asked to do it again.
+**This is now decided, and `0017_refile_integrated_papers.sql` implements it: the school re-files.**
 
-  Option 1 is the right default when the count is small. Do not guess the level from the paper name.
+Splitting one paper into two would mean guessing which level an existing adviser and set of section heads described, and a wrong guess puts the wrong adviser against a real contest entry. So the old row is retired and the school files again, per level.
+
+The query above is still worth running first — it tells you how many schools will be asked to re-file, which is a number you want to know before it happens rather than after.
 
 ## Applying it
 
@@ -88,3 +89,69 @@ What has **no** test, and cannot easily get one:
 - **The migration itself.** Nothing in this repo runs SQL in CI, so the `\y` word-boundary regex, the constraint swap and the backfill are unverified against a real Postgres. The first run *is* the test — which is why the query in "The one thing to decide" should be run first, on a database you can afford to be surprised by.
 - **The upsert conflict target.** `onConflict: "school_id,language,level"` must name the new constraint exactly. A mismatch does not fail at compile time; it fails at runtime the first time a school saves a paper.
 - **Every screen.** No browser pass has been run on any of this.
+
+---
+
+## Migration 0017 — retiring the papers that must be re-filed
+
+Run after 0016. What it does, exactly:
+
+1. Creates `school_papers_archive` and copies every affected row into it, with its section heads inlined as jsonb.
+2. Deletes those rows from `school_papers`.
+3. Leaves `schools.paper_participation` alone.
+
+**Affected = the school is integrated AND the paper's level is `whole` AND the school is not locked.** Everything else is untouched.
+
+**What it does not touch — and this is checkable, not just asserted.** No statement in 0017 names `participants`, `coaches`, `entries`, `entry_participants` or `entry_coaches`. A school's roster and its event entries survive exactly as they were. Verify with:
+
+```bash
+grep -nE "participants|coaches|entries" supabase/migrations/0017_refile_integrated_papers.sql
+```
+
+The only hits are in prose comments saying they are not touched.
+
+### Why an archive table and not a flag
+
+An `invalidated_at` column on `school_papers` would have changed what `school_papers(count)` means in four places that currently read it as "has this school filed anything". Each would have had to learn to exclude invalidated rows, or start lying. Moving the row out keeps `school_papers` meaning exactly what it means today, so **no existing query changes**.
+
+Nothing is deleted in the sense that matters: the paper name, adviser, principal and section heads are all preserved in the archive, and the school can read its own.
+
+### Locked schools are skipped, and need handling by hand
+
+A locked school cannot re-file — `paperFlowState` returns `paperFormOpen: false` for it. Retiring its paper would leave it with nothing on file, no way to put anything back, and `paperStatus` still reporting **"Submitted to contest"** with zero papers, because that rule was written when a locked school always had one. That is a false claim about the competition record that no school could correct, so 0017 excludes them.
+
+Find them:
+
+```sql
+select s.name, s.submission_locked_at, count(p.id) as papers
+  from schools s join school_papers p on p.school_id = s.id
+ where s.is_integrated and p.level = 'whole'
+   and s.submission_locked_at is not null
+ group by s.name, s.submission_locked_at
+ order by s.name;
+```
+
+For each: unlock (`admin_unlock_submission`), let the school re-file both levels, lock again. Re-running 0017 afterwards is safe — it is idempotent and will pick up anything unlocked since.
+
+### What the school sees afterwards
+
+Its paper slots read empty, so the entry flow reopens the paper form and asks it to file elementary and secondary. **Its roster is gated until it does** — `paperFlowState` puts a school with no paper back in the `fill` phase, which is what "must re-file" means in this app. The participants, coaches and entries themselves are untouched and reappear the moment a paper is saved.
+
+The dialog shows the retired paper's name, adviser, principal and section heads, so nobody re-types from memory.
+
+### After applying
+
+```sql
+-- nobody is left holding a paper that contradicts their school
+select s.name, p.language, p.level
+  from schools s join school_papers p on p.school_id = s.id
+ where (s.is_integrated and p.level = 'whole')
+    or (not s.is_integrated and p.level <> 'whole');
+
+-- who was asked to re-file
+select s.name, count(*) as retired
+  from school_papers_archive a join schools s on s.id = a.school_id
+ group by s.name order by s.name;
+```
+
+The first should return only locked schools you have not yet handled.

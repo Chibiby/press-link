@@ -8,6 +8,7 @@ import type {
   EntryRow,
   RosterCoach,
   RosterParticipant,
+  ArchivedPaperRow,
   SchoolPaperRow,
 } from "./types";
 import { paperFlowState, type PaperParticipation } from "@/lib/paper/gate";
@@ -123,6 +124,7 @@ export default async function EntryPage() {
 
   const [
     { data: papers },
+    { data: archivedPapers },
     { data: types },
     { data: events },
     { data: rawParticipants },
@@ -136,6 +138,16 @@ export default async function EntryPage() {
       )
       .eq("school_id", school.id)
       .overrideTypes<SchoolPaperRow[]>(),
+    // Retired by migration 0017 when this school turned out to be integrated.
+    // Fetched for every school because the query costs nothing when it matches
+    // nothing, and branching on is_integrated here would mean a second round trip
+    // for the schools that actually need it.
+    supabase
+      .from("school_papers_archive")
+      .select("id, language, paper_name, adviser_name, principal_name, archived_at, staff")
+      .eq("school_id", school.id)
+      .order("language")
+      .overrideTypes<ArchivedPaperRow[]>(),
     supabase
       .from("event_types")
       .select("id, slug, category, name_en, name_fil, min_participants, max_participants, sort_order")
@@ -235,6 +247,7 @@ export default async function EntryPage() {
           types={types ?? []}
           events={events ?? []}
           papers={papers ?? []}
+          archivedPapers={archivedPapers ?? []}
           participants={(rawParticipants ?? []).map(toRosterParticipant)}
           coaches={(rawCoaches ?? []).map(toRosterCoach)}
           usage={usage}

@@ -14,6 +14,7 @@ import type {
   PaperParticipation,
   RosterCoach,
   RosterParticipant,
+  ArchivedPaperRow,
   SchoolPaperRow,
 } from "./types";
 import type { PaperFlowState } from "@/lib/paper/gate";
@@ -29,6 +30,7 @@ export function EntryDashboard({
   types,
   events,
   papers,
+  archivedPapers,
   participants,
   coaches,
   usage,
@@ -41,6 +43,7 @@ export function EntryDashboard({
   types: EventTypeRow[];
   events: EventRow[];
   papers: SchoolPaperRow[];
+  archivedPapers: ArchivedPaperRow[];
   participants: RosterParticipant[];
   coaches: RosterCoach[];
   usage: UsageMap;
@@ -195,6 +198,7 @@ export function EntryDashboard({
         open={paperOpen}
         onOpenChange={setPaperOpenOverride}
         papers={papers}
+        archivedPapers={archivedPapers}
         locked={paperFlow.submissionLocked}
         required={paperFlow.paperFormOpen}
         isIntegrated={isIntegrated}
