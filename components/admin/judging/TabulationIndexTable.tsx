@@ -86,10 +86,12 @@ export function TabulationIndexTable({
                 <TableCell>
                   <div className="flex flex-col items-start gap-1">
                     <EventJudgingBadge status={row.state.status} />
-                    {/* Width-capped for the same reason as the judges table: an
-                        uncapped status sentence widens this column until the sheet
-                        link is off the side of the screen. */}
-                    <span className="block max-w-[30ch] text-xs text-muted-foreground">
+                    {/* Capped and wrapped for the same reason as the judges table.
+                        `TableCell`'s base `whitespace-nowrap` is inherited, so the cap
+                        alone would clamp the box and spill the sentence across the
+                        Sheet link; and with no cap at all this column widens until
+                        that link is off the side of the screen. */}
+                    <span className="block max-w-[30ch] whitespace-normal text-xs text-muted-foreground">
                       {row.state.reason}
                     </span>
                   </div>

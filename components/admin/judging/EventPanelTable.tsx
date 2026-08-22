@@ -131,11 +131,14 @@ export function EventPanelTable({
                     <EventJudgingBadge status={row.state.status} />
                     {/* Printed verbatim. The state machine writes this sentence so that
                         every surface says the same thing about the same state. */}
-                    {/* Capped and blockified so the sentence wraps. Left inline it is a
-                        flex item that auto table-layout will widen the whole Status
-                        column to fit on one line, dragging every other column off the
-                        side of a phone. */}
-                    <span className="block max-w-[30ch] text-xs text-muted-foreground">
+                    {/* `whitespace-normal` is what makes the cap work: `TableCell` sets
+                        `whitespace-nowrap` in its base class and `white-space` is
+                        inherited, so the cap on its own clamps the box and lets the
+                        sentence run out of it and across the Panel sheet column. With
+                        both, it wraps — and the Status column stops widening to fit one
+                        line, which would drag every other column off the side of a
+                        phone. */}
+                    <span className="block max-w-[30ch] whitespace-normal text-xs text-muted-foreground">
                       {row.state.reason}
                     </span>
                   </div>
