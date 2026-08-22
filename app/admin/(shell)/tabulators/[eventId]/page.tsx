@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { EventJudgingBadge } from "@/components/admin/judging/EventJudgingBadge";
-import { JudgingPreviewNotice } from "@/components/admin/judging/JudgingPreviewNotice";
+import { CUT_NOT_ON_FILE } from "@/components/admin/judging/empty-states";
 import { TabulationTable } from "@/components/admin/judging/TabulationTable";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -11,18 +11,18 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { tabulationSummary } from "@/lib/judging/tabulation";
-import type { TabulationRow } from "@/lib/judging/types";
 
-import { eventFullLabel, loadJudgingEvent } from "../../judging-data";
+import { eventFullLabel, loadEventSheet } from "../../judging-data";
 
 /**
  * One event's identified results sheet.
  *
- * A **layout preview**: the sheet's rows come from `judge_ranks` joined back to
- * `participants`, `schools` and `school_papers`, and the first of those arrives with
- * migration 0018. The columns, their order and the caveat on total rank are the
- * finished sheet's, because they come from `TABULATION_COLUMNS` — the same array the
- * workbook export reads.
+ * Every row and every figure is read: the standings come from `judge_ranks` and
+ * `round2_qualifiers` through `finalStandings`, and the names, coaches, schools and
+ * papers beside them come from the entries. `loadEventSheet` does both halves and
+ * `attachIdentities` joins them. The columns, their order and the caveat on total
+ * rank come from `TABULATION_COLUMNS` — the same array the workbook export reads, so
+ * the page and the spreadsheet cannot disagree.
  *
  * This is the identified side of the wall. A judge never reaches it: the anonymous
  * boards live on `/admin/judges/[eventId]` and in the judge portal, and the join
@@ -34,7 +34,7 @@ export default async function EventSheetPage({
   params: Promise<{ eventId: string }>;
 }) {
   const { eventId } = await params;
-  const { row, error } = await loadJudgingEvent(eventId);
+  const { row, rows, unidentified, error } = await loadEventSheet(eventId);
 
   // A failed query must not render as a missing event: `notFound()` here would tell a
   // tabulator the contest does not exist (non-negotiable 5).
@@ -45,9 +45,8 @@ export default async function EventSheetPage({
         <Alert variant="destructive">
           <AlertTitle>Could not load this event</AlertTitle>
           <AlertDescription>
-            The contest catalog could not be loaded, so this event&rsquo;s sheet is not shown —
-            this is not a report that the event has no results. Please try refreshing the
-            page.
+            {error} No figure below is shown, because a blank sheet here would read as an
+            event nobody has ranked. Please try refreshing the page.
           </AlertDescription>
         </Alert>
       </div>
@@ -56,16 +55,25 @@ export default async function EventSheetPage({
 
   if (!row) notFound();
 
-  /**
-   * The sheet's rows.
-   *
-   * Empty because `judge_ranks` and `round2_qualifiers` do not exist yet — one
-   * binding, so the figures above the table and the table itself are counted off the
-   * same array and cannot disagree. When migration 0018 lands, this line is where
-   * the loader's rows arrive; nothing below it changes.
-   */
-  const rows: TabulationRow[] = [];
   const summary = tabulationSummary(rows);
+
+  /**
+   * With no cut on file there is no field to divide, so no standings were computed and
+   * every figure on this page is unavailable rather than nought (non-negotiable 5).
+   * `events.round2_cut` is `not null default 10`, so this needs a failed read to happen
+   * at all — but it is the one absence left on this page, and an unmeasured zero here
+   * would be read as a contest nobody entered.
+   */
+  const noCut = row.standings === null;
+
+  /**
+   * One tile's figure and the line under it. Shared by all four so a blank tile can
+   * never end up carrying a subtitle that explains a number it is not showing.
+   */
+  const tile = (value: number, subtitle: string) =>
+    noCut
+      ? { value: "—", subtitle: `${CUT_NOT_ON_FILE} ${subtitle}`, muted: true }
+      : { value, subtitle, muted: false };
 
   return (
     <div className="space-y-6">
@@ -78,7 +86,6 @@ export default async function EventSheetPage({
 
       <PageHeading
         title={row.typeNameEn}
-        badge="Layout preview"
         subtitle={`${eventFullLabel(row.level, row.language)} · ${row.entries} ${
           row.entries === 1 ? "entry" : "entries"
         } on file`}
@@ -94,7 +101,7 @@ export default async function EventSheetPage({
               size="sm"
               variant="outline"
               disabled
-              title="The workbook export needs locked results, which migration 0018 records in event_rounds."
+              title="No per-event workbook has been written yet. The export on the sheets index covers every event, this one among them."
             >
               <Download />
               Export sheet
@@ -103,36 +110,58 @@ export default async function EventSheetPage({
         }
       />
 
-      <JudgingPreviewNotice />
+      {/* A failed join is a fault, not a quiet grey number: the ranks below are correct
+          and the contestant they belong to could not be named, and a tabulator has to
+          know which rows those are before reading a placement off them. */}
+      {unidentified.length > 0 ? (
+        <Alert variant="destructive">
+          <AlertTitle>
+            {unidentified.length === 1
+              ? "One contestant could not be identified"
+              : `${unidentified.length} contestants could not be identified`}
+          </AlertTitle>
+          <AlertDescription>
+            {unidentified.length === 1 ? "Code" : "Codes"} {unidentified.join(", ")}{" "}
+            {unidentified.length === 1 ? "is" : "are"} ranked on this sheet but could not be
+            joined back to a school. The ranks are right; the rows are kept and marked
+            rather than dropped, because a dropped row would look like a contestant who
+            never entered.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={Users}
           label="Contestants"
-          value={summary.contestants}
-          muted
-          subtitle="The unit set is drawn when round 1 opens. Individual events rank each participant, group events rank the entry."
+          {...tile(
+            summary.contestants,
+            "The unit set drawn when round 1 opened. Individual events rank each participant, group events rank the entry."
+          )}
         />
         <StatCard
           icon={Scissors}
           label="Qualifiers"
-          value={summary.qualifiers}
-          muted
-          subtitle="Round 1's cut. Contestants tied at the line all go through, so a cut of ten can send eleven."
+          {...tile(
+            summary.qualifiers,
+            "Round 1's cut. Contestants tied at the line all go through, so a cut of ten can send eleven."
+          )}
         />
         <StatCard
           icon={Medal}
           label="Placed"
-          value={summary.placed}
-          muted
-          subtitle="Round 2 alone decides the winners. A contestant's total across both rounds is informational only."
+          {...tile(
+            summary.placed,
+            "Round 2 alone decides the winners. A contestant's total across both rounds is informational only."
+          )}
         />
         <StatCard
           icon={CircleSlash}
           label="Unidentified"
-          value={summary.unidentified}
-          muted
-          subtitle="A contestant whose identity cannot be resolved is printed as Unidentified and counted here, never dropped from the sheet."
+          {...tile(
+            summary.unidentified,
+            "A contestant whose identity cannot be resolved is printed as Unidentified and counted here, never dropped from the sheet."
+          )}
         />
       </section>
 
@@ -145,9 +174,17 @@ export default async function EventSheetPage({
           <CardDescription>{row.state.reason}</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Both messages are about contestants, not ranks. A seated panel with entries
+              fills this table the moment round 1 opens — the rank cells stay empty until
+              a judge files, but the rows are there, so "no ranks on file" would be the
+              wrong explanation for an empty one. */}
           <TabulationTable
             rows={rows}
-            emptyMessage="No ranks are on file for this event, so there is no sheet to show yet."
+            emptyMessage={
+              noCut
+                ? `${CUT_NOT_ON_FILE} Without one there is no field to divide, so no standings were drawn.`
+                : "This event has no contestants on file, so there is no sheet to draw."
+            }
           />
         </CardContent>
       </Card>

@@ -1,11 +1,8 @@
 import { ClipboardList, Download, Gavel, Lock, Users } from "lucide-react";
 
 import { EventPanelTable } from "@/components/admin/judging/EventPanelTable";
+import { NO_JUDGES_ON_FILE } from "@/components/admin/judging/empty-states";
 import { JudgeRosterTable } from "@/components/admin/judging/JudgeRosterTable";
-import {
-  JudgingPreviewNotice,
-  JUDGING_NOT_INSTALLED,
-} from "@/components/admin/judging/JudgingPreviewNotice";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -18,19 +15,21 @@ import { loadJudgingEventIndex } from "../judging-data";
 /**
  * The division's oversight of the judging panels.
  *
- * This page is a **layout preview**: the judging tables do not exist yet, so the
- * roster is empty and every panel is unseated. What is real is the event list and
- * the entry counts, and what is computed is each event's status — the same status
- * function the finished page will call, given a genuinely empty panel. See
- * `JudgingPreviewNotice`, which says all of that on screen rather than leaving an
- * admin to work out whether the page is broken or unbuilt.
+ * Every figure on this page is read from the database: the roster from `judges`, the
+ * panels from `judge_assignments`, the sheet count from `judge_sheets` and each
+ * event's status from the ranks those sheets hold. A zero here means the row is not
+ * there — it is not a placeholder standing in for a table that is missing.
+ *
+ * What is still absent is the *write* half. The RPCs that add a judge, seat a panel
+ * and close a round have not been built, so the controls that would call them stay
+ * disabled and say so. Reading is finished; writing is not.
  *
  * Per spec §5 the judge-facing side of this feature lives at `/judge`, behind its
  * own login and its own guard. Nothing here reaches it; this is the admin console
  * view of the same panels.
  */
 export default async function JudgesPage() {
-  const { rows, error } = await loadJudgingEventIndex();
+  const { rows, judges, sheetsSubmitted, error } = await loadJudgingEventIndex();
 
   // A failed query would leave `rows` empty, and an empty index renders as "no
   // events" with every figure at zero — which reads as a division that runs no
@@ -39,15 +38,12 @@ export default async function JudgesPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <PageHeading
-          title="Judges Portal"
-          subtitle="The contest catalog could not be loaded."
-        />
+        <PageHeading title="Judges Portal" subtitle="The judging data could not be loaded." />
         <Alert variant="destructive">
-          <AlertTitle>Could not load events</AlertTitle>
+          <AlertTitle>Could not load the panels</AlertTitle>
           <AlertDescription>
-            The contest catalog could not be loaded, so no panels are shown — this is not
-            a report that the division has no events. Please try refreshing the page.
+            {error} No panels are shown — this is not a report that the division has no
+            events or no judges. Please try refreshing the page.
           </AlertDescription>
         </Alert>
       </div>
@@ -60,14 +56,13 @@ export default async function JudgesPage() {
     <div className="space-y-6">
       <PageHeading
         title="Judges Portal"
-        badge="Layout preview"
         subtitle="Judging panels, per-event assignments, and how far each round has got."
         actions={
           <>
             <Button
               size="sm"
               disabled
-              title="Creating a judge needs the judges table, which migration 0018 adds."
+              title="Adding a judge needs the create-judge RPC, which has not been built yet. The judges table is ready for it."
             >
               <Gavel />
               Add judge
@@ -86,7 +81,7 @@ export default async function JudgesPage() {
               {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
               <a
                 href="/admin/judges/export"
-                title="The event list with each panel's status. Judges, sheets and ranks arrive with migration 0018, and the workbook says so in every cell that would need them."
+                title="The judge roster and every event's panel, with each round's progress, as one workbook."
               >
                 <Download />
                 Export to Excel
@@ -96,28 +91,24 @@ export default async function JudgesPage() {
         }
       />
 
-      <JudgingPreviewNotice />
-
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={Gavel}
           label="Judges"
-          value={0}
-          muted
-          subtitle="The judges table does not exist yet, so no judge can be counted — this is not an empty roster."
+          value={judges.length}
+          subtitle="Everyone on the roster, active or not. One judge may sit on any number of panels."
         />
         <StatCard
           icon={Users}
           label="Events without a panel"
           value={summary.events - summary.withPanel}
-          subtitle={`All ${summary.events} events in the catalog. Assigning a judge needs judge_assignments.`}
+          subtitle={`Out of ${summary.events} events in the catalog. No judge can rank an event until one is seated.`}
         />
         <StatCard
           icon={ClipboardList}
           label="Sheets submitted"
-          value={0}
-          muted
-          subtitle="judge_sheets does not exist yet. A submitted sheet is a locked sheet."
+          value={sheetsSubmitted}
+          subtitle="Across every event and both rounds. A submitted sheet is a locked sheet."
         />
         <StatCard
           icon={Lock}
@@ -137,7 +128,7 @@ export default async function JudgesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <JudgeRosterTable rows={[]} emptyMessage={JUDGING_NOT_INSTALLED} />
+          <JudgeRosterTable rows={judges} emptyMessage={NO_JUDGES_ON_FILE} />
         </CardContent>
       </Card>
 

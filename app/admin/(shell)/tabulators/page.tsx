@@ -1,6 +1,5 @@
 import { Download, ListChecks, Scissors, Trophy, Users } from "lucide-react";
 
-import { JudgingPreviewNotice } from "@/components/admin/judging/JudgingPreviewNotice";
 import { TabulationIndexTable } from "@/components/admin/judging/TabulationIndexTable";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -14,10 +13,15 @@ import { loadJudgingEventIndex } from "../judging-data";
 /**
  * Where the division reads the results.
  *
- * A **layout preview**, for the same reason `/admin/judges` is one: the tables that
- * hold ranks arrive with migration 0018. The event list and the entry counts are
- * real, and each event's status is computed by the shared state machine — see
- * `JudgingPreviewNotice`.
+ * Every figure here is read: the entries from `entries`, the qualifiers from
+ * `round2_qualifiers` by way of each event's round-2 board, and the published count
+ * from the results lock in `event_rounds`. A zero is a zero, not a table that is
+ * missing.
+ *
+ * What is not built is the write half — the RPCs that close a round, draw the cut
+ * and lock a result. Until they exist an event can be read all the way through and
+ * still never leave "not started", and the disabled controls say which RPC is
+ * missing rather than blaming the schema.
  *
  * The tabulators' side is the only place the anonymous codes are joined back to
  * names, schools and districts (non-negotiable 1). Nothing a judge can reach links
@@ -32,15 +36,12 @@ export default async function TabulatorsPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <PageHeading
-          title="Tabulators"
-          subtitle="The contest catalog could not be loaded."
-        />
+        <PageHeading title="Tabulators" subtitle="The judging data could not be loaded." />
         <Alert variant="destructive">
-          <AlertTitle>Could not load events</AlertTitle>
+          <AlertTitle>Could not load the sheets</AlertTitle>
           <AlertDescription>
-            The contest catalog could not be loaded, so no sheets are shown — this is not
-            a report that the division has no events. Please try refreshing the page.
+            {error} No sheets are shown — this is not a report that the division has no
+            events or no results. Please try refreshing the page.
           </AlertDescription>
         </Alert>
       </div>
@@ -53,7 +54,6 @@ export default async function TabulatorsPage() {
     <div className="space-y-6">
       <PageHeading
         title="Tabulators"
-        badge="Layout preview"
         subtitle="Per-event results sheets, with the codes joined back to names and schools."
         actions={
           <Button asChild size="sm" variant="outline">
@@ -65,7 +65,7 @@ export default async function TabulatorsPage() {
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/admin/tabulators/export"
-              title="The event list with each event's status. Qualifiers and locked results arrive with migration 0018, and the workbook says so in every cell that would need them."
+              title="Every event's sheet in one workbook — the codes joined back to names and schools, with each round's points and ranks."
             >
               <Download />
               Export to Excel
@@ -74,27 +74,24 @@ export default async function TabulatorsPage() {
         }
       />
 
-      <JudgingPreviewNotice />
-
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={ListChecks}
           label="Events to tabulate"
           value={summary.events}
-          subtitle="Every event in the catalog gets its own sheet. None has been ranked yet."
+          subtitle="Every event in the catalog gets its own sheet."
         />
         <StatCard
           icon={Users}
           label="Entries on file"
           value={summary.entries}
-          subtitle="Real, from the entries table. Individual events rank each participant separately, so contestants outnumber entries."
+          subtitle="Individual events rank each participant separately, so contestants outnumber entries."
         />
         <StatCard
           icon={Scissors}
           label="Qualifiers drawn"
-          value={0}
-          muted
-          subtitle="round2_qualifiers does not exist yet, so no round-1 cut has been taken."
+          value={summary.qualifiers}
+          subtitle="Contestants through to round 2, across every event. A cut can only be drawn once round 1 is closed."
         />
         <StatCard
           icon={Trophy}

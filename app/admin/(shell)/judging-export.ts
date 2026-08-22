@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 import { checkAdmin } from "@/app/admin/guard";
-import type { EventIndexRow } from "@/lib/judging/event-index";
+import type { JudgingExportInput } from "@/lib/export/judging-workbook";
 
 import { loadJudgingEventIndex } from "./judging-data";
 
@@ -19,7 +19,7 @@ export async function judgingWorkbookResponse({
   build,
   slug,
 }: {
-  build: (rows: EventIndexRow[], generatedAt: string) => XLSX.WorkBook;
+  build: (input: JudgingExportInput, generatedAt: string) => XLSX.WorkBook;
   slug: string;
 }): Promise<NextResponse> {
   // checkAdmin() rather than requireAdmin(): a route handler that redirects answers
@@ -36,7 +36,7 @@ export async function judgingWorkbookResponse({
       : NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
-  const { rows, error } = await loadJudgingEventIndex();
+  const { rows, judges, error } = await loadJudgingEventIndex();
 
   // A failed catalog query must not become a workbook of no events. That file would
   // read as "the division runs no contests" — a structural absence printed as a
@@ -50,7 +50,7 @@ export async function judgingWorkbookResponse({
   }
 
   const generatedAt = new Date().toISOString().slice(0, 10);
-  const buffer: Buffer = XLSX.write(build(rows, generatedAt), {
+  const buffer: Buffer = XLSX.write(build({ rows, judges }, generatedAt), {
     type: "buffer",
     bookType: "xlsx",
   });

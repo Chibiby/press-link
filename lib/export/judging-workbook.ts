@@ -16,39 +16,49 @@ import { EVENT_JUDGING_LABEL } from "@/lib/judging/sheet-state";
  *
  * On screen an absent figure is a `NotYetCell`: an em dash with the reason in a
  * tooltip. A spreadsheet has no tooltip, and a downloaded file outlives the page
- * that made it — it gets mailed on, opened next month, and read by someone who
- * never saw the preview banner. A bare 0 in a Judges column would then be read
- * as "nobody was assigned", which is a measurement, when the truth is that the
- * table recording assignments does not exist yet.
+ * that made it — it gets mailed on, opened next month, and read by someone with no
+ * way left to ask what a blank meant. A bare 0 in a Panel column would be read as
+ * "nobody was assigned", which is a measurement.
  *
- * So every structurally-absent cell holds its reason as its value, and the first
- * sheet of each workbook restates what `JudgingPreviewNotice` says on the page.
- * A structural absence must never be printed as a measured zero.
+ * Every figure in these workbooks is now measured, so most of those sentences have
+ * gone: an empty roster is an empty roster and 0 qualifiers means none were drawn.
+ * What is left are the genuine absences — no panel seated, no entries to rank, no
+ * cut on file — and each still holds its reason as its cell value, with the first
+ * sheet of each workbook saying how to read one. A structural absence must never be
+ * printed as a measured zero.
  */
 
 /**
  * The wordings for an absence.
  *
- * These are the workbook's copies of the sentences the index tables put in their
- * tooltips: `NO_PANEL` and `NO_UNITS` in `EventPanelTable`, `NO_QUALIFIERS` and
- * `NO_RESULTS` in `TabulationIndexTable`, and `CUT_NOT_SET` in
- * `JudgingPreviewNotice`. They are copied rather than imported because all three
- * of those are client components and this module is pure — importing them would
- * pull React into lib/, which nothing in lib/ does.
+ * These are the workbook's copies of the four sentences in
+ * `components/admin/judging/empty-states`, which is where the screen keeps them.
+ * Copied rather than imported because this module is pure and `lib/` does not import
+ * from `components/` — the import would invert the layering even though that file
+ * happens to hold no React.
  *
- * If a wording changes on screen it has to change here too. The tests pin every
- * one of them, so a drift fails the suite instead of shipping a workbook that
- * words an absence differently from the page.
+ * Each one opens with the screen's sentence verbatim. Two of them then add what a
+ * spreadsheet needs and a tooltip does not: an unread cut and an empty roster both
+ * land where a number belongs, so each rules out being read as a nought. The other
+ * two already name the absence and say why there is no figure, so they travel
+ * unchanged.
+ *
+ * If a wording changes on screen it has to change here too, and
+ * `empty-states.test.ts` pins each pair — from the components side, which may import
+ * this module — so a drift fails the suite instead of shipping a workbook that words
+ * an absence differently from the page.
+ *
+ * Two earlier constants have gone rather than been reworded. `XL_NO_QUALIFIERS` and
+ * `XL_NO_RESULTS` each said a table arrives with migration 0018; the tables are
+ * there, both columns are read, and a sentence in place of the number they now hold
+ * would be the lie in the other direction.
  */
 export const XL_NO_PANEL = "No panel is seated, so there are no ranks to count.";
 export const XL_NO_UNITS = "This event has no entries, so there is nothing to rank.";
 export const XL_CUT_NOT_SET =
-  "events.round2_cut arrives with migration 0018, so no cut has been chosen for this event.";
-export const XL_NO_QUALIFIERS = "round2_qualifiers arrives with migration 0018.";
-export const XL_NO_RESULTS =
-  "event_rounds, which records the results lock, arrives with migration 0018.";
+  "No round-2 cut is on file for this event. This cell holds that reason, not a cut of nought — and not the division's usual default of 10, which nobody has chosen for this event.";
 export const XL_NO_JUDGES =
-  "The judges table arrives with migration 0018, so no judge can be listed. This is an absent table, not an empty roster.";
+  "No judge has been added yet. The roster is empty, so no panel can be seated. This is an empty table, read and found to hold nothing.";
 
 /**
  * On screen the category rides in a badge carrying Tailwind's `capitalize`, so it
@@ -89,8 +99,58 @@ export const TABULATION_HEADER = [
   "Why",
 ] as const;
 
+export const ROSTER_HEADER = ["Judge", "Affiliation", "Email", "Events", "Status"] as const;
+
 export type PanelRow = Record<(typeof PANEL_HEADER)[number], Cell>;
 export type TabulationRow = Record<(typeof TABULATION_HEADER)[number], Cell>;
+export type RosterRow = Record<(typeof ROSTER_HEADER)[number], Cell>;
+
+/**
+ * One judge as the workbook prints them.
+ *
+ * A local shape rather than the pages' `JudgeRosterRow`, which is declared in a
+ * client component: importing it would pull React into `lib/`. `JudgeRosterRow` is
+ * structurally assignable to this, so a route hands its loaded roster straight over.
+ */
+export interface JudgeRosterExportRow {
+  name: string;
+  affiliation: string | null;
+  email: string | null;
+  events: number;
+  isActive: boolean;
+}
+
+/**
+ * What the two builders are given, which is what the two pages render.
+ *
+ * Declared here rather than imported from `app/admin/(shell)/judging-data.ts` for the
+ * same layering reason: `lib/` does not import from `app/`. `JudgingEventIndex` is
+ * structurally assignable to it, so the export routes pass their loaded index through
+ * unchanged and neither builder issues a query of its own.
+ */
+export interface JudgingExportInput {
+  rows: EventIndexRow[];
+  judges: JudgeRosterExportRow[];
+}
+
+/**
+ * The roster sheet's rows.
+ *
+ * An inactive judge is listed rather than filtered out: they may be on a panel from
+ * an earlier round of the contest, and a roster that quietly dropped them would not
+ * account for a rank already on file. The status column is what says which.
+ */
+export function toRosterRows(judges: JudgeRosterExportRow[]): RosterRow[] {
+  return judges.map((judge) => ({
+    Judge: judge.name,
+    // A blank, not a sentence: nothing is on file, and "not recorded" in every row of
+    // a column nobody filled in reads as a fault rather than as an optional field.
+    Affiliation: judge.affiliation ?? "",
+    Email: judge.email ?? "",
+    Events: judge.events,
+    Status: judge.isActive ? "Active" : "Inactive",
+  }));
+}
 
 /**
  * How far a round has got, in the words the screen uses.
@@ -126,8 +186,9 @@ export function toPanelRows(rows: EventIndexRow[]): PanelRow[] {
     Panel: row.panelSize === 0 ? XL_NO_PANEL : row.panelSize,
     "Round 1": roundCell(row.round1, row.panelSize),
     "Round 2": roundCell(row.round2, row.panelSize),
-    // Never 10. That is the default the RPC will apply, not a decision anyone has
-    // taken for this event, and printing it would invent one.
+    // Never 10. `events.round2_cut` is `not null default 10`, so a null here is a
+    // value that could not be read — and printing the default in its place would
+    // report a decision nobody took for this event.
     "R2 cut": row.round2Cut === null ? XL_CUT_NOT_SET : row.round2Cut,
     Status: EVENT_JUDGING_LABEL[row.state.status],
     Why: row.state.reason,
@@ -169,12 +230,12 @@ export function toTabulationRows(rows: EventIndexRow[]): TabulationRow[] {
     "Level · Language": row.slotLabel,
     Category: CATEGORY_LABEL[row.category],
     Entries: row.entries,
-    // `EventIndexRow` carries no qualifier or placement count, because the tables
-    // that would hold them are not there — which is why `TabulationIndexTable`
-    // renders both columns as `NotYetCell`. The workbook says the same in words
-    // rather than settling for a zero.
-    Qualifiers: XL_NO_QUALIFIERS,
-    Placed: XL_NO_RESULTS,
+    // Both are read, and both mirror the cell `TabulationIndexTable` renders.
+    // Qualifiers is counted off the round-2 board, so 0 means none has been drawn;
+    // Placed is null only when the cut behind it could not be read, which is the one
+    // case that still holds a sentence.
+    Qualifiers: row.round2.rows.length,
+    Placed: row.placed === null ? XL_CUT_NOT_SET : row.placed,
     Status: EVENT_JUDGING_LABEL[row.state.status],
     Why: row.state.reason,
   }));
@@ -190,8 +251,16 @@ export function toTabulationRows(rows: EventIndexRow[]): TabulationRow[] {
       "Level · Language": `${summary.events} events in the catalog`,
       Category: "",
       Entries: summary.entries,
-      Qualifiers: XL_NO_QUALIFIERS,
-      Placed: XL_NO_RESULTS,
+      Qualifiers: summary.qualifiers,
+      // A sum of what was measured. Events with no cut on file are named rather than
+      // folded in as noughts, which would put a smaller total here than the division
+      // has placed and give no sign of why.
+      Placed:
+        summary.withoutCut === 0
+          ? summary.placed
+          : `${summary.placed} — not counting ${summary.withoutCut} ${
+              summary.withoutCut === 1 ? "event" : "events"
+            } with no cut on file`,
       Status: `${summary.locked} of ${summary.events} sheets published`,
       Why: "",
     },
@@ -199,12 +268,16 @@ export function toTabulationRows(rows: EventIndexRow[]): TabulationRow[] {
 }
 
 /**
- * The sheet that stops the file being read as a report.
+ * The sheet that says how to read the ones after it.
  *
- * `JudgingPreviewNotice` does this job on the page, and a workbook needs it more,
- * because a workbook travels: it arrives with no banner above it and no way to
- * ask what it means. So the disclosure is the first sheet, where a reader meets
- * it before any figure.
+ * A workbook travels: it arrives with no page around it, nothing to hover, and no
+ * way left to ask what a cell meant. On screen that job is done by the sentence
+ * under each figure and by `NotYetCell` in the columns; here it has to be written
+ * down, and it goes first so a reader meets it before any number.
+ *
+ * It is no longer a preview disclosure. Every figure in this file is now the answer
+ * to a query, and what this sheet explains is the one thing the cells cannot say
+ * about themselves: which blanks and which sentences mean what.
  */
 function aboutSheet(kind: "judges" | "tabulators", generatedAt: string): XLSX.WorkSheet {
   const source =
@@ -213,27 +286,32 @@ function aboutSheet(kind: "judges" | "tabulators", generatedAt: string): XLSX.Wo
       : "/admin/tabulators — Sheets by event";
 
   const sheet = XLSX.utils.aoa_to_sheet([
-    ["Press Link — adjudication layout preview"],
+    ["Press Link — adjudication export"],
     [],
     ["Generated", generatedAt],
     ["Source", source],
     [],
-    ["What in this file is real"],
-    ["", "The event list, the entry counts, and each event's status. Events and entries"],
-    ["", "come from the events and entries tables, which exist today. The status is"],
-    ["", "computed by the same state machine the finished page will use, given a panel"],
-    ["", "that is genuinely empty."],
+    ["How to read a number"],
+    ["", "Every number here is the answer to a query. A 0 was measured: no judge has"],
+    ["", "been assigned, no qualifier has been drawn, nobody has been placed yet."],
     [],
-    ["What is absent"],
-    ["", "Migration 0018 has not run, so judges, judge_assignments, judge_sheets,"],
-    ["", "judge_ranks, round2_qualifiers and event_rounds are not in the database."],
-    ["", "Every cell that would draw on them holds a sentence saying so."],
+    ["How to read a sentence"],
+    ["", "A sentence where a number belongs is a reason, and it says the figure could"],
+    ["", "not be measured at all — never that it was measured and came out at nought."],
+    ["", "There are three: no panel is seated, the event has no entries, or no round-2"],
+    ["", "cut is on file."],
     [],
-    ["", "A sentence in a numeric column means the table is absent — not that the"],
-    ["", "figure was measured and came out at nought."],
+    ["The round-2 cut"],
+    ["", "Spelled out rather than shown as the division's usual default of 10. The"],
+    ["", "column is never empty in the database, so a cut that cannot be printed is a"],
+    ["", "value that could not be read — and 10 in its place would report a decision"],
+    ["", "nobody took for that event."],
     [],
-    ["", "The round-2 cut is spelled out rather than shown as the agreed default of 10:"],
-    ["", "until events.round2_cut is a column, no event has actually been set to it."],
+    ["What this file does not cover"],
+    ["", "The writing half of adjudication — seating a panel, closing a round, drawing"],
+    ["", "the cut, publishing a sheet — has no functions behind it yet. So an event can"],
+    ["", "be read all the way through and still sit at Not started: that is a contest"],
+    ["", "nobody has begun judging, not a figure this export failed to fetch."],
   ]);
   sheet["!cols"] = [{ wch: 12 }, { wch: 82 }];
   return sheet;
@@ -244,6 +322,27 @@ function panelSheet(rows: EventIndexRow[]): XLSX.WorkSheet {
     header: [...PANEL_HEADER],
   });
   sheet["!cols"] = [34, 24, 17, 12, 9, 44, 40, 40, 62, 20, 74].map((wch) => ({ wch }));
+  return sheet;
+}
+
+/**
+ * The roster, or the one sentence that stands in for it.
+ *
+ * The sheet is written either way. An empty roster keeps it and puts the reason
+ * where the rows would go: dropping the sheet would leave a reader to conclude the
+ * roster was never part of this export, which is the opposite of the truth.
+ */
+function rosterSheet(judges: JudgeRosterExportRow[]): XLSX.WorkSheet {
+  if (judges.length === 0) {
+    const empty = XLSX.utils.aoa_to_sheet([["Judges on file"], [XL_NO_JUDGES]]);
+    empty["!cols"] = [{ wch: 110 }];
+    return empty;
+  }
+
+  const sheet = XLSX.utils.json_to_sheet(toRosterRows(judges), {
+    header: [...ROSTER_HEADER],
+  });
+  sheet["!cols"] = [34, 34, 34, 9, 10].map((wch) => ({ wch }));
   return sheet;
 }
 
@@ -260,24 +359,20 @@ function tabulationSheet(rows: EventIndexRow[]): XLSX.WorkSheet {
  * a pure builder that stamps itself cannot be asserted on, and the route already
  * needs the date for the filename.
  */
-export function buildJudgesWorkbook(rows: EventIndexRow[], generatedAt: string): XLSX.WorkBook {
+export function buildJudgesWorkbook(
+  { rows, judges }: JudgingExportInput,
+  generatedAt: string
+): XLSX.WorkBook {
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, aboutSheet("judges", generatedAt), "About this export");
   XLSX.utils.book_append_sheet(book, panelSheet(rows), "Panels by event");
-
-  // The page carries an empty roster table above the panel table. The workbook
-  // keeps the sheet so the shape matches, and says in it why it has no rows —
-  // dropping the sheet would leave a reader to conclude the roster was never
-  // part of this, which is the opposite of the truth.
-  const roster = XLSX.utils.aoa_to_sheet([["Judges on file"], [XL_NO_JUDGES]]);
-  roster["!cols"] = [{ wch: 110 }];
-  XLSX.utils.book_append_sheet(book, roster, "Judges on file");
+  XLSX.utils.book_append_sheet(book, rosterSheet(judges), "Judges on file");
 
   return book;
 }
 
 export function buildTabulatorsWorkbook(
-  rows: EventIndexRow[],
+  { rows }: JudgingExportInput,
   generatedAt: string
 ): XLSX.WorkBook {
   const book = XLSX.utils.book_new();

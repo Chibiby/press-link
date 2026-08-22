@@ -15,8 +15,8 @@ import {
  *
  * Declared here rather than imported from `lib/judging/types` on purpose: that
  * file is the vocabulary of *ranking*, and a judge's email and affiliation are
- * not part of it. When migration 0018 lands, this becomes the row shape of the
- * `judges` table.
+ * not part of it. It is the row shape of the `judges` table plus `events`, which
+ * is counted off `judge_assignments` rather than stored.
  */
 export interface JudgeRosterRow {
   id: string;
@@ -32,10 +32,12 @@ export interface JudgeRosterRow {
 /**
  * The judges on file, and what each is assigned to.
  *
- * The action column is drawn but inert while the schema is absent — see
- * `JudgingPreviewNotice`, which says so above the table. A disabled button with no
- * explanation is the failure mode `SoonPage` warns about; a disabled button under
- * a banner that names the missing migration is a layout under review.
+ * Every cell here is read. The action column is drawn but inert, because assigning
+ * a judge to an event needs a write path that has not been built — `judge_assignments`
+ * is in the database, the function that inserts into it is not. A disabled button with
+ * no explanation is the failure mode `SoonPage` warns about, so the button carries
+ * that reason in its `title`: the absence is a missing function, not a missing table,
+ * and those call for different responses.
  */
 export function JudgeRosterTable({
   rows,
@@ -78,7 +80,12 @@ export function JudgeRosterTable({
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button size="sm" variant="ghost" disabled>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled
+                    title="Assigning a judge to an event needs the assign-judge RPC, which has not been built yet. judge_assignments is ready for it."
+                  >
                     Assign
                   </Button>
                 </TableCell>

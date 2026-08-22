@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { CUT_NOT_ON_FILE } from "@/components/admin/judging/empty-states";
 import {
   EventJudgingBadge,
   JudgingEmptyRow,
@@ -17,9 +18,6 @@ import {
 } from "@/components/ui/table";
 import type { EventIndexRow } from "@/lib/judging/event-index";
 
-const NO_QUALIFIERS = "round2_qualifiers arrives with migration 0018.";
-const NO_RESULTS = "event_rounds, which records the results lock, arrives with migration 0018.";
-
 /**
  * The per-event index on `/admin/tabulators`.
  *
@@ -31,7 +29,12 @@ const NO_RESULTS = "event_rounds, which records the results lock, arrives with m
  * The columns differ from the judges page because the question differs: a
  * tabulator is not chasing a panel, they are looking for the sheet that is ready
  * to publish. Panel progress is therefore compressed into the status column, and
- * the space goes to what the sheet will say.
+ * the space goes to what the sheet says.
+ *
+ * Qualifiers and Placed are counted, not projected. Both are zero for most of the
+ * contest and that is a measurement: nobody has qualified until a cut is drawn, and
+ * nobody is placed until a board completes. A zero here is the same kind of fact as
+ * a 12.
  */
 export function TabulationIndexTable({
   rows,
@@ -77,11 +80,18 @@ export function TabulationIndexTable({
                     count is higher than its entry count and only `contestUnits` can say by
                     how much. */}
                 <TableCell className="text-right tabular-nums">{row.entries}</TableCell>
-                <TableCell className="text-right">
-                  <NotYetCell reason={NO_QUALIFIERS} />
+                {/* The qualifier set as stored, read back through round 1's codes —
+                    not the field the current cut would draw. Those differ the moment
+                    an admin moves the cut after round 1 closed, and this column
+                    reports who actually went through. */}
+                <TableCell className="text-right tabular-nums">
+                  {row.round2.rows.length}
                 </TableCell>
-                <TableCell className="text-right">
-                  <NotYetCell reason={NO_RESULTS} />
+                {/* A non-qualifier's place is settled when round 1 closes and a
+                    qualifier's when round 2 completes, so this climbs in two steps
+                    rather than jumping from nothing to everything at the lock. */}
+                <TableCell className="text-right tabular-nums">
+                  {row.placed ?? <NotYetCell reason={CUT_NOT_ON_FILE} />}
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col items-start gap-1">

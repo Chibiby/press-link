@@ -5,34 +5,29 @@ import { notFound } from "next/navigation";
 import { BoardTable } from "@/components/admin/judging/BoardTable";
 import { EventJudgingBadge, NotYetCell } from "@/components/admin/judging/EventJudgingBadge";
 import { JudgeRosterTable } from "@/components/admin/judging/JudgeRosterTable";
-import {
-  CUT_NOT_SET,
-  JudgingPreviewNotice,
-  JUDGING_NOT_INSTALLED,
-} from "@/components/admin/judging/JudgingPreviewNotice";
+import { CUT_NOT_ON_FILE } from "@/components/admin/judging/empty-states";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DEFAULT_ROUND2_CUT } from "@/lib/judging/qualifiers";
 
 import { eventFullLabel, loadJudgingEvent } from "../../judging-data";
 
 /**
  * One event's panel and its two boards.
  *
- * A **layout preview**, like the index that links here. The boards are consolidated
- * by the real `consolidateRound` over an empty panel, so each one reports itself as
- * not ranked and explains why — which is exactly what the finished page shows on
- * the morning before judging starts.
+ * The panel, both boards and the round-2 cut are read from the judging tables. A
+ * board that reports itself as not ranked is reporting a measurement — the panel
+ * seated on it has filed nothing — which is what this page shows on the morning
+ * before judging starts.
  *
  * ## Why the controls are here but disabled
  *
  * Every state change in this feature is a `security definer` RPC (non-negotiable
- * 2), and those RPCs arrive with the migration. Rendering the controls now settles
- * where they live and what they are called; leaving them out would settle nothing
- * and would make this page a list rather than a layout. `JudgingPreviewNotice`
- * states on screen that nothing here writes.
+ * 2), and those RPCs have not been written. The tables they would write to exist, so
+ * what is missing is the function, not the schema, and each button's tooltip names
+ * the one it is waiting on. Rendering them settles where they live and what they are
+ * called; leaving them out would make this page a list rather than a console.
  */
 export default async function EventPanelPage({
   params,
@@ -40,7 +35,7 @@ export default async function EventPanelPage({
   params: Promise<{ eventId: string }>;
 }) {
   const { eventId } = await params;
-  const { row, error } = await loadJudgingEvent(eventId);
+  const { row, panel, judgeNames, error } = await loadJudgingEvent(eventId);
 
   // A failed query must not render as a missing event: `notFound()` here would tell
   // an admin the contest does not exist (non-negotiable 5).
@@ -51,8 +46,8 @@ export default async function EventPanelPage({
         <Alert variant="destructive">
           <AlertTitle>Could not load this event</AlertTitle>
           <AlertDescription>
-            The contest catalog could not be loaded, so this event&rsquo;s panel is not shown —
-            this is not a report that the event has no panel. Please try refreshing the page.
+            {error} This event&rsquo;s panel is not shown — this is not a report that the
+            event has no panel. Please try refreshing the page.
           </AlertDescription>
         </Alert>
       </div>
@@ -72,7 +67,6 @@ export default async function EventPanelPage({
 
       <PageHeading
         title={row.typeNameEn}
-        badge="Layout preview"
         subtitle={`${eventFullLabel(row.level, row.language)} · ${row.entries} ${
           row.entries === 1 ? "entry" : "entries"
         } on file`}
@@ -90,8 +84,6 @@ export default async function EventPanelPage({
           </Button>
         }
       />
-
-      <JudgingPreviewNotice />
 
       <Card>
         <CardHeader>
@@ -114,7 +106,7 @@ export default async function EventPanelPage({
               </dt>
               <dd className="text-sm tabular-nums">
                 {row.panelSize === 0 ? (
-                  <NotYetCell reason={JUDGING_NOT_INSTALLED} />
+                  <NotYetCell reason="No judge is assigned to this event." />
                 ) : (
                   row.panelSize
                 )}
@@ -124,11 +116,11 @@ export default async function EventPanelPage({
               <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Round 2 cut
               </dt>
-              {/* Blank, not {DEFAULT_ROUND2_CUT}: the default is what the RPC will
-                  apply if the division does not choose otherwise, and printing it
-                  here would show a decision nobody has made. */}
+              {/* The column's own value, never a default written in here: the two
+                  agree today and the day they stop agreeing this cell must show what
+                  the event is actually set to. */}
               <dd className="text-sm tabular-nums">
-                {row.round2Cut ?? <NotYetCell reason={CUT_NOT_SET} />}
+                {row.round2Cut ?? <NotYetCell reason={CUT_NOT_ON_FILE} />}
               </dd>
             </div>
           </dl>
@@ -138,7 +130,7 @@ export default async function EventPanelPage({
               size="sm"
               variant="outline"
               disabled
-              title={`Setting the cut writes events.round2_cut, which migration 0018 adds. It will default to ${DEFAULT_ROUND2_CUT}.`}
+              title="Setting the cut writes events.round2_cut. It needs the set-cut RPC, which has not been written yet."
             >
               <Scissors />
               Set round 2 cut
@@ -146,7 +138,7 @@ export default async function EventPanelPage({
             <Button
               size="sm"
               disabled
-              title="Closing round 1 draws the qualifiers. It needs the close_round_1 RPC, which migration 0018 adds."
+              title="Closing round 1 draws the qualifiers. It needs the close_round_1 RPC, which has not been written yet."
             >
               <Lock />
               Close round 1
@@ -155,7 +147,7 @@ export default async function EventPanelPage({
               size="sm"
               variant="outline"
               disabled
-              title="Reopening round 1 discards the qualifiers it drew. It needs the reopen_round_1 RPC, which migration 0018 adds."
+              title="Reopening round 1 discards the qualifiers it drew. It needs the reopen_round_1 RPC, which has not been written yet."
             >
               <Undo2 />
               Reopen round 1
@@ -163,7 +155,7 @@ export default async function EventPanelPage({
             <Button
               size="sm"
               disabled
-              title="Locking the results publishes the sheet. It needs the lock_results RPC, which migration 0018 adds."
+              title="Locking the results publishes the sheet. It needs the lock_results RPC, which has not been written yet."
             >
               <Trophy />
               Lock results
@@ -172,8 +164,9 @@ export default async function EventPanelPage({
           <p className="text-xs text-muted-foreground">
             These are this event&rsquo;s controls. Each one is a single database function that
             checks the round is ready before it acts, so closing a round with a judge still
-            outstanding is refused by the database rather than by this page. None of them
-            exists yet, so every control is disabled and nothing here writes.
+            outstanding is refused by the database rather than by this page. None of those
+            functions has been written yet, so every control is disabled and nothing on this
+            page writes — the tables they will write to are already there.
           </p>
         </CardContent>
       </Card>
@@ -187,19 +180,22 @@ export default async function EventPanelPage({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <JudgeRosterTable rows={[]} emptyMessage={JUDGING_NOT_INSTALLED} />
+          <JudgeRosterTable
+            rows={panel}
+            emptyMessage="No judge is seated on this event yet, so neither round can be ranked."
+          />
         </CardContent>
       </Card>
 
       <BoardTable
         board={row.round1}
-        judgeNames={{}}
+        judgeNames={judgeNames}
         emptyMessage="No contestants are drawn for round 1 yet — the unit set is built when the round opens."
       />
 
       <BoardTable
         board={row.round2}
-        judgeNames={{}}
+        judgeNames={judgeNames}
         emptyMessage="Round 2's contestants are the qualifiers drawn when round 1 closes, so this board is empty until then."
       />
     </div>

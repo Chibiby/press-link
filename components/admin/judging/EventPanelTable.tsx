@@ -5,7 +5,11 @@ import {
   JudgingEmptyRow,
   NotYetCell,
 } from "@/components/admin/judging/EventJudgingBadge";
-import { CUT_NOT_SET } from "@/components/admin/judging/JudgingPreviewNotice";
+import {
+  CUT_NOT_ON_FILE,
+  NO_ENTRIES_TO_RANK,
+  NO_PANEL_SEATED,
+} from "@/components/admin/judging/empty-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,16 +24,12 @@ import { boardProgress } from "@/lib/judging/consolidate";
 import type { EventIndexRow } from "@/lib/judging/event-index";
 import type { ConsolidatedBoard } from "@/lib/judging/types";
 
-const NO_PANEL = "No panel is seated, so there are no ranks to count.";
-const NO_UNITS = "This event has no entries, so there is nothing to rank.";
-
 /**
- * A round's progress as "filled of expected".
+ * A round's progress as "filled of expected", or the reason it is not a ratio.
  *
- * `boardProgress` returns 0 of 0 for an event with no panel and for an event with
- * no entries, and those are different facts an admin would act on differently, so
- * neither is printed as a ratio. "0 of 0 ranks filed" invites the reading that
- * the ranks are all in.
+ * Both sentences live in `empty-states` rather than here: the workbook needs its
+ * own copies of them (`lib/` cannot import from `components/`), and a test pins the
+ * pair together, which it cannot do while one half is private to this file.
  */
 function RoundProgress({
   board,
@@ -38,8 +38,8 @@ function RoundProgress({
   board: ConsolidatedBoard;
   panelSize: number;
 }) {
-  if (panelSize === 0) return <NotYetCell reason={NO_PANEL} />;
-  if (board.rows.length === 0) return <NotYetCell reason={NO_UNITS} />;
+  if (panelSize === 0) return <NotYetCell reason={NO_PANEL_SEATED} />;
+  if (board.rows.length === 0) return <NotYetCell reason={NO_ENTRIES_TO_RANK} />;
 
   const progress = boardProgress(board);
   return (
@@ -121,7 +121,7 @@ export function EventPanelTable({
                 </TableCell>
                 <TableCell className="text-right">
                   {row.round2Cut === null ? (
-                    <NotYetCell reason={CUT_NOT_SET} />
+                    <NotYetCell reason={CUT_NOT_ON_FILE} />
                   ) : (
                     <span className="tabular-nums">{row.round2Cut}</span>
                   )}

@@ -64,10 +64,9 @@ describe("eventSlotLabel", () => {
 });
 
 describe("buildEventIndex with no facts", () => {
-  // This is the state the placeholder pages render, so it is tested as a state and
-  // not as a stub: the status below is produced by the real eventJudgingStatus over
-  // a real empty panel, and it will be produced the same way once migration 0018
-  // exists.
+  // A read that came back with nothing for this event: no judge, no rank, and — the
+  // one that matters — no cut. The status below is produced by the real
+  // eventJudgingStatus over a genuinely empty panel, not by a stub.
   const rows = buildEventIndex([event("e1", { entries: 4 })]);
 
   it("reports an unseated panel rather than a started one", () => {
@@ -84,9 +83,17 @@ describe("buildEventIndex with no facts", () => {
   });
 
   it("leaves the round 2 cut null rather than defaulting it", () => {
-    // 10 is what the RPC will apply if nobody chooses; it is not a choice the
-    // division has made, and a page must not print it as one.
+    // `events.round2_cut` is `not null default 10`, so a null here is a value that
+    // could not be read. Substituting 10 would report a decision nobody took.
     expect(rows[0].round2Cut).toBeNull();
+  });
+
+  it("draws no standings at all with no cut, and counts nobody placed", () => {
+    // With no cut there is no field to divide. null rather than an empty array: an
+    // empty one would read as an event with no contestants, and 0 placed would read
+    // as a field nobody has ranked (non-negotiable 5).
+    expect(rows[0].standings).toBeNull();
+    expect(rows[0].placed).toBeNull();
   });
 
   it("still carries the real entry count, which does not depend on judging", () => {
@@ -109,6 +116,72 @@ describe("buildEventIndex with facts", () => {
     expect(rows[0].round1.complete).toBe(true);
     expect(rows[0].state.status).toBe("round1-awaiting-close");
     expect(rows[0].round2Cut).toBe(10);
+  });
+
+  it("carries the standings the pages draw, rather than leaving each to recompute", () => {
+    // The index's Placed column and the event page's sheet read this one array, so
+    // they cannot disagree about a placement. Both units are under a cut of 10, so
+    // both qualify and neither is placed until round 2 finishes.
+    const rows = buildEventIndex([event("e1", { entries: 2 })], {
+      e1: facts({
+        judgeIds: ["j1"],
+        units: [A, B],
+        round1Ranks: sheet("j1", { a: 1, b: 2 }),
+        round2Cut: 10,
+      }),
+    });
+
+    expect(rows[0].standings?.map((row) => row.code)).toEqual(["0001", "0002"]);
+    expect(rows[0].standings?.every((row) => row.qualified)).toBe(true);
+    expect(rows[0].placed).toBe(0);
+  });
+
+  it("counts a placement only once the round that decides it has finished", () => {
+    // A cut of 1 settles the non-qualifier the moment round 1 closes; the qualifier
+    // waits for round 2. Placed follows that, so it is 1 here and 2 below.
+    const half = buildEventIndex([event("e1", { entries: 2 })], {
+      e1: facts({
+        judgeIds: ["j1"],
+        units: [A, B],
+        round1Ranks: sheet("j1", { a: 1, b: 2 }),
+        round2Units: [A],
+        round2Cut: 1,
+      }),
+    });
+    expect(half[0].placed).toBe(1);
+
+    const done = buildEventIndex([event("e1", { entries: 2 })], {
+      e1: facts({
+        judgeIds: ["j1"],
+        units: [A, B],
+        round1Ranks: sheet("j1", { a: 1, b: 2 }),
+        round2Units: [A],
+        round2Ranks: sheet("j1", { a: 1 }),
+        round2Cut: 1,
+      }),
+    });
+    expect(done[0].placed).toBe(2);
+  });
+
+  it("draws the standings under the cut round 1 actually closed on", () => {
+    // `events.round2_cut` is live and an admin may move it after the fact. Standings
+    // drawn under a cut nobody competed under would reshuffle a settled field, so
+    // round2_cut_used wins where it exists.
+    const rows = buildEventIndex([event("e1", { entries: 2 })], {
+      e1: facts({
+        judgeIds: ["j1"],
+        units: [A, B],
+        round1Ranks: sheet("j1", { a: 1, b: 2 }),
+        round2Cut: 10,
+        rounds: {
+          round1ClosedAt: "2026-08-20T00:00:00Z",
+          round2CutUsed: 1,
+          resultsLockedAt: null,
+        },
+      }),
+    });
+
+    expect(rows[0].standings?.filter((row) => row.qualified)).toHaveLength(1);
   });
 
   it("reports a partly-filed round 1 as open, quoting progress", () => {
@@ -200,9 +273,34 @@ describe("eventIndexSummary", () => {
       entries: 7,
       withPanel: 2,
       awaitingAction: 1,
+      // e2 drew its one unit into round 2 and locked it; e1 has not closed round 1.
+      qualifiers: 1,
+      placed: 1,
+      // e1 and e3 have no cut on file, so neither has a field that could be placed.
+      withoutCut: 2,
       locked: 1,
       notStarted: 1,
     });
+  });
+
+  it("names the events it could not count rather than folding them in as noughts", () => {
+    // A plain sum would report fewer placements than the division has made and give
+    // no sign that an event was left out of it (non-negotiable 5).
+    const rows = buildEventIndex([event("e1"), event("e2")], {
+      e1: facts({
+        judgeIds: ["j1"],
+        units: [A, B],
+        round1Ranks: sheet("j1", { a: 1, b: 2 }),
+        round2Units: [A],
+        round2Ranks: sheet("j1", { a: 1 }),
+        round2Cut: 1,
+      }),
+      e2: facts({ round2Cut: null }),
+    });
+
+    const summary = eventIndexSummary(rows);
+    expect(summary.placed).toBe(2);
+    expect(summary.withoutCut).toBe(1);
   });
 
   it("reports zeroes for an empty index without inventing an event", () => {
@@ -211,6 +309,9 @@ describe("eventIndexSummary", () => {
       entries: 0,
       withPanel: 0,
       awaitingAction: 0,
+      qualifiers: 0,
+      placed: 0,
+      withoutCut: 0,
       locked: 0,
       notStarted: 0,
     });

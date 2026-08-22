@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 
 import {
   buildEventIndex,
+  type EventIndexRow,
   type EventJudgingFacts,
   type RawIndexEvent,
 } from "@/lib/judging/event-index";
@@ -12,14 +13,15 @@ import {
   buildJudgesWorkbook,
   buildTabulatorsWorkbook,
   PANEL_HEADER,
+  ROSTER_HEADER,
   TABULATION_HEADER,
   toPanelRows,
+  toRosterRows,
   toTabulationRows,
+  type JudgeRosterExportRow,
   XL_CUT_NOT_SET,
   XL_NO_JUDGES,
   XL_NO_PANEL,
-  XL_NO_QUALIFIERS,
-  XL_NO_RESULTS,
   XL_NO_UNITS,
 } from "./judging-workbook";
 
@@ -47,6 +49,10 @@ function sheet(judgeId: string, places: Record<string, number>): JudgeRank[] {
   return Object.entries(places).map(([unitKey, rank]) => ({ judgeId, unitKey, rank }));
 }
 
+/**
+ * Nothing judged, but a cut on file — which is what an untouched event looks like
+ * now that `events.round2_cut` exists and is `not null default 10`.
+ */
 function facts(overrides: Partial<EventJudgingFacts> = {}): EventJudgingFacts {
   return {
     judgeIds: [],
@@ -55,7 +61,7 @@ function facts(overrides: Partial<EventJudgingFacts> = {}): EventJudgingFacts {
     round2Units: [],
     round2Ranks: [],
     rounds: { round1ClosedAt: null, round2CutUsed: null, resultsLockedAt: null },
-    round2Cut: null,
+    round2Cut: 10,
     ...overrides,
   };
 }
@@ -63,37 +69,67 @@ function facts(overrides: Partial<EventJudgingFacts> = {}): EventJudgingFacts {
 const A = unit("0001", "a");
 const B = unit("0002", "b");
 
-/** The state both pages are in today: real events, no judging schema behind them. */
-const PREVIEW = buildEventIndex([
-  event("e1", { entries: 4 }),
-  event("e2", {
-    sortOrder: 2,
-    typeNameEn: "Editorial Writing",
-    typeNameFil: "Pagsulat ng Editoryal",
-    entries: 6,
-  }),
-]);
+/**
+ * Two real events with the judging tables present and empty: no judge assigned, no
+ * rank cast, a cut of 10 on file. Every judging figure off this fixture is a
+ * measured nought, which is what most of the division looks like today.
+ */
+const UNJUDGED = buildEventIndex(
+  [
+    event("e1", { entries: 4 }),
+    event("e2", {
+      sortOrder: 2,
+      typeNameEn: "Editorial Writing",
+      typeNameFil: "Pagsulat ng Editoryal",
+      entries: 6,
+    }),
+  ],
+  { e1: facts(), e2: facts() }
+);
 
-describe("toPanelRows on the state the page is actually in", () => {
-  const rows = toPanelRows(PREVIEW);
+/** The one absence left: a cut that could not be read. */
+const NO_CUT: EventIndexRow[] = buildEventIndex([event("e1", { entries: 4 })], {
+  e1: facts({ round2Cut: null }),
+});
+
+const ROSTER: JudgeRosterExportRow[] = [
+  {
+    name: "Dela Cruz, Maria L.",
+    affiliation: "Sarangani NHS",
+    email: "maria@example.gov.ph",
+    events: 3,
+    isActive: true,
+  },
+  { name: "Reyes, Juan", affiliation: null, email: null, events: 0, isActive: false },
+];
+
+describe("toPanelRows on an event nobody has begun judging", () => {
+  const rows = toPanelRows(UNJUDGED);
   const first = rows[0];
 
-  it("never prints a structural absence as a zero", () => {
+  it("says no panel is seated rather than printing a bare 0", () => {
     // The whole reason this module exists. A spreadsheet has no tooltip to hold the
-    // reason in, so the reason is the value.
+    // reason in, so the reason is the value — and with no panel there is no
+    // denominator, so the round cells have nothing to be a fraction of.
     expect(first.Panel).toBe(XL_NO_PANEL);
     expect(first["Round 1"]).toBe(XL_NO_PANEL);
     expect(first["Round 2"]).toBe(XL_NO_PANEL);
     expect(first.Panel).not.toBe(0);
   });
 
-  it("leaves the round-2 cut unset rather than showing the default of 10", () => {
-    expect(first["R2 cut"]).toBe(XL_CUT_NOT_SET);
-    expect(rows.some((row) => row["R2 cut"] === 10)).toBe(false);
+  it("prints the cut that is on file, default or not", () => {
+    // 10 is the division's default, but it is now a value in the column rather than
+    // an assumption — so printing it reports what the event is set to.
+    expect(first["R2 cut"]).toBe(10);
+  });
+
+  it("never substitutes 10 for a cut it could not read", () => {
+    const [unread] = toPanelRows(NO_CUT);
+    expect(unread["R2 cut"]).toBe(XL_CUT_NOT_SET);
+    expect(unread["R2 cut"]).not.toBe(10);
   });
 
   it("keeps the entry count a number, because that one is measured", () => {
-    // Entries are real today. Wording them as absent would be the opposite error.
     expect(first.Entries).toBe(4);
   });
 
@@ -134,7 +170,7 @@ describe("toPanelRows on the state the page is actually in", () => {
 });
 
 describe("the panel total row", () => {
-  const total = toPanelRows(PREVIEW).at(-1);
+  const total = toPanelRows(UNJUDGED).at(-1);
 
   it("sums the entries", () => {
     expect(total?.Event).toBe("ALL EVENTS");
@@ -189,30 +225,96 @@ describe("toPanelRows once a panel is seated", () => {
 });
 
 describe("toTabulationRows", () => {
-  const rows = toTabulationRows(PREVIEW);
+  const rows = toTabulationRows(UNJUDGED);
 
-  it("explains the missing qualifier and result counts", () => {
-    expect(rows[0].Qualifiers).toBe(XL_NO_QUALIFIERS);
-    expect(rows[0].Placed).toBe(XL_NO_RESULTS);
+  it("reports measured noughts as noughts, not as sentences", () => {
+    // With the cut on file and the boards read and found empty, both of these are
+    // answers to a query. Wording them as absent would be the mirror-image lie.
+    expect(rows[0].Qualifiers).toBe(0);
+    expect(rows[0].Placed).toBe(0);
+  });
+
+  it("holds the reason where a cut could not be read", () => {
+    // No cut means no field to divide, so no standings were computed at all — the
+    // one case where Placed is genuinely unavailable rather than nought.
+    const [unread] = toTabulationRows(NO_CUT);
+    expect(unread.Placed).toBe(XL_CUT_NOT_SET);
+    expect(unread.Qualifiers).toBe(0);
+  });
+
+  it("counts qualifiers off the round-2 board and placements off the standings", () => {
+    const [judged] = toTabulationRows(
+      buildEventIndex([event("e1", { entries: 2 })], {
+        e1: facts({
+          judgeIds: ["j1"],
+          units: [A, B],
+          round1Ranks: sheet("j1", { a: 1, b: 2 }),
+          round2Units: [A],
+          round2Ranks: sheet("j1", { a: 1 }),
+          round2Cut: 1,
+          rounds: {
+            round1ClosedAt: "2026-08-01T00:00:00Z",
+            round2CutUsed: 1,
+            resultsLockedAt: null,
+          },
+        }),
+      })
+    );
+    expect(judged.Qualifiers).toBe(1);
+    // Both units are placed: the one below the cut when round 1 closed, the
+    // qualifier once round 2 ranked it.
+    expect(judged.Placed).toBe(2);
   });
 
   it("shares the status wording with the judges sheet", () => {
     // Both pages read the same row, so a divergence here would mean one of the two
     // workbooks had started deriving status for itself.
-    expect(rows[0].Status).toBe(toPanelRows(PREVIEW)[0].Status);
+    expect(rows[0].Status).toBe(toPanelRows(UNJUDGED)[0].Status);
   });
 
   it("totals the entries and counts published sheets", () => {
     const total = rows.at(-1);
     expect(total?.Entries).toBe(10);
+    expect(total?.Placed).toBe(0);
     expect(total?.Status).toBe("0 of 2 sheets published");
+  });
+
+  it("names the events it could not count instead of folding them in as noughts", () => {
+    // A plain sum would report fewer placements than the division has made and give
+    // no sign that an event was left out of it.
+    const total = toTabulationRows([...UNJUDGED, ...NO_CUT]).at(-1);
+    expect(total?.Placed).toBe("0 — not counting 1 event with no cut on file");
+  });
+});
+
+describe("toRosterRows", () => {
+  const rows = toRosterRows(ROSTER);
+
+  it("prints every judge on file, in the order the roster gave them", () => {
+    expect(rows.map((row) => row.Judge)).toEqual(["Dela Cruz, Maria L.", "Reyes, Juan"]);
+  });
+
+  it("keeps the event count a number, because it is counted", () => {
+    // 0 here means this judge sits on no panel — a measurement, not an absence.
+    expect(rows[0].Events).toBe(3);
+    expect(rows[1].Events).toBe(0);
+  });
+
+  it("blanks an affiliation or email nobody supplied rather than inventing one", () => {
+    expect(rows[1].Affiliation).toBe("");
+    expect(rows[1].Email).toBe("");
+  });
+
+  it("spells the active flag out, since a bare boolean means nothing in a cell", () => {
+    expect(rows[0].Status).toBe("Active");
+    expect(rows[1].Status).toBe("Inactive");
   });
 });
 
 describe("buildJudgesWorkbook", () => {
-  const book = buildJudgesWorkbook(PREVIEW, AT);
+  const book = buildJudgesWorkbook({ rows: UNJUDGED, judges: ROSTER }, AT);
 
-  it("leads with the disclosure, before any figure", () => {
+  it("leads with the reading guide, before any figure", () => {
     expect(book.SheetNames).toEqual([
       "About this export",
       "Panels by event",
@@ -220,17 +322,34 @@ describe("buildJudgesWorkbook", () => {
     ]);
   });
 
-  it("says on the About sheet that migration 0018 has not run", () => {
+  it("says on the About sheet how to tell a nought from an absence", () => {
     const text = XLSX.utils.sheet_to_csv(book.Sheets["About this export"]);
-    expect(text).toContain("Migration 0018 has not run");
+    expect(text).toContain("A 0 was measured");
     expect(text).toContain(AT);
   });
 
-  it("keeps the roster sheet and explains why it has no judges", () => {
+  it("no longer claims the judging tables are absent", () => {
+    // They are in the database now. Saying otherwise would make every measured
+    // figure in the file unreadable, which is the failure this sheet exists against.
+    const text = XLSX.utils.sheet_to_csv(book.Sheets["About this export"]);
+    expect(text).not.toContain("Migration 0018");
+    expect(text).not.toContain("layout preview");
+  });
+
+  it("heads the roster sheet with every column, in order", () => {
+    const grid = XLSX.utils.sheet_to_json<string[]>(book.Sheets["Judges on file"], {
+      header: 1,
+    });
+    expect(grid[0]).toEqual([...ROSTER_HEADER]);
+    expect(grid[1]?.[0]).toBe("Dela Cruz, Maria L.");
+  });
+
+  it("keeps the roster sheet and explains an empty roster in it", () => {
     // Dropping the sheet would leave a reader to conclude the roster was never part
-    // of this, which is the opposite of the truth.
-    const text = XLSX.utils.sheet_to_csv(book.Sheets["Judges on file"]);
-    expect(text).toContain(XL_NO_JUDGES);
+    // of this export, which is the opposite of the truth.
+    const empty = buildJudgesWorkbook({ rows: UNJUDGED, judges: [] }, AT);
+    expect(empty.SheetNames).toContain("Judges on file");
+    expect(XLSX.utils.sheet_to_csv(empty.Sheets["Judges on file"])).toContain(XL_NO_JUDGES);
   });
 
   it("heads the panel sheet with every column, in order", () => {
@@ -250,12 +369,18 @@ describe("buildJudgesWorkbook", () => {
 });
 
 describe("buildTabulatorsWorkbook", () => {
-  const book = buildTabulatorsWorkbook(PREVIEW, AT);
+  const book = buildTabulatorsWorkbook({ rows: UNJUDGED, judges: ROSTER }, AT);
 
-  it("leads with the same disclosure and names its own page", () => {
+  it("leads with the same reading guide and names its own page", () => {
     expect(book.SheetNames).toEqual(["About this export", "Sheets by event"]);
     const text = XLSX.utils.sheet_to_csv(book.Sheets["About this export"]);
     expect(text).toContain("/admin/tabulators");
+  });
+
+  it("leaves the roster out, because a tabulator's sheet never names a judge", () => {
+    // Round-2 qualification and the standings are anonymous work. A roster in this
+    // file would put judges and contest codes in one workbook for no reason.
+    expect(book.SheetNames).not.toContain("Judges on file");
   });
 
   it("heads the tabulation sheet with every column, in order", () => {

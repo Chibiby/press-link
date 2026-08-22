@@ -10,21 +10,18 @@
  * Pure, like the rest of `lib/judging`: no Supabase and no React. The caller does
  * the reading and hands the facts in.
  *
- * ## Why this exists before the schema does
+ * ## Why an event may still have no facts
  *
- * Migration 0018 has not run, so there is no `judges`, no `judge_assignments`
- * and no `judge_sheets` to read. That does not mean the index has to be faked:
- * `events` and `entries` are real and queryable today, and an event with an empty
- * panel is a state the finished feature has to handle anyway — it is what every
- * event looks like the morning before judging starts.
+ * `facts` is keyed by event id and the lookup falls back to
+ * {@link NO_JUDGING_FACTS}, which is not a stand-in for a missing table — the six
+ * judging tables exist. It is the shape of an event nobody has started judging,
+ * which is what every event looks like the morning before the contest, and a state
+ * the finished feature has to handle for its own sake.
  *
- * So the placeholder pages pass `{}` for the facts, every event resolves through
- * {@link NO_JUDGING_FACTS}, and {@link eventJudgingStatus} — the real state
- * machine, not a stand-in — returns "not-started" with the reason "No judge is
- * assigned to this event yet." That sentence is true right now for a reason the
- * page is careful to name, and it will still be computed the same way when the
- * tables exist. Nothing here has to be unpicked later; the pages start passing
- * real facts instead of none.
+ * An event that resolves through it gets its status from {@link eventJudgingStatus}
+ * like any other: "not-started", because the panel it was handed is genuinely
+ * empty. The distinction that matters on screen is between that and a failed read,
+ * and the loader raises the second rather than passing an empty record for it.
  */
 
 import { EVENT_SLOTS, slotKey } from "@/lib/dashboard/event-matrix";
@@ -32,12 +29,14 @@ import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-cata
 
 import { consolidateRound } from "./consolidate";
 import { eventJudgingStatus } from "./sheet-state";
+import { finalStandings } from "./standings";
 import type {
   ConsolidatedBoard,
   ContestUnit,
   EventJudgingState,
   EventRoundState,
   JudgeRank,
+  StandingRow,
 } from "./types";
 
 /** One event as the index reads it, already flattened out of the join. */
@@ -79,15 +78,16 @@ export interface EventJudgingFacts {
   round2Ranks: JudgeRank[];
   rounds: EventRoundState;
   /**
-   * `events.round2_cut`. null while the column does not exist — which is not the
-   * same as 10, and must not be rendered as though the division had chosen it.
+   * `events.round2_cut`, which is `not null default 10`. null therefore means the
+   * value could not be read — which is not the same as 10, and must not be rendered
+   * as though the division had chosen it.
    */
   round2Cut: number | null;
 }
 
 /**
- * The facts for an event nothing is known about, because the tables that would
- * know are not there.
+ * The facts for an event nobody has started judging: no panel, no ranks, no closed
+ * round.
  *
  * Frozen so a caller cannot push a judge onto the shared empty panel by accident
  * and quietly change every other event's status in the same render.
@@ -123,6 +123,35 @@ export interface EventIndexRow {
   /** Status and the sentence to print under it, from the shared state machine. */
   state: EventJudgingState;
   round2Cut: number | null;
+  /**
+   * Every contestant with both rounds' points, ranks and official placement, from
+   * {@link finalStandings}.
+   *
+   * Carried on the row rather than recomputed by the event's own page, so the
+   * `placed` column below and the sheet that page draws are the same array and cannot
+   * disagree about a placement. Still **anonymous** — a standing carries a contest
+   * code, never a name; `attachIdentities` is what turns these into a tabulator's
+   * sheet, and only the tabulators' surfaces call it (non-negotiable 1).
+   *
+   * null, not empty, when no cut is on file: with no cut there is no field to divide,
+   * and an empty array here would read as an event with no contestants.
+   */
+  standings: StandingRow[] | null;
+  /**
+   * Contestants who have an official placement — {@link finalStandings}' `finalRank`,
+   * counted.
+   *
+   * Not simply "0 until the results are locked". A non-qualifier's place is settled
+   * the moment round 1 closes, because it never depended on round 2, so this rises
+   * in two steps: the eliminated field first, then the qualifiers when round 2
+   * completes. Locking publishes those placements, it does not compute them.
+   *
+   * Counted off {@link EventIndexRow.standings}, which is also what
+   * `tabulationSummary` counts once the identities are joined on, so this column and
+   * the event's own sheet cannot report different numbers. null only when no cut is
+   * on file, since without one there is no field to place.
+   */
+  placed: number | null;
 }
 
 /**
@@ -146,8 +175,8 @@ export function eventSlotLabel(level: EventLevel, language: EventLanguage): stri
  * One index row per event, in catalog order.
  *
  * `facts` is keyed by event id and may be partial — an event with no entry falls
- * back to {@link NO_JUDGING_FACTS}, which is the same path the whole placeholder
- * takes. Both boards are consolidated even on the index, because the status
+ * back to {@link NO_JUDGING_FACTS}, the unjudged state. Both boards are
+ * consolidated even on the index, because the status
  * sentence quotes progress ("3 of 20 ranks filed") and `boardProgress` needs a
  * board to count.
  */
@@ -175,6 +204,13 @@ export function buildEventIndex(
   return ordered.map((event) => {
     const known = facts[event.eventId] ?? NO_JUDGING_FACTS;
 
+    // `round2_cut_used` is the cut round 1 was actually closed under and it wins
+    // where it exists: `events.round2_cut` is live and an admin may move it
+    // afterwards, and standings drawn under a cut nobody competed under would
+    // reshuffle a settled field. Before round 1 closes there is nothing recorded,
+    // so the live column is the only cut there is.
+    const cutInForce = known.rounds.round2CutUsed ?? known.round2Cut;
+
     const round1 = consolidateRound({
       round: 1,
       units: known.units,
@@ -187,6 +223,9 @@ export function buildEventIndex(
       ranks: known.round2Ranks,
       judgeIds: known.judgeIds,
     });
+
+    const standings =
+      cutInForce === null ? null : finalStandings({ round1, round2, cut: cutInForce });
 
     return {
       eventId: event.eventId,
@@ -202,6 +241,11 @@ export function buildEventIndex(
       round2,
       state: eventJudgingStatus({ rounds: known.rounds, round1, round2 }),
       round2Cut: known.round2Cut,
+      standings,
+      placed:
+        standings === null
+          ? null
+          : standings.filter((standing) => standing.finalRank !== null).length,
     };
   });
 }
@@ -219,6 +263,24 @@ export function eventIndexSummary(rows: EventIndexRow[]): {
   withPanel: number;
   /** Events where the panel has finished and an admin has to act. */
   awaitingAction: number;
+  /**
+   * Units drawn into round 2 across every event.
+   *
+   * Counted off `round2.rows`, which is consolidated from the qualifier set, so
+   * this headline and each event's Qualifiers cell cannot disagree.
+   */
+  qualifiers: number;
+  /**
+   * Contestants with an official placement, across every event.
+   *
+   * A sum of what was measured. An event whose cut could not be read contributes
+   * nothing and is counted in `withoutCut` instead, rather than being folded in as a
+   * nought — which would put a smaller number here than the division has actually
+   * placed and give no sign of it (non-negotiable 5).
+   */
+  placed: number;
+  /** Events with no round-2 cut on file, so with no field that could be placed. */
+  withoutCut: number;
   locked: number;
   notStarted: number;
 } {
@@ -231,6 +293,9 @@ export function eventIndexSummary(rows: EventIndexRow[]): {
         row.state.status === "round1-awaiting-close" ||
         row.state.status === "round2-awaiting-lock"
     ).length,
+    qualifiers: rows.reduce((sum, row) => sum + row.round2.rows.length, 0),
+    placed: rows.reduce((sum, row) => sum + (row.placed ?? 0), 0),
+    withoutCut: rows.filter((row) => row.placed === null).length,
     locked: rows.filter((row) => row.state.status === "locked").length,
     notStarted: rows.filter((row) => row.state.status === "not-started").length,
   };
