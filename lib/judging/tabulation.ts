@@ -119,9 +119,19 @@ export interface TabulationColumn {
  * spreadsheet a tabulator downloads cannot have different columns in a different
  * order from the page they downloaded it from.
  *
+ * Each round's **points** sit beside its rank, which the design contract requires
+ * in as many words: "so a tabulator can see how a placement was produced without
+ * reading the database". Points are the judges' ranks added (D1) and the rank is
+ * the placement of those points, so a sheet printing the rank alone shows the
+ * answer with the working rubbed out — and a tabulator querying a disputed
+ * placement would have to go to the database to check it. The summary list in
+ * section 0 of the contract omits them; D4's decision record is the specific
+ * instruction and wins.
+ *
  * The note on total rank is not optional dressing — non-negotiable 6 requires it
  * wherever the column appears, and putting it here means a surface cannot render
- * the column without also having the caveat to hand.
+ * the column without also having the caveat to hand. Points carry no note: they
+ * are a real figure that really does produce the rank beside them.
  */
 export const TABULATION_COLUMNS: TabulationColumn[] = [
   { key: "code", label: "Code" },
@@ -131,7 +141,9 @@ export const TABULATION_COLUMNS: TabulationColumn[] = [
   { key: "schoolName", label: "School" },
   { key: "districtName", label: "District" },
   { key: "round1Rank", label: "Rank R1", numeric: true },
+  { key: "round1Points", label: "Points R1", numeric: true },
   { key: "round2Rank", label: "Rank R2", numeric: true },
+  { key: "round2Points", label: "Points R2", numeric: true },
   { key: "totalRank", label: "Total rank", numeric: true, note: TOTAL_RANK_NOTE },
   { key: "finalRank", label: "Final rank", numeric: true },
 ];

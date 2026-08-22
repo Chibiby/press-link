@@ -240,6 +240,11 @@ describe("attachIdentities", () => {
 
 describe("TABULATION_COLUMNS", () => {
   it("is exactly the sheet the division asked for, in order", () => {
+    // Each round's points sit immediately after its rank, per D4: "Each round
+    // also shows its points (the judges' ranks added) beside the round rank, so
+    // a tabulator can see how a placement was produced without reading the
+    // database." Section 0 of the contract summarises the sheet without them;
+    // this order follows the decision record, which is the specific instruction.
     expect(TABULATION_COLUMNS.map((c) => c.key)).toEqual([
       "code",
       "name",
@@ -248,10 +253,21 @@ describe("TABULATION_COLUMNS", () => {
       "schoolName",
       "districtName",
       "round1Rank",
+      "round1Points",
       "round2Rank",
+      "round2Points",
       "totalRank",
       "finalRank",
     ]);
+  });
+
+  it("prints the points that produced each round's rank", () => {
+    // The point of the D4 requirement: a rank with no points beside it is an
+    // answer with the working rubbed out, and a tabulator checking a disputed
+    // placement would have to read the database to verify it.
+    const keys = TABULATION_COLUMNS.map((c) => c.key);
+    expect(keys.indexOf("round1Points")).toBe(keys.indexOf("round1Rank") + 1);
+    expect(keys.indexOf("round2Points")).toBe(keys.indexOf("round2Rank") + 1);
   });
 
   it("labels every column", () => {
