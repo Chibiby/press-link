@@ -177,23 +177,20 @@ export default async function AdminDashboardPage() {
       <section className="grid gap-4 sm:grid-cols-2">
         <RegistrationPortalCard groups={data.eventGroups} />
         <SummaryPortalCard schools={data.schoolOptions} />
+        {/* No longer `soon`: both routes exist and draw their real tables over the real
+            event catalog. They are not finished features, and the descriptions say which
+            part is missing rather than leaning on a "Coming soon" chip that would now be
+            wrong — the sidebar links them too, and a chip here contradicting a live link
+            there is worse than either. */}
         <PortalCard
           title="Judges"
-          description="Judging panels, per-event assignments, and the sheets judges score on."
-          soon
-          requires={[
-            "A judges table — the database has no judge, no panel and no assignment.",
-            "A scoring model, so an assigned judge has something to open.",
-          ]}
+          description="Judging panels and per-event assignments. The layout is in place; no judge, panel or sheet exists in the database yet."
+          actions={[{ label: "Open judges portal", href: "/admin/judges" }]}
         />
         <PortalCard
           title="Tabulators"
-          description="Score entry and per-event ranking for the tabulation team."
-          soon
-          requires={[
-            "Scores to tabulate, which arrive with judging.",
-            "A ranking and tie-break rule per event, agreed with the division office.",
-          ]}
+          description="Per-event results sheets, with each code joined back to a name and a school. There are no ranks to tabulate yet."
+          actions={[{ label: "Open tabulators", href: "/admin/tabulators" }]}
         />
       </section>
     </div>

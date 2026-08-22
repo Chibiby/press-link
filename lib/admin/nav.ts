@@ -81,8 +81,11 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     label: "Adjudication",
     items: [
-      { label: "Judges Portal", href: "/admin/judges", icon: "judges", stub: true },
-      { label: "Tabulators", href: "/admin/tabulators", icon: "tabulators", stub: true },
+      // No longer stubs: both routes render their real layout over real event data,
+      // and say on the page itself which of their figures the judging schema cannot
+      // supply yet. `stub` is reserved for a route whose page is a SoonPage.
+      { label: "Judges Portal", href: "/admin/judges", icon: "judges" },
+      { label: "Tabulators", href: "/admin/tabulators", icon: "tabulators" },
     ],
   },
   {
