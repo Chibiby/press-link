@@ -5,10 +5,13 @@ import { cn } from "@/lib/utils";
 export function Wordmark({
   size = "sm",
   subtitle,
+  markOnly = false,
   className,
 }: {
   size?: "sm" | "lg";
   subtitle?: string;
+  /** Mark without the name — for the collapsed admin rail, where 4rem fits the shield and nothing else. Drops `subtitle` with it. */
+  markOnly?: boolean;
   className?: string;
 }) {
   const lg = size === "lg";
@@ -32,21 +35,23 @@ export function Wordmark({
           className="size-full object-contain"
         />
       </span>
-      <span className="flex flex-col leading-tight">
-        <span
-          className={cn(
-            "font-semibold tracking-tight",
-            lg ? "text-2xl" : "text-base"
-          )}
-        >
-          Press Link
-        </span>
-        {subtitle ? (
-          <span className={cn("text-muted-foreground", lg ? "text-sm" : "text-xs")}>
-            {subtitle}
+      {markOnly ? null : (
+        <span className="flex flex-col leading-tight">
+          <span
+            className={cn(
+              "font-semibold tracking-tight",
+              lg ? "text-2xl" : "text-base"
+            )}
+          >
+            Press Link
           </span>
-        ) : null}
-      </span>
+          {subtitle ? (
+            <span className={cn("text-muted-foreground", lg ? "text-sm" : "text-xs")}>
+              {subtitle}
+            </span>
+          ) : null}
+        </span>
+      )}
     </div>
   );
 }

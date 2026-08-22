@@ -1,7 +1,7 @@
 import { Suspense, type ReactNode } from "react";
 
 import { AttentionBell } from "@/components/admin/shell/AttentionBell";
-import { Sidebar } from "@/components/admin/shell/Sidebar";
+import { Sidebar, SidebarCollapseProvider } from "@/components/admin/shell/Sidebar";
 import { Topbar } from "@/components/admin/shell/Topbar";
 import { UserChip } from "@/components/admin/shell/UserChip";
 
@@ -34,19 +34,24 @@ async function ShellActions() {
  * chrome redirects exactly as it does in the page.
  */
 export default function AdminShellLayout({ children }: { children: ReactNode }) {
+  // The provider wraps the whole shell because the rail reads the collapse state and
+  // the topbar's hamburger writes it, and those two are siblings — this is the deepest
+  // node that contains both. {children} stays server-rendered either way.
   return (
-    <div className="flex min-h-svh">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar
-          actions={
-            <Suspense fallback={null}>
-              <ShellActions />
-            </Suspense>
-          }
-        />
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+    <SidebarCollapseProvider>
+      <div className="flex min-h-svh">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar
+            actions={
+              <Suspense fallback={null}>
+                <ShellActions />
+              </Suspense>
+            }
+          />
+          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </SidebarCollapseProvider>
   );
 }

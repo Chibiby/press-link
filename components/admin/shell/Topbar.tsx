@@ -6,11 +6,16 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 
 import { MobileNav } from "./MobileNav";
+import { SidebarToggle } from "./SidebarToggle";
 
 /**
  * Division identity and session controls only. Per-page titles live in
  * <PageHeading> inside each page, because a layout cannot know which page
  * rendered beneath it.
+ *
+ * The leading slot holds one hamburger at every width: <SidebarToggle> collapses
+ * the rail at `lg` and up, <MobileNav> opens the drawer below it, and exactly one
+ * of the two is ever visible.
  *
  * `actions` is a slot for right-aligned, page-independent controls — the layout
  * fills it with the attention bell in phase 2.
@@ -18,6 +23,7 @@ import { MobileNav } from "./MobileNav";
 export function Topbar({ actions }: { actions?: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur sm:px-4">
+      <SidebarToggle />
       <MobileNav />
       {/* The wordmark is in the rail on desktop, so it only shows here on narrow screens. */}
       <div className="min-w-0 flex-1 lg:hidden">

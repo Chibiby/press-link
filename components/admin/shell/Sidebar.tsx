@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -14,8 +22,6 @@ import {
   LayoutDashboard,
   Map,
   Newspaper,
-  PanelLeftClose,
-  PanelLeftOpen,
   School,
   ScrollText,
   Settings,
@@ -27,7 +33,6 @@ import {
 } from "lucide-react";
 
 import { Wordmark } from "@/components/brand/wordmark";
-import { Button } from "@/components/ui/button";
 import { ADMIN_NAV, isNavActive, type NavIcon } from "@/lib/admin/nav";
 import { cn } from "@/lib/utils";
 import { version as APP_VERSION } from "@/package.json";
@@ -251,19 +256,30 @@ export function SidebarFooter({ collapsed = false }: { collapsed?: boolean }) {
 /** Where the collapse preference is remembered between visits. */
 const COLLAPSE_KEY = "presslink.admin.sidebar-collapsed";
 
+type SidebarCollapse = {
+  collapsed: boolean;
+  toggle: () => void;
+};
+
+const SidebarCollapseContext = createContext<SidebarCollapse | null>(null);
+
 /**
- * The desktop rail. Hidden below `lg`, where MobileNav takes over.
+ * The collapse state, lifted out of `Sidebar` because the control that flips it now
+ * lives in the topbar (see `SidebarToggle`) and the rail and the topbar are siblings
+ * in the shell layout — there is no prop path between them.
  *
- * The comp's collapse control lives here (spec §3.3, "sidebar collapse state").
- * It starts expanded on every render and only then reads `localStorage`, rather
- * than reading it in the `useState` initialiser: the server has no
- * `localStorage`, so initialising from it would render a different tree on the
- * server than on the client and React would throw a hydration mismatch. The
- * cost is one frame of expanded rail for an admin who prefers it collapsed.
- * That is the right trade — a visible flicker beats a console error and a
- * client-side re-render of the whole shell.
+ * It stays in this file rather than getting its own: the state has exactly two
+ * consumers, the rail that reads it and the button that flips it, and spec §3.3 names
+ * `Sidebar.tsx` as where the collapse state and its `localStorage` preference live.
+ *
+ * It starts expanded on every render and only then reads `localStorage`, rather than
+ * reading it in the `useState` initialiser: the server has no `localStorage`, so
+ * initialising from it would render a different tree on the server than on the client
+ * and React would throw a hydration mismatch. The cost is one frame of expanded rail
+ * for an admin who prefers it collapsed. That is the right trade — a visible flicker
+ * beats a console error and a client-side re-render of the whole shell.
  */
-export function Sidebar() {
+export function SidebarCollapseProvider({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -273,13 +289,46 @@ export function Sidebar() {
     setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
   }, []);
 
-  function toggle() {
-    // The write stays out of the updater: React may call an updater more than
-    // once (StrictMode does), and updaters must be pure.
-    const next = !collapsed;
-    setCollapsed(next);
-    window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+  const value = useMemo<SidebarCollapse>(
+    () => ({
+      collapsed,
+      toggle() {
+        // The write stays out of the updater: React may call an updater more than
+        // once (StrictMode does), and updaters must be pure.
+        const next = !collapsed;
+        setCollapsed(next);
+        window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      },
+    }),
+    [collapsed]
+  );
+
+  return (
+    <SidebarCollapseContext.Provider value={value}>{children}</SidebarCollapseContext.Provider>
+  );
+}
+
+/** Throws rather than defaulting: a toggle outside the provider would silently do nothing. */
+export function useSidebarCollapse() {
+  const value = useContext(SidebarCollapseContext);
+
+  if (!value) {
+    throw new Error("useSidebarCollapse must be used inside <SidebarCollapseProvider>.");
   }
+
+  return value;
+}
+
+/**
+ * The desktop rail. Hidden below `lg`, where MobileNav takes over.
+ *
+ * It carries no collapse control of its own — that is the topbar's hamburger (spec
+ * §3.3, "sidebar collapse state"). Collapsed, the header keeps the shield mark alone:
+ * it holds the rail's identity at 4rem, and it leaves the header the same height in
+ * both states so the nav beneath it does not jump when the rail is toggled.
+ */
+export function Sidebar() {
+  const { collapsed } = useSidebarCollapse();
 
   return (
     <aside
@@ -289,34 +338,8 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-64"
       )}
     >
-      <div
-        className={cn(
-          "flex items-center gap-2 py-4",
-          collapsed ? "justify-center px-2" : "px-4"
-        )}
-      >
-        {collapsed ? null : (
-          <div className="min-w-0 flex-1">
-            <Wordmark subtitle="Division Admin" />
-          </div>
-        )}
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={toggle}
-          aria-expanded={!collapsed}
-          aria-controls="admin-nav"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="size-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          {collapsed ? (
-            <PanelLeftOpen className="size-4" />
-          ) : (
-            <PanelLeftClose className="size-4" />
-          )}
-        </Button>
+      <div className={cn("flex items-center py-4", collapsed ? "justify-center px-2" : "px-4")}>
+        {collapsed ? <Wordmark markOnly /> : <Wordmark subtitle="Division Admin" />}
       </div>
       <AdminNav id="admin-nav" collapsed={collapsed} />
       <SidebarFooter collapsed={collapsed} />
