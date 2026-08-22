@@ -1,4 +1,4 @@
-import { ClipboardList, Gavel, Lock, Users } from "lucide-react";
+import { ClipboardList, Download, Gavel, Lock, Users } from "lucide-react";
 
 import { EventPanelTable } from "@/components/admin/judging/EventPanelTable";
 import { JudgeRosterTable } from "@/components/admin/judging/JudgeRosterTable";
@@ -63,14 +63,36 @@ export default async function JudgesPage() {
         badge="Layout preview"
         subtitle="Judging panels, per-event assignments, and how far each round has got."
         actions={
-          <Button
-            size="sm"
-            disabled
-            title="Creating a judge needs the judges table, which migration 0018 adds."
-          >
-            <Gavel />
-            Add judge
-          </Button>
+          <>
+            <Button
+              size="sm"
+              disabled
+              title="Creating a judge needs the judges table, which migration 0018 adds."
+            >
+              <Gavel />
+              Add judge
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              {/* A route handler, so a plain anchor: next/link would prefetch, and
+                  prefetching this URL builds a workbook on every hover. The
+                  dashboard's export anchor is written the same way.
+
+                  The lint rule reads `export` as a value filling the `[eventId]`
+                  page beside it. Next resolves a static segment before a dynamic
+                  one, so the URL reaches the route handler — `next build` lists
+                  /admin/judges/export and /admin/judges/[eventId] separately. The
+                  dashboard's anchor escapes the rule only because overall-data has
+                  no dynamic child. */}
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+              <a
+                href="/admin/judges/export"
+                title="The event list with each panel's status. Judges, sheets and ranks arrive with migration 0018, and the workbook says so in every cell that would need them."
+              >
+                <Download />
+                Export to Excel
+              </a>
+            </Button>
+          </>
         }
       />
 

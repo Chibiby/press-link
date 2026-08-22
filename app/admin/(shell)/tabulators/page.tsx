@@ -56,14 +56,20 @@ export default async function TabulatorsPage() {
         badge="Layout preview"
         subtitle="Per-event results sheets, with the codes joined back to names and schools."
         actions={
-          <Button
-            size="sm"
-            variant="outline"
-            disabled
-            title="The workbook export needs locked results, which migration 0018 records in event_rounds."
-          >
-            <Download />
-            Export all sheets
+          <Button asChild size="sm" variant="outline">
+            {/* A route handler, so a plain anchor: next/link would prefetch, and
+                prefetching this URL builds a workbook on every hover.
+
+                The lint rule reads `export` as a value filling the `[eventId]` page
+                beside it — see the same disable on /admin/judges. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a
+              href="/admin/tabulators/export"
+              title="The event list with each event's status. Qualifiers and locked results arrive with migration 0018, and the workbook says so in every cell that would need them."
+            >
+              <Download />
+              Export to Excel
+            </a>
           </Button>
         }
       />
