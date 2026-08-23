@@ -32,7 +32,7 @@ import { matchesQuery } from "@/lib/search/matches-query";
  * silently narrowing to nothing.
  */
 export interface AdminEntryRow {
-  schools: { district_id: string } | null;
+  schools: { name: string; district_id: string } | null;
   events: {
     category: EventCategory;
     level: EventLevel;
@@ -230,17 +230,32 @@ export function filterEntryRows<T extends AdminEntryRow>(
   const { district, category, level, language } = activeRowFilters(filters);
 
   return rows.filter((entry) => {
-    // The people on the entry, in the form the table prints them: the contestants
-    // and the coaches. They are what is left to type here — school, district,
-    // event, category, level and language each have a dropdown of their own
-    // directly above the table, and typing one of those would both duplicate a
-    // precise control with a loose substring match and sweep in a whole bucket of
-    // rows, which is the opposite of narrowing.
+    // The contestants, the coaches and the school, each in the form the table
+    // prints it. What is excluded — district, event, category, level, language —
+    // is excluded for being a *bucket* with its own dropdown, not merely for
+    // having a dropdown. A dropdown'd field is unsearchable when typing it would
+    // do either of two harms:
+    //
+    //   Sweeping. Those five hold a handful of values between them, so "secondary"
+    //   or "District I" pulls in a third of the division — the opposite of
+    //   narrowing.
+    //
+    //   Contradiction. The box would be selecting on language while the Language
+    //   select visibly reads "English + Filipino", and a reader cannot tell from
+    //   the screen which one is in force.
+    //
+    // School does neither. There are ~295 of them, so a school name lands on one
+    // school's entries — the same set its dropdown would have produced, agreeing
+    // with the select rather than contradicting it — and `/admin/participants`
+    // has shipped exactly this pairing since `bdd524c`
+    // (`lib/roster/participant-filters.ts` searches `row.schoolName` beside a
+    // school dropdown). Two admin tables must not answer the same typed school
+    // name differently.
     //
     // Coaches are searchable because nothing else on this page can find them, and
     // because the school-facing list (`filterEntries` in
-    // `app/entry/list-filters.ts`) has always searched them. Either way the match
-    // is visible in a printed column.
+    // `app/entry/list-filters.ts`) has always searched them. Every field in here
+    // is printed in a cell, so a match is always visible text.
     //
     // Nothing numeric is in here, because this table prints no number. The select
     // carries `participant_number` for no one to see, and `entries.entry_number`
@@ -250,7 +265,14 @@ export function filterEntryRows<T extends AdminEntryRow>(
     //
     // Submitted is left out for the same "not a way to narrow" reason as the
     // dropdowns: it is a formatted timestamp, so "2026" is every entry.
-    const haystack = [...entryParticipantNames(entry), ...entryCoachNames(entry)];
+    const haystack = [
+      ...entryParticipantNames(entry),
+      ...entryCoachNames(entry),
+      // `?? ""` and not a filter: an entry whose school join came back null has
+      // nothing printed in that cell either, and an empty string matches no
+      // non-empty query.
+      entry.schools?.name ?? "",
+    ];
     if (!matchesQuery(haystack, query)) return false;
 
     // District, category, level and language live on joined tables, so they are

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
+import { toAdminParticipantRows } from "@/lib/roster/admin-rows";
+import { filterParticipantRows } from "@/lib/roster/participant-filters";
 import {
   entriesExportFilename,
   entryCoachNames,
@@ -20,8 +22,8 @@ import {
  * hand-written "Dela Cruz, Ana" in a fixture would let this file pass while the
  * screen printed something else.
  *
- * The extra columns (`participant_number`, the school and event names) are kept in
- * the fixture on purpose: they are in the page's select, and their absence from
+ * The extra columns (`participant_number`, the event and district names) are kept
+ * in the fixture on purpose: they are in the page's select, and their absence from
  * the haystack is a decision this file tests rather than an accident of a
  * trimmed-down fixture.
  */
@@ -184,8 +186,51 @@ describe("filterEntryRows", () => {
     expect(ids(filterEntryRows(rows, { q: "santos" }))).toEqual(["e1", "e2"]);
   });
 
-  it("does not search the school, district or event, which have their own dropdowns", () => {
-    expect(filterEntryRows(rows, { q: "Zamora" })).toEqual([]);
+  it("matches the school, so one school's entries can be listed by typing it", () => {
+    expect(ids(filterEntryRows(rows, { q: "zamora" }))).toEqual(["e2"]);
+    expect(ids(filterEntryRows(rows, { q: "Bagumbayan" }))).toEqual(["e1", "e3"]);
+  });
+
+  it("agrees with /admin/participants on the same typed school name", () => {
+    // The reference page searches `row.schoolName` beside its own school dropdown
+    // (`lib/roster/participant-filters.ts`), so an administrator who learns that
+    // "zamora" lists a school's learners must get that school's entries here from
+    // the same keystrokes. Both are asserted through the real filters rather than
+    // by reading the two haystack arrays, which is what would actually break.
+    const participants = toAdminParticipantRows([
+      {
+        id: "p1",
+        participant_number: 12,
+        first_name: "Jose",
+        middle_name: null,
+        last_name: "Santos",
+        gender: "M",
+        schools: {
+          id: "s2",
+          name: "Zamora ES",
+          district_id: "d2",
+          paper_participation: "yes",
+          submission_locked_at: null,
+          paper_count: 0,
+          districts: { name: "District II" },
+        },
+        entry_participants: [{ entry_id: "e2" }],
+      },
+    ]);
+
+    expect(filterParticipantRows(participants, { q: "zamora" })).toHaveLength(1);
+    expect(filterEntryRows(rows, { q: "zamora" })).toHaveLength(1);
+  });
+
+  it("matches a school even where the entry has no printable contestant", () => {
+    // e3's participant and coach joins are both null, so the school name is the
+    // only thing that cell row prints — and the only thing that can find it.
+    expect(ids(filterEntryRows(rows, { q: "bagumbayan es" }))).toContain("e3");
+  });
+
+  it("does not search the district or event, which are buckets with their own dropdowns", () => {
+    // A handful of values each, so typing one sweeps in a third of the division
+    // while a visible select still reads "All districts".
     expect(filterEntryRows(rows, { q: "District II" })).toEqual([]);
     expect(filterEntryRows(rows, { q: "News Writing" })).toEqual([]);
   });
@@ -270,6 +315,17 @@ describe("entryFiltersFromParams", () => {
       ids(filterEntryRows(rows, { q: " SANTOS ", district: "d2", level: "secondary" }))
     );
     expect(ids(filterEntryRows(rows, entryFiltersFromParams(url)))).toEqual(["e2"]);
+  });
+
+  it("carries a school-name query into the workbook and its filename", () => {
+    // The export shares the filter, so school matching follows from the array
+    // entry above — confirmed here rather than assumed, since the route is the
+    // half nobody sees fail.
+    const url = new URLSearchParams("q=zamora");
+    expect(ids(filterEntryRows(rows, entryFiltersFromParams(url)))).toEqual(["e2"]);
+    expect(entriesExportFilename(entryFiltersFromParams(url), "2026-08-23")).toBe(
+      "press-link-entries-filtered-2026-08-23.xlsx"
+    );
   });
 });
 

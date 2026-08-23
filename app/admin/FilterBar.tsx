@@ -48,9 +48,9 @@ export function FilterBar({
       <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <FilterSearch
           label="Search"
-          // Names the two columns it actually reads. Every other column on this
-          // table has a dropdown of its own in this same card.
-          placeholder="Contestant or coach"
+          // Names the three columns it actually reads. The rest are buckets with
+          // a dropdown of their own in this same card.
+          placeholder="Contestant, coach or school"
           {...search}
         />
         <FilterSelect
