@@ -72,8 +72,3 @@ export function buildAttention(input: AttentionInput): AttentionItem[] {
 
   return all.filter((item) => item.count > 0);
 }
-
-/** The bell's badge: how many categories need attention, not how many rows. */
-export function attentionBadge(items: AttentionItem[]): number {
-  return items.length;
-}

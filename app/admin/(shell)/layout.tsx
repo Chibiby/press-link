@@ -1,26 +1,18 @@
 import { Suspense, type ReactNode } from "react";
 
-import { AttentionBell } from "@/components/admin/shell/AttentionBell";
 import { Sidebar, SidebarCollapseProvider } from "@/components/admin/shell/Sidebar";
 import { Topbar } from "@/components/admin/shell/Topbar";
 import { UserChip } from "@/components/admin/shell/UserChip";
 
-import { loadShellFacts } from "./dashboard-data";
+import { loadAdminName } from "./dashboard-data";
 
 /**
- * The bell and the chip in one async unit, wrapped in Suspense by the layout so the
- * shell and the page below it are not held back by this query. On /admin it costs
- * nothing: cache() has already resolved the same loaders for the page.
+ * The chip on its own async unit, wrapped in Suspense by the layout so the shell and
+ * the page below it are not held back by this query. On /admin it costs nothing:
+ * cache() has already resolved the same loader for the page.
  */
 async function ShellActions() {
-  const { adminName, attentionBadge } = await loadShellFacts();
-
-  return (
-    <>
-      <AttentionBell count={attentionBadge} />
-      <UserChip name={adminName} />
-    </>
-  );
+  return <UserChip name={await loadAdminName()} />;
 }
 
 /**

@@ -4,7 +4,6 @@ import { requireAdmin } from "@/app/admin/guard";
 import type { ActivityFeed } from "@/lib/dashboard/activity";
 import { fetchActivity } from "@/lib/dashboard/activity-source";
 import {
-  attentionBadge,
   buildAttention,
   type AttentionInput,
   type AttentionItem,
@@ -69,11 +68,6 @@ export interface EventOptionGroup {
 export interface SchoolOption {
   id: string;
   label: string;
-}
-
-export interface ShellFacts {
-  adminName: string;
-  attentionBadge: number;
 }
 
 export interface DashboardData {
@@ -201,7 +195,7 @@ export const loadRosterFacts = cache(async (): Promise<RosterFacts> => {
 });
 
 /**
- * The four counts behind the attention list and the topbar badge.
+ * The four counts behind the attention list.
  *
  * It reads no rows of its own — both loaders it calls are cached, so on the dashboard
  * this is pure arithmetic over data the page already fetched.
@@ -215,13 +209,6 @@ export const loadAttentionInput = cache(async (): Promise<AttentionInput> => {
     coachesWithoutEntry: roster.coachesWithoutEntry,
     schoolsPaperNotStarted: schools.schoolsPaperNotStarted,
   };
-});
-
-/** What the shell's topbar needs on every admin page. */
-export const loadShellFacts = cache(async (): Promise<ShellFacts> => {
-  const [adminName, attention] = await Promise.all([loadAdminName(), loadAttentionInput()]);
-
-  return { adminName, attentionBadge: attentionBadge(buildAttention(attention)) };
 });
 
 interface EventFactRow {

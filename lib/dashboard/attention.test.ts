@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attentionBadge, buildAttention, type AttentionInput } from "./attention";
+import { buildAttention, type AttentionInput } from "./attention";
 
 const FULL: AttentionInput = {
   learnersWithoutEntry: 114,
@@ -65,15 +65,5 @@ describe("buildAttention", () => {
     const tones = Object.fromEntries(buildAttention(FULL).map((i) => [i.key, i.tone]));
     expect(tones["paper-not-started"]).toBe("info");
     expect(tones["learners-no-entry"]).toBe("warn");
-  });
-});
-
-describe("attentionBadge", () => {
-  it("counts categories, not rows", () => {
-    expect(attentionBadge(buildAttention(FULL))).toBe(4);
-  });
-
-  it("is zero when there is nothing to show", () => {
-    expect(attentionBadge([])).toBe(0);
   });
 });
