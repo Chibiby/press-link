@@ -3,9 +3,10 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FilePlus2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Eye, FilePlus2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 import { deleteEntryAction } from "./actions";
+import { EntryDetailsDialog } from "./EntryDetailsDialog";
 import {
   ANY,
   filterEntries,
@@ -71,6 +72,7 @@ export function EntriesTable({
 }) {
   const router = useRouter();
   const [pendingDelete, setPendingDelete] = useState<EntryRow | null>(null);
+  const [viewing, setViewing] = useState<EntryRow | null>(null);
   const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState<LevelFilter>(ANY);
@@ -246,6 +248,13 @@ export function EntriesTable({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {/* Not disabled when locked. A locked submission is
+                            exactly when a school still needs to read who it
+                            entered, and every other item here is unavailable. */}
+                        <DropdownMenuItem onClick={() => setViewing(entry)}>
+                          <Eye className="size-4" />
+                          View
+                        </DropdownMenuItem>
                         <DropdownMenuItem disabled={locked} onClick={() => onEdit(entry)}>
                           <Pencil className="size-4" />
                           Edit
@@ -269,6 +278,11 @@ export function EntriesTable({
 
         <ListPager {...pager} label="Entries" />
       </div>
+
+      <EntryDetailsDialog
+        entry={viewing}
+        onOpenChange={(open) => !open && setViewing(null)}
+      />
 
       <AlertDialog
         open={pendingDelete !== null}
