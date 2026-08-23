@@ -22,6 +22,7 @@ import {
 import { countByEventType, summarisePerEvent } from "@/lib/dashboard/per-event";
 import { summarisePerSchool } from "@/lib/dashboard/per-school";
 import { fetchSchoolFacts } from "@/lib/dashboard/school-facts";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 
 import { OverallDataFilter } from "./OverallDataFilter";
 
@@ -52,13 +53,25 @@ export default async function OverallDataPage({
   const { supabase } = await requireAdmin();
   const { district } = await searchParams;
 
-  const [facts, districtResult, entryResult, typeCount] = await Promise.all([
+  const [facts, districtResult, entryRows, typeCount] = await Promise.all([
     fetchSchoolFacts(supabase),
     supabase.from("districts").select("id, name").order("name").overrideTypes<DistrictRow[]>(),
-    supabase
-      .from("entries")
-      .select("id, schools(district_id), events(event_type_id, event_types(name_en))")
-      .overrideTypes<EntryTypeRow[]>(),
+    // Paged, not one select. This page's heading promises nothing on it is truncated,
+    // and at 977 entries against a silent `db-max-rows` cap that promise was about
+    // twenty entries from becoming false: the table below counts the rows it received,
+    // so a clipped read would under-report every event type's share and the total.
+    // `.order("id")` is new — the select had no ordering at all, and LIMIT/OFFSET with
+    // no ORDER BY lets Postgres return the windows in any order it likes, which skips
+    // and repeats rows. Ordering by the primary key is the cheapest total order; this
+    // page groups and counts, so no visible order changes.
+    fetchAll<EntryTypeRow>("Entries by event type", (from, to) =>
+      supabase
+        .from("entries")
+        .select("id, schools(district_id), events(event_type_id, event_types(name_en))")
+        .order("id")
+        .range(from, to)
+        .overrideTypes<EntryTypeRow[]>()
+    ),
     supabase.from("event_types").select("*", { count: "exact", head: true }),
   ]);
 
@@ -78,7 +91,7 @@ export default async function OverallDataPage({
       : facts.registeredSchools,
   });
 
-  const typeRows = (entryResult.data ?? [])
+  const typeRows = entryRows
     .filter((row) => (district ? row.schools?.district_id === district : true))
     .map((row) => ({
       typeId: row.events?.event_type_id ?? "",

@@ -6,6 +6,7 @@ import { buildEntriesWorkbook, type ExportEntry } from "@/lib/export/entries-wor
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { distinctCoaches } from "@/lib/roster/entry-coaches";
 import { surnameFirst } from "@/lib/roster/names";
+import { fetchAll, LoadFailure } from "@/lib/supabase/fetch-all";
 
 const DATE_FORMAT = new Intl.DateTimeFormat("en-PH", {
   year: "numeric",
@@ -66,21 +67,38 @@ export async function GET(request: NextRequest) {
   }
 
   const params = request.nextUrl.searchParams;
-
-  let query = supabase
-    .from("entries")
-    .select(
-      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(id, first_name, middle_name, last_name, gender))"
-    )
-    .order("submitted_at", { ascending: false });
-
   const school = params.get("school");
   const event = params.get("event");
-  if (school) query = query.eq("school_id", school);
-  if (event) query = query.eq("event_id", event);
 
-  const { data: rawEntries, error } = await query.overrideTypes<EntryRow[]>();
-  if (error) {
+  // Paged, not one select. This is the worse half of the truncation: a spreadsheet is
+  // filed as a record, so a clipped read does not produce a short screen somebody
+  // refreshes — it produces an official-looking entry list with rows missing and a
+  // date on it. At 977 entries the table is about twenty short of the `db-max-rows`
+  // cap PostgREST applies without saying so. `.order("id")` breaks the `submitted_at`
+  // tie (`not null default now()`, not unique — a school files in one second), which
+  // LIMIT/OFFSET needs or a boundary row lands in two windows or neither.
+  let rawEntries: EntryRow[];
+  try {
+    rawEntries = await fetchAll<EntryRow>("Entries", (from, to) => {
+      let query = supabase
+        .from("entries")
+        .select(
+          "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(id, first_name, middle_name, last_name, gender))"
+        );
+
+      if (school) query = query.eq("school_id", school);
+      if (event) query = query.eq("event_id", event);
+
+      return query
+        .order("submitted_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+        .overrideTypes<EntryRow[]>();
+    });
+  } catch (failure) {
+    // 500 and no file, never a partial workbook: a download that half-worked is
+    // indistinguishable from a complete one once it is saved.
+    if (!(failure instanceof LoadFailure)) throw failure;
     return NextResponse.json({ error: "Could not load entries" }, { status: 500 });
   }
 
@@ -90,7 +108,7 @@ export async function GET(request: NextRequest) {
   const level = params.get("level");
   const language = params.get("language");
 
-  const filtered = (rawEntries ?? []).filter((entry) => {
+  const filtered = rawEntries.filter((entry) => {
     if (district && entry.schools?.district_id !== district) return false;
     if (category && entry.events?.category !== category) return false;
     if (level && entry.events?.level !== level) return false;

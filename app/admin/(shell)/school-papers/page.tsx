@@ -10,6 +10,7 @@ import {
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
 import { PAPER_LEVEL_LABEL, type PaperSlot } from "@/lib/paper/level";
 import { LANGUAGE_LABEL } from "@/lib/events-catalog";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -56,19 +57,28 @@ export default async function AdminSchoolPapersPage({
   const params = await searchParams;
   const { supabase } = await requireAdmin();
 
-  const [{ data: districts }, { data: schools }, { data: raw }] = await Promise.all([
+  const [{ data: districts }, { data: schools }, raw] = await Promise.all([
     supabase.from("districts").select("id, name").order("name"),
     supabase.from("schools").select("id, name").order("name"),
-    supabase
-      .from("schools")
-      .select(
-        "id, name, district_id, is_integrated, paper_participation, paper_answered_at, submission_locked_at, districts(name), school_papers(language, level)"
-      )
-      .order("name")
-      .overrideTypes<RawAdminSchoolPaper[]>(),
+    // Paged, not one select: PostgREST caps a response at `db-max-rows` with no error,
+    // so an unbounded read of a table that grows past it drops schools off the bottom
+    // of this list silently. 332 schools today, so this is prophylactic — the
+    // `.order("id")` is not: `schools.name` has no unique constraint (migration 0001),
+    // and two schools sharing a name would shuffle between page requests.
+    fetchAll<RawAdminSchoolPaper>("The school paper registry", (from, to) =>
+      supabase
+        .from("schools")
+        .select(
+          "id, name, district_id, is_integrated, paper_participation, paper_answered_at, submission_locked_at, districts(name), school_papers(language, level)"
+        )
+        .order("name")
+        .order("id")
+        .range(from, to)
+        .overrideTypes<RawAdminSchoolPaper[]>()
+    ),
   ]);
 
-  const allRows = toAdminSchoolPaperRows(raw ?? []);
+  const allRows = toAdminSchoolPaperRows(raw);
   const rows = filterSchoolPaperRows(allRows, params);
 
   return (

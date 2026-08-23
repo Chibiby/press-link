@@ -20,6 +20,7 @@ import {
   summariseRegistry,
   type RegistryRow,
 } from "@/lib/dashboard/school-registry";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 
 import { SchoolRegistryFilter } from "./SchoolRegistryFilter";
 
@@ -58,20 +59,30 @@ export default async function AdminSchoolsPage({
   const { supabase } = await requireAdmin();
   const params = await searchParams;
 
-  const [schoolResult, districtResult] = await Promise.all([
-    supabase
-      .from("schools")
-      .select(
-        "id, name, school_id_number, district_id, is_integrated, submission_locked_at, districts(name), participants(count), coaches(count), entries(count)"
-      )
-      .order("name")
-      .overrideTypes<RegistrySchoolRow[]>(),
+  const [schoolRows, districtResult] = await Promise.all([
+    // Paged, not one select: PostgREST caps a response at `db-max-rows` and says
+    // nothing, so an unbounded read would quietly shorten the division roll — and this
+    // table's footer sums the rows it got, so the learner, coach and entry totals
+    // would be wrong too, not merely incomplete. 332 schools today, so this is
+    // prophylactic; the `.order("id")` is not, because `schools.name` carries no
+    // unique constraint (migration 0001) and ties reshuffle between page requests.
+    fetchAll<RegistrySchoolRow>("The school registry", (from, to) =>
+      supabase
+        .from("schools")
+        .select(
+          "id, name, school_id_number, district_id, is_integrated, submission_locked_at, districts(name), participants(count), coaches(count), entries(count)"
+        )
+        .order("name")
+        .order("id")
+        .range(from, to)
+        .overrideTypes<RegistrySchoolRow[]>()
+    ),
     supabase.from("districts").select("id, name").order("name").overrideTypes<DistrictRow[]>(),
   ]);
 
   const districts = districtResult.data ?? [];
 
-  const rows: RegistryRow[] = (schoolResult.data ?? []).map((row) => ({
+  const rows: RegistryRow[] = schoolRows.map((row) => ({
     schoolId: row.id,
     schoolName: row.name,
     schoolIdNumber: row.school_id_number,

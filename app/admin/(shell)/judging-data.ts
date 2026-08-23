@@ -30,6 +30,7 @@ import type {
 import { distinctCoaches } from "@/lib/roster/entry-coaches";
 import { surnameFirst } from "@/lib/roster/names";
 import { isIntegratedName } from "@/lib/schools/integrated";
+import { fetchAll, LoadFailure } from "@/lib/supabase/fetch-all";
 
 /**
  * `lib/events-catalog.ts` exports `levelTag()` — "elem" / "sec", for building event
@@ -131,50 +132,6 @@ export interface JudgingEventIndex {
    * (non-negotiable 5). The pages branch on this before drawing anything.
    */
   error: string | null;
-}
-
-/**
- * PostgREST caps a response at a fixed number of rows, so a single `select` over a
- * table that can grow past that cap returns a **silently truncated** answer.
- *
- * That is fatal here rather than merely slow. Dropped `judge_ranks` rows do not
- * make a board look smaller — they make it look *unfinished*, because
- * `consolidateRound` counts what is missing. A truncated read would report a panel
- * that has finished as still working, and would keep the round-1 close button
- * greyed out for an event that was ready. So every table whose size follows the
- * data is read a page at a time, and running past the ceiling raises instead of
- * returning a short answer.
- */
-const PAGE_SIZE = 1000;
-const MAX_PAGES = 60;
-
-/** Thrown by {@link fetchAll} so one `catch` can turn any failed read into `error`. */
-class LoadFailure extends Error {}
-
-async function fetchAll<T>(
-  what: string,
-  page: (
-    from: number,
-    to: number
-  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
-): Promise<T[]> {
-  const out: T[] = [];
-
-  for (let index = 0; index < MAX_PAGES; index += 1) {
-    const from = index * PAGE_SIZE;
-    const { data, error } = await page(from, from + PAGE_SIZE - 1);
-    if (error) throw new LoadFailure(`${what} could not be read: ${error.message}`);
-
-    const batch = data ?? [];
-    out.push(...batch);
-    // A short page is the last page. An exactly-full one may not be, so it is
-    // followed by one more request that comes back empty.
-    if (batch.length < PAGE_SIZE) return out;
-  }
-
-  throw new LoadFailure(
-    `${what} runs past ${MAX_PAGES * PAGE_SIZE} rows, which is more than this page reads in one go. Reporting it rather than showing a partial count.`
-  );
 }
 
 /**

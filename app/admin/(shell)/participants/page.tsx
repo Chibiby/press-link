@@ -7,6 +7,7 @@ import {
   type RawAdminParticipant,
 } from "@/lib/roster/admin-rows";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 
 // The `school_papers(count)` aggregate in the select below is what Supabase
 // actually returns for a participant's school — not the flattened
@@ -46,21 +47,30 @@ export default async function AdminParticipantsPage({
   const params = await searchParams;
   const { supabase } = await requireAdmin();
 
-  const [{ data: districts }, { data: schools }, { data: raw }] = await Promise.all([
+  const [{ data: districts }, { data: schools }, raw] = await Promise.all([
     supabase.from("districts").select("id, name").order("name"),
     supabase.from("schools").select("id, name, district_id").order("name"),
-    supabase
-      .from("participants")
-      .select(
-        "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, submission_locked_at, school_papers(count), districts(name)), entry_participants(entry_id)"
-      )
-      .order("participant_number")
-      .overrideTypes<RawAdminParticipantWithAggregate[]>(),
+    // Paged, not one select. PostgREST caps a response at `db-max-rows`, and the
+    // division has 2,273 learners: a single unbounded read of this table comes back
+    // at the cap with `error: null`, so the heading below would print the cap as the
+    // roster size and over a thousand learners would be missing with nothing on
+    // screen saying so. `participant_number` is `not null unique` (migration 0004),
+    // so the order is already total and the page windows cannot skip or repeat a row.
+    fetchAll<RawAdminParticipantWithAggregate>("The participant roster", (from, to) =>
+      supabase
+        .from("participants")
+        .select(
+          "id, participant_number, first_name, middle_name, last_name, gender, schools(id, name, district_id, paper_participation, submission_locked_at, school_papers(count), districts(name)), entry_participants(entry_id)"
+        )
+        .order("participant_number")
+        .range(from, to)
+        .overrideTypes<RawAdminParticipantWithAggregate[]>()
+    ),
   ]);
 
   // `school_papers(count)` arrives as a one-element array; the row mapper wants
   // a plain number, so it is unwrapped here rather than inside the pure module.
-  const rawWithCounts: RawAdminParticipant[] = (raw ?? []).map((row) => ({
+  const rawWithCounts: RawAdminParticipant[] = raw.map((row) => ({
     ...row,
     schools: row.schools
       ? {

@@ -1,6 +1,7 @@
 import type { SchoolRollupRow } from "@/lib/dashboard/per-school";
 import type { PaperParticipation } from "@/lib/paper/gate";
 import { paperStatus } from "@/lib/paper/status";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import type { SupabaseServerClient } from "@/lib/supabase/server";
 
 interface SchoolFactRow {
@@ -47,9 +48,23 @@ export interface SchoolFacts {
  * an embedded aggregate: `participants(count) > 0` is not expressible as a query. One
  * request for 332 narrow rows is cheaper than the alternatives.
  *
- * `count: "exact"` rides along on the same request. `registeredSchools` comes from that
- * header total rather than from `rows.length`, so the "of N registered" denominator
- * stays right even if PostgREST's row cap ever truncated the window.
+ * ## Why it is paged
+ *
+ * PostgREST caps a response at `db-max-rows` and reports nothing when it does, so an
+ * unbounded read of a table that grows past the cap answers short and clean. Every
+ * numerator here is a `rows.filter(...).length`, so a clipped window does not make this
+ * page look empty — it makes each of ten facts quietly smaller, and the export route
+ * that shares this function files those numbers in a spreadsheet. 332 schools sits
+ * under the cap today, so `fetchAll` still costs a single request; what it buys is that
+ * the day the roll passes the cap the reads raise instead of shrinking.
+ *
+ * `.order("id")` is a tiebreaker, not a re-ordering: `schools.name` has no unique
+ * constraint, and LIMIT/OFFSET over a tied ORDER BY can put one row in two windows and
+ * another in none.
+ *
+ * `count: "exact"` rides along on the same request, taken from the first page.
+ * `registeredSchools` comes from that header total rather than from `rows.length`, so
+ * the "of N registered" denominator is answered by Postgres either way.
  *
  * It takes the client rather than building one, because its two callers guard
  * differently: a page redirects to the login screen, a route handler must answer 401
@@ -59,16 +74,28 @@ export interface SchoolFacts {
 export async function fetchSchoolFacts(
   supabase: SupabaseServerClient
 ): Promise<SchoolFacts> {
-  const { data, count } = await supabase
-    .from("schools")
-    .select(
-      "id, name, district_id, paper_participation, submission_locked_at, districts(name), participants(count), coaches(count), entries(count), school_papers(count)",
-      { count: "exact" }
-    )
-    .order("name")
-    .overrideTypes<SchoolFactRow[]>();
+  let registered: number | null = null;
 
-  const rows = (data ?? []).map((row) => ({
+  const data = await fetchAll<SchoolFactRow>("The school registry", async (from, to) => {
+    const result = await supabase
+      .from("schools")
+      .select(
+        "id, name, district_id, paper_participation, submission_locked_at, districts(name), participants(count), coaches(count), entries(count), school_papers(count)",
+        { count: "exact" }
+      )
+      .order("name")
+      .order("id")
+      .range(from, to)
+      .overrideTypes<SchoolFactRow[]>();
+
+    // The header total is the same on every page, so the first one that carries it
+    // wins. Kept out of `fetchAll` on purpose: that helper's contract is rows, and
+    // widening it for one caller's count would put a second thing in it to get wrong.
+    registered ??= result.count;
+    return result;
+  });
+
+  const rows = data.map((row) => ({
     schoolId: row.id,
     schoolName: row.name,
     districtId: row.district_id,
@@ -108,7 +135,7 @@ export async function fetchSchoolFacts(
         coaches,
         entries,
       })),
-    registeredSchools: count ?? rows.length,
+    registeredSchools: registered ?? rows.length,
     registeredByDistrict: rows.reduce<Record<string, number>>((acc, row) => {
       if (row.districtId) acc[row.districtId] = (acc[row.districtId] ?? 0) + 1;
       return acc;

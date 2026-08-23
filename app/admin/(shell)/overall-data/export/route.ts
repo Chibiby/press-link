@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { summarisePerSchool } from "@/lib/dashboard/per-school";
 import { fetchSchoolFacts } from "@/lib/dashboard/school-facts";
 import { buildOverallDataWorkbook } from "@/lib/export/overall-data-workbook";
+import { LoadFailure } from "@/lib/supabase/fetch-all";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
@@ -29,7 +30,21 @@ export async function GET(request: NextRequest) {
   }
 
   const district = request.nextUrl.searchParams.get("district");
-  const facts = await fetchSchoolFacts(supabase);
+
+  // `fetchSchoolFacts` pages its read and raises rather than answering short — see the
+  // comment there. Caught here so a read that could not finish leaves the officer with
+  // a 500 and no file, rather than a workbook whose totals are quietly missing schools;
+  // an unhandled raise would answer a download click with an HTML error page saved
+  // under an .xlsx name, which is the same failure this route already guards against
+  // for the login redirect.
+  let facts;
+  try {
+    facts = await fetchSchoolFacts(supabase);
+  } catch (failure) {
+    if (!(failure instanceof LoadFailure)) throw failure;
+    return NextResponse.json({ error: "Could not load the school registry" }, { status: 500 });
+  }
+
   const active = district
     ? facts.active.filter((school) => school.districtId === district)
     : facts.active;

@@ -9,6 +9,7 @@ import type { PaperParticipation } from "@/lib/paper/gate";
 import { PAPER_STATUS_LABEL, paperStatus } from "@/lib/paper/status";
 import { distinctCoaches } from "@/lib/roster/entry-coaches";
 import { surnameFirst } from "@/lib/roster/names";
+import { fetchAll, LoadFailure } from "@/lib/supabase/fetch-all";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -90,21 +91,43 @@ export default async function AdminEntriesPage({
       >(),
   ]);
 
-  let query = supabase
-    .from("entries")
-    .select(
-      "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, last_name)), entry_coaches(coaches(id, first_name, middle_name, last_name))"
-    )
-    .order("submitted_at", { ascending: false });
+  // Paged, not one select. `entries` stands at 977 rows against a `db-max-rows` cap
+  // PostgREST applies silently, so this table is roughly twenty entries from
+  // rendering a short list with no error to branch on. The `.order("id")` is load
+  // bearing: `submitted_at` is `not null default now()` but not unique — a school
+  // files its entries in the same second — and LIMIT/OFFSET over a tied ORDER BY can
+  // place the same row in two windows or neither. Migration 0018 breaks the same tie
+  // the same way when it numbers entries by `(submitted_at, id)`.
+  let rawEntries: EntryRow[] = [];
+  let entriesError: LoadFailure | null = null;
 
-  if (params.school) query = query.eq("school_id", params.school);
-  if (params.event) query = query.eq("event_id", params.event);
+  try {
+    rawEntries = await fetchAll<EntryRow>("Entries", (from, to) => {
+      let query = supabase
+        .from("entries")
+        .select(
+          "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, last_name)), entry_coaches(coaches(id, first_name, middle_name, last_name))"
+        );
 
-  const { data: rawEntries, error: entriesError } = await query.overrideTypes<EntryRow[]>();
+      if (params.school) query = query.eq("school_id", params.school);
+      if (params.event) query = query.eq("event_id", params.event);
+
+      return query
+        .order("submitted_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+        .overrideTypes<EntryRow[]>();
+    });
+  } catch (failure) {
+    // Reported, never partial: the alert below is the whole table's replacement, so a
+    // read that could not finish shows as a failure rather than as fewer entries.
+    if (!(failure instanceof LoadFailure)) throw failure;
+    entriesError = failure;
+  }
 
   // District, category, level and language live on joined tables, so they are
   // narrowed here rather than in the query.
-  const filteredEntries = (rawEntries ?? []).filter((entry) => {
+  const filteredEntries = rawEntries.filter((entry) => {
     if (params.district && entry.schools?.district_id !== params.district) return false;
     if (params.category && entry.events?.category !== params.category) return false;
     if (params.level && entry.events?.level !== params.level) return false;
@@ -139,7 +162,7 @@ export default async function AdminEntriesPage({
       <PageHeading
         title="Entries"
         subtitle="Every entry submitted across the division."
-        badge={`${filteredEntries.length} of ${(rawEntries ?? []).length} entries`}
+        badge={`${filteredEntries.length} of ${rawEntries.length} entries`}
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
