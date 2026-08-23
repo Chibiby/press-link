@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  describeLockStamp,
+  describeUnknownLock,
   submissionsLockControl,
   type SubmissionsLock,
 } from "@/lib/submissions/lock-state";
@@ -36,37 +36,58 @@ import {
  * who does not know that will not dare use it at a deadline, which is the only
  * moment it exists for.
  *
- * Every label, variant and heading comes from `submissionsLockControl()` so the
- * three states cannot drift into looking alike; the test for that is in
+ * Every label, variant and heading comes from `submissionsLockControl()`, and so
+ * does the number of buttons, so the three states cannot drift into looking
+ * alike: a state that could not be read offers both the lock and the unlock,
+ * because offering only one of them is a guess about which state the division is
+ * in. The sentence explaining that state comes from `describeUnknownLock()` for
+ * the same reason. The test for all of it is in
  * `lib/submissions/lock-state.test.ts`, since nothing in this repo renders a
  * component under test.
+ *
+ * `stamp` arrives pre-formatted from the page rather than being derived here: the
+ * formatter is `Intl.DateTimeFormat`, and Node's ICU and the browser's disagree
+ * about the space before "PM", which is a hydration mismatch nobody can see.
  */
-export function SubmissionsLockDialog({ lock }: { lock: SubmissionsLock }) {
+export function SubmissionsLockDialog({
+  lock,
+  stamp,
+}: {
+  lock: SubmissionsLock;
+  /** `describeLockStamp(lock)`, formatted on the server. Null unless the switch is on. */
+  stamp: string | null;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Which action is in flight, by the state it is sending. Null while idle. */
+  const [sending, setSending] = useState<boolean | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const control = submissionsLockControl(lock);
-  const stamp = describeLockStamp(lock);
   const Icon = control.icon === "alert" ? TriangleAlert : Lock;
 
   function show(next: boolean) {
     setOpen(next);
     // A failure from the last attempt must not be the first thing the next one
     // shows.
-    if (!next) setError(null);
+    if (!next) {
+      setError(null);
+      setSending(null);
+    }
   }
 
-  function confirm() {
+  function confirm(nextLocked: boolean) {
     setError(null);
+    setSending(nextLocked);
     startTransition(async () => {
-      const result = await setSubmissionsLockAction(control.nextLocked);
+      const result = await setSubmissionsLockAction(nextLocked);
       if ("error" in result) {
         // Inline and persistent, not a toast: this is the only place the
         // database's own sentence is readable, and the reader may need to copy
         // it. The dialog stays open so it does not vanish with the surface.
         setError(result.error);
+        setSending(null);
         return;
       }
 
@@ -137,11 +158,7 @@ export function SubmissionsLockDialog({ lock }: { lock: SubmissionsLock }) {
                     <p className="rounded-md bg-muted px-2 py-1 font-mono text-xs break-words">
                       {lock.detail}
                     </p>
-                    <p>
-                      {lock.reason === "no-row"
-                        ? "While that row is missing, every school-side save is being refused. Setting submissions open below puts the row back."
-                        : "If this setting has not reached this database yet, nothing is frozen and every school can save as usual."}
-                    </p>
+                    <p>{describeUnknownLock(lock)}</p>
                   </>
                 ) : null}
               </div>
@@ -161,19 +178,26 @@ export function SubmissionsLockDialog({ lock }: { lock: SubmissionsLock }) {
             <AlertDialogCancel disabled={isPending}>
               {control.cancelLabel}
             </AlertDialogCancel>
-            <AlertDialogAction
-              variant={control.confirmVariant}
-              disabled={isPending}
-              onClick={(e) => {
-                // The dialog must survive a failure so the error above can be
-                // read, and Radix closes on click unless this is prevented.
-                e.preventDefault();
-                confirm();
-              }}
-            >
-              {isPending && <Loader2 className="size-4 animate-spin" />}
-              {control.confirmLabel}
-            </AlertDialogAction>
+            {control.actions.map((action) => (
+              <AlertDialogAction
+                key={action.label}
+                variant={action.variant}
+                // Both buttons go dead while either is in flight: they write the
+                // same row, and the second click would race the first.
+                disabled={isPending}
+                onClick={(e) => {
+                  // The dialog must survive a failure so the error above can be
+                  // read, and Radix closes on click unless this is prevented.
+                  e.preventDefault();
+                  confirm(action.nextLocked);
+                }}
+              >
+                {isPending && sending === action.nextLocked && (
+                  <Loader2 className="size-4 animate-spin" />
+                )}
+                {action.label}
+              </AlertDialogAction>
+            ))}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

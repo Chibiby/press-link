@@ -26,7 +26,11 @@ import {
   type EventLanguage,
   type EventLevel,
 } from "@/lib/events-catalog";
-import type { SubmissionsLock } from "@/lib/submissions/lock-state";
+import {
+  isMissingLockGuard,
+  submissionsWritesRefused,
+  type SubmissionsLock,
+} from "@/lib/submissions/lock-state";
 
 /** Rows on screen in the Per School Summary panel. The totals row still sums all of them. */
 const PER_SCHOOL_LIMIT = 15;
@@ -168,7 +172,22 @@ export const loadSubmissionsLock = cache(async (): Promise<SubmissionsLock> => {
 
   if (error) {
     console.error("loadSubmissionsLock", error);
-    return { state: "unknown", reason: "unreadable", detail: error.message };
+    // Still soft, deliberately: a missing table must not 500 the dashboard, and
+    // it is safe to shrug here because nothing in this file enforces the lock —
+    // the 0022 triggers do, in the database, on every school-side write.
+    //
+    // What the code decides is what the dashboard *claims* meanwhile, and the two
+    // failures are opposites. An absent table, function or column means 0022 has
+    // not been applied, so no trigger consults a flag and writes really are open.
+    // Any other failure leaves the guard standing, and the guard fails closed —
+    // it raises 'submission lock state unavailable' rather than returning false —
+    // so writes are being refused whatever this read managed to see.
+    return {
+      state: "unknown",
+      reason: "unreadable",
+      detail: error.message,
+      writesRefused: !isMissingLockGuard(error.code),
+    };
   }
 
   // Not `false`. The select policy is scoped `to authenticated`, so a caller
@@ -179,6 +198,10 @@ export const loadSubmissionsLock = cache(async (): Promise<SubmissionsLock> => {
       state: "unknown",
       reason: "no-row",
       detail: "app_settings returned no row for id = true.",
+      // Not a guess: `submissions_locked_globally()` selects that row and raises
+      // when it is not there, so every school-side write is being refused right
+      // now.
+      writesRefused: true,
     };
   }
 
@@ -512,10 +535,13 @@ export const loadDashboardData = cache(async (): Promise<DashboardData> => {
       schoolsLocked: schools.schoolsLocked,
       schoolsOpenWithEntries: schools.schoolsOpenWithEntries,
       entries: entryFacts.entries,
-      // Only a flag we positively read as true closes registration on its own.
-      // An unreadable flag is not evidence that anything is frozen, and the pill
-      // keeps saying exactly what it said before this switch existed.
-      globallyLocked: submissionsLock.state === "locked",
+      // Not `state === "locked"`. `submissions_locked_globally()` fails closed:
+      // it raises rather than returning false when it cannot read the flag, so an
+      // unknown state refuses every school-side write and "Registration Closed"
+      // is the truthful pill above it. `submissionsWritesRefused()` carries the
+      // one exception — a database 0022 never reached, where nothing consults a
+      // flag and every school really can save.
+      globallyLocked: submissionsWritesRefused(submissionsLock),
     }),
     submissionsLock,
     eventGroups: events.groups,

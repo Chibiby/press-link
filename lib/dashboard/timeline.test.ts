@@ -167,18 +167,6 @@ describe("buildTimeline with the division-wide lock", () => {
     expect(off).toEqual(buildTimeline(input(counts)));
   });
 
-  it("distinguishes a closure by the switch from one by the schools", () => {
-    expect(
-      buildTimeline(input({ globallyLocked: true, schoolsOpenWithEntries: 16 }))
-        .closedByGlobalLock,
-    ).toBe(true);
-    // Every school finished on its own. Nothing for an admin to switch back.
-    const finished = buildTimeline(input({ schoolsLocked: 16, entries: 41 }));
-    expect(finished.registrationClosed).toBe(true);
-    expect(finished.closedByGlobalLock).toBe(false);
-    expect(buildTimeline(input()).closedByGlobalLock).toBe(false);
-  });
-
   // The counts stay: they are what says how much reopening would let back in.
   it("adds the switch to the registration detail without dropping the counts", () => {
     const { steps } = buildTimeline(

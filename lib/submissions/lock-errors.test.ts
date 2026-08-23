@@ -24,12 +24,35 @@ const LITERALS: Record<SubmissionLockErrorKind, string> = {
   missingArgument: "locked is required",
 };
 
-const MIGRATION = readFileSync(
-  fileURLToPath(
-    new URL("../../supabase/migrations/0022_global_submissions_lock.sql", import.meta.url),
-  ),
-  "utf8",
-);
+function migration(file: string): string {
+  return readFileSync(
+    fileURLToPath(new URL(`../../supabase/migrations/${file}`, import.meta.url)),
+    "utf8",
+  );
+}
+
+const MIGRATION = migration("0022_global_submissions_lock.sql");
+
+/**
+ * Which of these sentences each migration raises.
+ *
+ * 0022 is where all five were written, and it stayed the only file to raise them
+ * until 0023 guarded `set_paper_participation`: `schools` carries no trigger, so
+ * that RPC had to test the flag itself, and it carries its own copy of two of
+ * these sentences character for character. A second copy is a second place to
+ * reword one, so it is pinned here the same way — 0023's own header says it
+ * matters, and this is what makes that enforceable rather than aspirational.
+ */
+const RAISED_BY: Record<string, SubmissionLockErrorKind[]> = {
+  "0022_global_submissions_lock.sql": [
+    "global",
+    "school",
+    "unavailable",
+    "notAuthorized",
+    "missingArgument",
+  ],
+  "0023_lock_paper_participation.sql": ["global", "school"],
+};
 
 describe("SUBMISSION_LOCK_ERRORS", () => {
   it("holds exactly the five sentences the guards raise", () => {
@@ -44,6 +67,22 @@ describe("SUBMISSION_LOCK_ERRORS", () => {
       expect(MIGRATION, `${kind} is no longer raised by 0022`).toContain(
         `raise exception '${literal}'`,
       );
+    }
+  });
+
+  // The same pin over every other migration that raises one of them. Two files
+  // spelling 'submissions are locked division-wide' means two files that can
+  // drift from `rpcMessage()` in app/entry/roster-actions.ts, which matches on
+  // the text and would answer a school "ask the division office to reopen it" —
+  // advice that is false while the switch is on.
+  it("matches the copies carried by every other migration that raises them", () => {
+    for (const [file, kinds] of Object.entries(RAISED_BY)) {
+      const sql = migration(file);
+      for (const kind of kinds) {
+        expect(sql, `${kind} is no longer raised by ${file}`).toContain(
+          `raise exception '${SUBMISSION_LOCK_ERRORS[kind]}'`,
+        );
+      }
     }
   });
 

@@ -97,6 +97,10 @@ export default async function AdminDashboardPage() {
    * readable without opening anything and without lengthening a button row that is
    * already three controls wide. Null in every other state, including when the flag
    * is unreadable — there is nothing to date.
+   *
+   * Formatted here and handed to the dialog as a string, so this sentence is
+   * produced exactly once, by one ICU. The dialog is a client component, and Node
+   * and the browser disagree about the space before "PM".
    */
   const lockStamp = describeLockStamp(data.submissionsLock);
 
@@ -137,7 +141,7 @@ export default async function AdminDashboardPage() {
                 push the page body sideways rather than stack. It has no effect at any
                 width where they do fit. */}
             <div className="flex flex-wrap items-center gap-1">
-              <SubmissionsLockDialog lock={data.submissionsLock} />
+              <SubmissionsLockDialog lock={data.submissionsLock} stamp={lockStamp} />
               <Button asChild size="sm" className="shadow-sm">
                 <Link href="/admin/judges">
                   <Gavel />

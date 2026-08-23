@@ -24,14 +24,18 @@ export interface TimelineInput {
   /** Total rows in `entries`. */
   entries: number;
   /**
-   * `app_settings.submissions_locked` — the division-wide override switch from
-   * migration 0022. While it is on, every school-side write is refused whatever
-   * the two counts above say, so it closes registration on its own.
+   * Whether school-side writes are being refused division-wide — the switch
+   * `app_settings.submissions_locked` from migration 0022, and every state in
+   * which that flag cannot be read. While writes are refused, none of the two
+   * counts above can change, so this closes registration on its own.
    *
-   * The caller passes `false` when the flag cannot be read. That is the honest
-   * mapping: an unreadable flag is not evidence that registration has closed,
-   * and it leaves this function's answer identical to what it was before the
-   * switch existed.
+   * The caller passes `submissionsWritesRefused()` from
+   * `lib/submissions/lock-state.ts`, which answers true for an unreadable flag as
+   * well as a locked one. That is the honest mapping, not a defensive one:
+   * `submissions_locked_globally()` fails closed and raises rather than returning
+   * false, so a flag nobody can read refuses every school-side write exactly as a
+   * locked one does. Its one false case among the unknowns is a database that has
+   * never had 0022 applied, where no trigger consults a flag at all.
    */
   globallyLocked: boolean;
 }
@@ -39,13 +43,6 @@ export interface TimelineInput {
 export interface Timeline {
   steps: TimelineStep[];
   registrationClosed: boolean;
-  /**
-   * True when registration is closed because the division-wide switch is on
-   * rather than because every school finished. Separate from
-   * `registrationClosed` because the two are undone differently: one is a
-   * setting an admin flips back, the other is sixteen schools' own decisions.
-   */
-  closedByGlobalLock: boolean;
   /** The COMPETITION STATUS pill label. */
   statusPill: string;
 }
@@ -122,7 +119,6 @@ export function buildTimeline(input: TimelineInput): Timeline {
       })),
     ],
     registrationClosed,
-    closedByGlobalLock: input.globallyLocked,
     statusPill: registrationClosed ? "Registration Closed" : "Registration Open",
   };
 }
