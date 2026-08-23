@@ -1,6 +1,13 @@
 # Global submission lock + session activity log — rollout notes
 
-Migrations `0022`–`0025` have **not been applied**. Read this before you run them.
+Migrations `0022`–`0025` were **applied to production (`isixamkeazcjmiquanpv`) on
+2026-08-24**, in order, each gated. See [What was actually found and done](#what-was-actually-found-and-done)
+at the bottom for the observed pre-state and the verification results — including one
+finding that contradicts what an earlier draft of this file and the `fe9b3a9` commit
+message both claimed.
+
+The rest of this file stays written as instructions, because all four are re-runnable and
+the same steps apply to any other environment still behind.
 
 Apply **exactly these four, in this order**. Do not run "all migrations": `0001_init.sql`
 uses bare `create table`, so it errors on a live database, and
@@ -122,14 +129,38 @@ That restores write behaviour exactly, and leaves 0024's table in place.
 
 ## How to run them
 
-Use the Supabase dashboard SQL editor, one file per run, in order. There is no
+The Supabase dashboard SQL editor works, one file per run, in order. There is no
 `supabase/config.toml` in this repo, so the project is not linked for CLI use.
+
+What was actually used on 2026-08-24, and what to reuse: a direct `pg` connection over the
+**session pooler**, one file per transaction.
+
+- `db.<ref>.supabase.co` resolves **IPv6-only** on this project and is unreachable from a
+  v4-only host (`ENOTFOUND`). `aws-0-ap-southeast-1.pooler.supabase.com` is the fallback.
+- Port **5432** (session mode), not 6543 — DDL over the transaction pooler is not reliable.
+- Wrap each file in `begin` / `commit`. None of these four uses `create index
+  concurrently`, so all of it is transactional and a mid-file failure rolls back clean
+  instead of leaving half a migration behind. Verify that assumption before trusting it on
+  a fifth file.
+
+**Reload the PostgREST schema cache when you are done:**
+
+```sql
+notify pgrst, 'reload schema';
+```
+
+Without it the API keeps answering from its cached schema and the app still sees
+`PGRST205` / `PGRST204` for objects that now exist — the exact class of error
+`lib/submissions/lock-state.ts` treats as "no guard deployed".
 
 **Do not reach for `supabase db push` here.** It replays whatever
 `supabase_migrations.schema_migrations` does not list, and this project's earlier
-migrations were not applied through the CLI — so that table is likely absent or empty and
+migrations were not applied through the CLI — that table is **absent**, confirmed, so
 `db push` would start at `0001_init.sql`. It fails loudly rather than doing damage, but it
 does not do the job.
+
+Because that table is absent, **nothing in the database records which migrations have run.**
+Step 0 is the only way to know. This file is the substitute for that record; keep it current.
 
 ## Rollback
 
@@ -152,3 +183,80 @@ There are no down-migrations in `supabase/migrations/`.
   `/admin/audit-logs` attributes school activity and nothing else in v1.
 - **Seeders bypass this.** `scripts/seed/` runs with the service role and carries no
   session claim, so seeded rows log with `session_id = null` and render ungrouped.
+
+## What was actually found and done
+
+Applied to production (`isixamkeazcjmiquanpv`, Postgres 17.6) on **2026-08-24**, all four in
+order, each one gated before the next.
+
+### The pre-state, and a correction
+
+Step 0 contradicted what an earlier draft of this file and the `fe9b3a9` commit message
+both asserted. Both said production sat at `0021` with `app_settings` **dropped** by
+`0010`, so the dashboard's read failed with a *table* code (`42P01` / `PGRST205`).
+
+That was wrong. What Step 0 actually found:
+
+| Object | State before |
+|---|---|
+| `app_settings` | **present**, columns `id` and `submissions_locked` only |
+| `submissions_locked_globally`, `admin_set_submissions_lock` | absent |
+| `activity_events`, `recent_activity_sessions`, `activity_session_id` | absent |
+| activity triggers | 0 |
+| `supabase_migrations.schema_migrations` | **absent** |
+
+So **`0010` was never applied** — `0001`'s original table was still standing, untouched.
+The live failure was therefore a *column* code (`42703` / `PGRST204`) for the
+`submissions_locked_at` the dashboard's select also asks for, not a table code.
+
+**This changed no code.** `MISSING_GUARD_CODES` in `lib/submissions/lock-state.ts` carries
+both classes, and its comment already describes this database exactly — "the one where
+0010 never ran and the 0001 table is still standing with only `submissions_locked` on it."
+The classifier was right for a reason the prose around it got wrong.
+
+### The freeze risk 0022's header warns about did not fire
+
+`0022` preserves a surviving `submissions_locked` rather than clearing it (`on conflict (id)
+do nothing`), so a table left holding `true` would have frozen all 335 schools the moment
+the file committed. Checked first: the row held **`false`**. Applying it changed no value.
+
+If you apply these anywhere else, run that check before `0022`, not after.
+
+### Gate results
+
+| Step | Result |
+|---|---|
+| `0022` | one row `id=true`, `submissions_locked=false`, `_at`/`_by` null (consistent with `app_settings_lock_stamp_check`); `submissions_locked_globally()` → `false`, no raise |
+| `0023` | committed; `set_paper_participation` replaced |
+| `0024` | `activity_events` empty; `activity_log_started_at` = `2026-08-23 16:50:39Z`; `recent_activity_sessions(5)` → empty, no raise |
+| `0025` | all five triggers present; `activity_session_id()` → null without raising when there is no JWT |
+
+### The write test
+
+`0025`'s real risk is a log function that raises and aborts the write that fired it. Tested
+directly rather than inferred — one `insert into participants`, inside a transaction, rolled
+back:
+
+- the insert **succeeded** — no write outage
+- one row logged: `kind = 'participant-added'`, `label` denormalised from the name,
+  `school_id` populated
+- rollback left `activity_events` at 0 and `participants` at 2474, unchanged
+
+### Still unverified: the `session_id` claim
+
+The test wrote over a direct Postgres connection, which carries no JWT, so `session_id` and
+`actor_user_id` both came back null — as designed. **That is not the empirical test the
+design needs.** Whether `auth.jwt() ->> 'session_id'` is actually populated for a logged-in
+school is still unproven, and the whole per-session grouping rests on it.
+
+It needs **one real write through the app by a logged-in school**, then:
+
+```sql
+select id, at, session_id, kind, label from activity_events order by at desc limit 5;
+```
+
+- `session_id` non-null → grouping works.
+- `session_id` null → the feed degrades to ungrouped rows, the documented fallback in
+  `docs/superpowers/specs/2026-08-23-session-activity-log-design.md`. Inert, not broken.
+
+Until then, treat per-session grouping as unconfirmed in production.
