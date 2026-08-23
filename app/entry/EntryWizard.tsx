@@ -308,11 +308,11 @@ export function EntryWizard({
    * participant first and every coach after. Adding a participant opens the coach
    * row that goes with it.
    *
-   * The pairing is a way through the form, not a fact in the database:
-   * entry_participants and entry_coaches are independent link tables, so an entry
-   * names a set of contestants and a set of coaches with nothing tying one to the
-   * other. That is why coaches stay numbered instead of being labelled with a
-   * contestant's name, and why the read-only View dialog keeps its two lists.
+   * The pairing is a fact in the database as well as a way through the form:
+   * `entry_coaches.participant_id` carries it (migration 0019), every save writes
+   * it, and the read-only View dialog reads it back as the same pairs. A group
+   * entry has nothing to carry — its coaches belong to the whole team — so there
+   * the coaches stay numbered and both surfaces keep two lists.
    */
   const paired = effectiveCategory === "individual";
 

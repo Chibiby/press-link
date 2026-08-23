@@ -1,6 +1,7 @@
 "use client";
 
-import type { EntryRow } from "./types";
+import type { EntryRow, RosterCoach, RosterParticipant } from "./types";
+import { coachedContestants } from "@/lib/roster/entry-coaches";
 import { LanguageBadge, LevelBadge } from "@/components/entry-badges";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,8 +13,9 @@ import {
 } from "@/components/ui/dialog";
 
 /**
- * One roster list inside the dialog. Participants keep the number a school wrote
- * on its own forms; coaches have none, so the column collapses for them.
+ * One flat roster list: a group entry's team, its shared coaches, or either list on
+ * an entry with no pairing to show. Participants keep the number a school wrote on
+ * its own forms; coaches have none, so the column collapses for them.
  */
 function PeopleList({
   heading,
@@ -51,6 +53,46 @@ function PeopleList({
 }
 
 /**
+ * An individual entry as pairs — each contestant with the coach matched to them.
+ *
+ * A coach who takes more than one contestant is named again under each of them.
+ * The repetition is the answer rather than a duplicate: the question here is who
+ * coaches this learner, and it has the same answer three times when a school sends
+ * one coach for three. How many coaches the entry has is what the Coaches tab
+ * counts.
+ */
+function CoachedList({
+  rows,
+}: {
+  rows: { participant: RosterParticipant; coach: RosterCoach | null }[];
+}) {
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Contestants and coaches ({rows.length})
+      </h3>
+      <ul className="flex flex-col divide-y rounded-lg border">
+        {rows.map(({ participant, coach }) => (
+          <li key={participant.id} className="flex items-baseline gap-3 px-3 py-2 text-sm">
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              {participant.number_label}
+            </span>
+            <span className="min-w-0">
+              {participant.full_name}
+              {/* Under the name rather than beside it: the pair reads as one block,
+                  and two names on one row do not fit a 390px screen. */}
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {coach ? `Coach: ${coach.full_name}` : "No coach matched to this contestant."}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
  * The whole of one entry, read-only.
  *
  * The table can only afford "Dela Cruz, Ana +6" in the width it has, so a group
@@ -70,6 +112,15 @@ export function EntryDetailsDialog({
   entry: EntryRow | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  // An individual entry holds one coach for each contestant, so it reads as pairs.
+  // A group entry's coaches are shared by the team, and one still waiting to be
+  // paired has nothing to pair by — both keep the two lists, which is also where an
+  // empty entry gets its empty lines.
+  const pairs =
+    entry && entry.category === "individual" && !entry.coachingPending
+      ? coachedContestants(entry.participants, entry.coaches, entry.coachByParticipant)
+      : [];
+
   return (
     <Dialog open={entry !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -94,16 +145,22 @@ export function EntryDetailsDialog({
               </Badge>
             </div>
 
-            <PeopleList
-              heading="Participants"
-              people={entry.participants}
-              empty="No participants on this entry."
-            />
-            <PeopleList
-              heading="Coaches"
-              people={entry.coaches}
-              empty="No coach on this entry."
-            />
+            {pairs.length > 0 ? (
+              <CoachedList rows={pairs} />
+            ) : (
+              <>
+                <PeopleList
+                  heading="Participants"
+                  people={entry.participants}
+                  empty="No participants on this entry."
+                />
+                <PeopleList
+                  heading="Coaches"
+                  people={entry.coaches}
+                  empty="No coach on this entry."
+                />
+              </>
+            )}
           </div>
         )}
       </DialogContent>
