@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Calculator, Gavel } from "lucide-react";
 
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
@@ -20,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 import { loadDashboardData } from "./dashboard-data";
 
@@ -95,11 +97,39 @@ export default async function AdminDashboardPage() {
         badge={data.timeline.statusPill}
         subtitle={`Welcome back, ${data.adminName}. Division-wide figures as of ${AS_OF.format(data.now)}.`}
         actions={
-          <Button asChild size="sm" variant="outline">
-            {/* A route handler, not a page. `next/link` would prefetch it on hover and
-                build a whole spreadsheet to throw away. */}
-            <a href="/admin/export">Export entries</a>
-          </Button>
+          <>
+            {/* The two contest-day portals, in filled brand teal — the only filled
+                buttons on the dashboard, and the only saturated colour in this row.
+                That is the whole hierarchy argument: these are the two doors an admin
+                comes here to open, and everything else above the fold is an errand.
+                Icons are the sidebar's own Gavel and Calculator, so the button and the
+                nav item an admin already knows read as the same destination.
+
+                Kept as a tight gap-1 pair and fenced off with a hairline: two portals
+                on one side of the rule, one export errand on the other. The rule hides
+                below `sm`, where the row wraps and a stray vertical line would look
+                like a rendering bug rather than a divider. */}
+            <div className="flex items-center gap-1">
+              <Button asChild size="sm" className="shadow-sm">
+                <Link href="/admin/judges">
+                  <Gavel />
+                  Judges portal
+                </Link>
+              </Button>
+              <Button asChild size="sm" className="shadow-sm">
+                <Link href="/admin/tabulators">
+                  <Calculator />
+                  Tabulators portal
+                </Link>
+              </Button>
+            </div>
+            <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
+            <Button asChild size="sm" variant="outline">
+              {/* A route handler, not a page. `next/link` would prefetch it on hover and
+                  build a whole spreadsheet to throw away. */}
+              <a href="/admin/export">Export entries</a>
+            </Button>
+          </>
         }
       />
 
