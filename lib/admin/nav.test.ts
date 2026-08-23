@@ -90,7 +90,6 @@ describe("stub and soon flags", () => {
       "/admin/masterlist",
       "/admin/users",
       "/admin/settings",
-      "/admin/audit-logs",
     ]);
   });
 });
