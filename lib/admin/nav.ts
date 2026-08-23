@@ -19,6 +19,7 @@ export type NavIcon =
   | "summary"
   | "overall"
   | "activity"
+  | "masterlist"
   | "judges"
   | "tabulators"
   | "users"
@@ -76,6 +77,9 @@ export const ADMIN_NAV: NavGroup[] = [
       { label: "School Summary", href: "/admin/summary", icon: "summary" },
       { label: "Overall Data", href: "/admin/overall-data", icon: "overall" },
       { label: "Activity Log", href: "/admin/activity", icon: "activity" },
+      // `stub`, like the System three: /admin/masterlist exists and renders a SoonPage,
+      // so the rail links it and the page itself says what it is waiting on.
+      { label: "Masterlist", href: "/admin/masterlist", icon: "masterlist", stub: true },
     ],
   },
   {

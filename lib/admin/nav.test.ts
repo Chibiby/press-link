@@ -77,12 +77,17 @@ describe("stub and soon flags", () => {
     expect(items.filter((item) => item.soon && item.stub)).toEqual([]);
   });
 
-  it("marks exactly the three feature-less routes as stubs", () => {
+  it("marks exactly the four feature-less routes as stubs", () => {
     // The adjudication pair left this list when they stopped rendering SoonPage.
     // They are not finished features, but they are no longer stubs either: they draw
     // their real tables over the real event catalog and label the figures the
     // judging schema cannot supply yet.
+    //
+    // Masterlist is in nav order, not System order: it sits in Reports, so it comes
+    // first here. toEqual is order-sensitive, which is the point — the list is
+    // pinned to the rail's reading order, not to a set.
     expect(items.filter((item) => item.stub).map((item) => item.href)).toEqual([
+      "/admin/masterlist",
       "/admin/users",
       "/admin/settings",
       "/admin/audit-logs",
