@@ -14,12 +14,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SCHOOL_STATUS_LABEL } from "@/lib/dashboard/school-registry";
 import {
-  isSchoolStatus,
-  SCHOOL_STATUS_LABEL,
-  summariseRegistry,
-  type RegistryRow,
-} from "@/lib/dashboard/school-registry";
+  schoolRegistryEmptyState,
+  schoolRegistryStatus,
+  summariseSchoolRegistry,
+  toRegistryRows,
+  type RawRegistrySchool,
+  type SchoolRegistryFilters,
+} from "@/lib/schools/school-registry-filters";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 
 import { SchoolRegistryFilter } from "./SchoolRegistryFilter";
@@ -31,19 +34,6 @@ const DATE = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-interface RegistrySchoolRow {
-  id: string;
-  name: string;
-  school_id_number: string;
-  district_id: string;
-  is_integrated: boolean;
-  submission_locked_at: string | null;
-  districts: { name: string } | null;
-  participants: { count: number }[];
-  coaches: { count: number }[];
-  entries: { count: number }[];
-}
-
 interface DistrictRow {
   id: string;
   name: string;
@@ -54,7 +44,11 @@ export default async function AdminSchoolsPage({
 }: {
   // Next 16: a Promise. Awaiting it makes the page dynamic, which is also why the client
   // filter's useSearchParams needs no Suspense boundary — same as /admin/overall-data.
-  searchParams: Promise<{ district?: string; status?: string }>;
+  //
+  // `SchoolRegistryFilters` rather than a shape declared here: the page and the filter
+  // it hands these to cannot then disagree about a param's name, which is a mistake
+  // with no symptom other than a control that silently does nothing.
+  searchParams: Promise<SchoolRegistryFilters>;
 }) {
   const { supabase } = await requireAdmin();
   const params = await searchParams;
@@ -66,7 +60,7 @@ export default async function AdminSchoolsPage({
     // would be wrong too, not merely incomplete. 332 schools today, so this is
     // prophylactic; the `.order("id")` is not, because `schools.name` carries no
     // unique constraint (migration 0001) and ties reshuffle between page requests.
-    fetchAll<RegistrySchoolRow>("The school registry", (from, to) =>
+    fetchAll<RawRegistrySchool>("The school registry", (from, to) =>
       supabase
         .from("schools")
         .select(
@@ -75,37 +69,28 @@ export default async function AdminSchoolsPage({
         .order("name")
         .order("id")
         .range(from, to)
-        .overrideTypes<RegistrySchoolRow[]>()
+        .overrideTypes<RawRegistrySchool[]>()
     ),
     supabase.from("districts").select("id, name").order("name").overrideTypes<DistrictRow[]>(),
   ]);
 
   const districts = districtResult.data ?? [];
 
-  const rows: RegistryRow[] = schoolRows.map((row) => ({
-    schoolId: row.id,
-    schoolName: row.name,
-    schoolIdNumber: row.school_id_number,
-    districtId: row.district_id,
-    districtName: row.districts?.name ?? "",
-    isIntegrated: row.is_integrated,
-    learners: row.participants?.[0]?.count ?? 0,
-    coaches: row.coaches?.[0]?.count ?? 0,
-    entries: row.entries?.[0]?.count ?? 0,
-    lockedAt: row.submission_locked_at,
-  }));
-
-  // A junk ?status= falls back to "all" rather than showing an empty table.
-  const status = isSchoolStatus(params.status) ? params.status : "all";
+  // Every part of this now lives in `lib/schools/school-registry-filters.ts`, tested
+  // there: the row mapper, the district and status filters plus the search box, and
+  // the sentence to print when nothing survives.
+  const rows = toRegistryRows(schoolRows);
+  const status = schoolRegistryStatus(params);
   const districtId = params.district ?? null;
-  const summary = summariseRegistry(rows, { status, districtId });
+  const summary = summariseSchoolRegistry(rows, params);
+  const empty = schoolRegistryEmptyState(params);
 
   const districtName = districtId
     ? (districts.find((row) => row.id === districtId)?.name ?? "Unknown district")
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="group space-y-6">
       <PageHeading
         title="Schools"
         badge={districtName ?? undefined}
@@ -120,7 +105,10 @@ export default async function AdminSchoolsPage({
 
       <SchoolRegistryFilter districts={districts} />
 
-      <Card>
+      {/* Dimmed while the filter bar's navigation is still rendering on the server,
+          so the table reads as catching up rather than as ignoring what was typed.
+          Driven by `data-pending` on the bar above. */}
+      <Card className="transition-opacity group-has-data-pending:opacity-50">
         <CardContent>
           <Table>
             <TableHeader>
@@ -137,8 +125,25 @@ export default async function AdminSchoolsPage({
             <TableBody>
               {summary.rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                    No school matches this filter.
+                  {/* `whitespace-normal`, because `TableCell` sets `whitespace-nowrap`
+                      in its base and this cell quotes back whatever was typed — a
+                      pasted line would otherwise stretch the table into a sideways
+                      scroll instead of wrapping. */}
+                  <TableCell colSpan={7} className="py-8 text-center whitespace-normal">
+                    <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
+                      {empty.message}
+                    </p>
+                    {empty.narrowed ? (
+                      // A way back, on the table itself. The Clear button in the bar
+                      // above also covers this — `SEARCH_PARAM` is in its
+                      // `FILTER_KEYS` — but an empty table is where the reader is
+                      // looking, and a link is the honest control for it in a server
+                      // component. Navigating here empties the search box too: the
+                      // box follows the URL, so it clears when the param goes.
+                      <Button asChild size="sm" variant="outline" className="mt-3">
+                        <Link href="/admin/schools">Show all schools</Link>
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ) : (

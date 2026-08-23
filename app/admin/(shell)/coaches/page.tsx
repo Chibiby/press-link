@@ -1,13 +1,17 @@
+import Link from "next/link";
+
 import { requireAdmin } from "@/app/admin/guard";
 import { CoachFilterBar } from "./CoachFilterBar";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
+import { toAdminCoachRows, type RawAdminCoach } from "@/lib/roster/admin-coach-rows";
 import {
-  toAdminCoachRows,
-  filterCoachRows,
-  type RawAdminCoach,
-} from "@/lib/roster/admin-coach-rows";
+  coachEmptyState,
+  filterCoachListRows,
+  type CoachListFilters,
+} from "@/lib/roster/coach-filters";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -18,22 +22,13 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-interface SearchParams {
-  district?: string;
-  school?: string;
-  gender?: string;
-  multi?: string;
-  unassigned?: string;
-  event?: string;
-  category?: string;
-  level?: string;
-  language?: string;
-}
-
 export default async function AdminCoachesPage({
   searchParams,
 }: {
-  searchParams: Promise<SearchParams>;
+  // `CoachListFilters` rather than a shape declared here: the page and the filter it
+  // hands these to cannot then disagree about a param's name, which is a mistake
+  // with no symptom other than a control that silently does nothing.
+  searchParams: Promise<CoachListFilters>;
 }) {
   const params = await searchParams;
   const { supabase } = await requireAdmin();
@@ -63,12 +58,16 @@ export default async function AdminCoachesPage({
     ]);
 
   const allRows = toAdminCoachRows(raw);
-  const rows = filterCoachRows(allRows, params);
+  // Both halves live in `lib/roster/coach-filters.ts`, tested there: the row
+  // predicate — the dropdowns' own, plus the search box — and the sentence to print
+  // when it keeps nothing.
+  const rows = filterCoachListRows(allRows, params);
+  const empty = coachEmptyState(params);
 
   const multiCount = rows.filter((r) => r.isMultiEntry).length;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="group flex flex-col gap-6">
       <PageHeading
         title="Coaches"
         badge={`${rows.length} of ${allRows.length}`}
@@ -86,7 +85,10 @@ export default async function AdminCoachesPage({
         events={events ?? []}
       />
 
-      <div className="overflow-x-auto rounded-xl border">
+      {/* Dimmed while the filter bar's navigation is still rendering on the server,
+          so the table reads as catching up rather than as ignoring what was typed.
+          Driven by `data-pending` on the bar above. */}
+      <div className="overflow-x-auto rounded-xl border transition-opacity group-has-data-pending:opacity-50">
         <Table>
           <TableHeader>
             <TableRow>
@@ -121,8 +123,25 @@ export default async function AdminCoachesPage({
             ))}
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  No coaches match these filters.
+                {/* `whitespace-normal`, because `TableCell` sets `whitespace-nowrap`
+                    in its base and this cell quotes back whatever was typed — a
+                    pasted line would otherwise stretch the table into a sideways
+                    scroll instead of wrapping. */}
+                <TableCell colSpan={5} className="py-10 text-center whitespace-normal">
+                  <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
+                    {empty.message}
+                  </p>
+                  {empty.narrowed && (
+                    // A way back, on the table itself. The Clear button in the bar
+                    // above also covers this — `SEARCH_PARAM` is in its
+                    // `FILTER_KEYS` — but an empty table is where the reader is
+                    // looking, and a link is the honest control for it in a server
+                    // component. Navigating here empties the search box too: the box
+                    // follows the URL, so it clears when the param goes.
+                    <Button asChild size="sm" variant="outline" className="mt-3">
+                      <Link href="/admin/coaches">Show all coaches</Link>
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             )}

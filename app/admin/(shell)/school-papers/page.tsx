@@ -1,17 +1,24 @@
+import Link from "next/link";
+
 import { requireAdmin } from "@/app/admin/guard";
 import { SchoolPaperFilterBar } from "./SchoolPaperFilterBar";
 import { UnlockSubmissionButton } from "./UnlockSubmissionButton";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import {
   toAdminSchoolPaperRows,
-  filterSchoolPaperRows,
   type RawAdminSchoolPaper,
 } from "@/lib/paper/admin-papers";
+import {
+  filterSchoolPaperListRows,
+  schoolPaperEmptyState,
+  type SchoolPaperListFilters,
+} from "@/lib/paper/school-paper-filters";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
 import { PAPER_LEVEL_LABEL, type PaperSlot } from "@/lib/paper/level";
 import { LANGUAGE_LABEL } from "@/lib/events-catalog";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -41,18 +48,13 @@ function slotLabel(slot: PaperSlot): string {
     : `${LANGUAGE_LABEL[slot.language]} · ${PAPER_LEVEL_LABEL[slot.level]}`;
 }
 
-interface SearchParams {
-  district?: string;
-  school?: string;
-  status?: string;
-  lock?: string;
-  language?: string;
-}
-
 export default async function AdminSchoolPapersPage({
   searchParams,
 }: {
-  searchParams: Promise<SearchParams>;
+  // `SchoolPaperListFilters` rather than a shape declared here: the page and the
+  // filter it hands these to cannot then disagree about a param's name, which is a
+  // mistake with no symptom other than a control that silently does nothing.
+  searchParams: Promise<SchoolPaperListFilters>;
 }) {
   const params = await searchParams;
   const { supabase } = await requireAdmin();
@@ -79,10 +81,14 @@ export default async function AdminSchoolPapersPage({
   ]);
 
   const allRows = toAdminSchoolPaperRows(raw);
-  const rows = filterSchoolPaperRows(allRows, params);
+  // Both halves live in `lib/paper/school-paper-filters.ts`, tested there: the row
+  // predicate — the dropdowns' own, plus the search box — and the sentence to print
+  // when it keeps nothing.
+  const rows = filterSchoolPaperListRows(allRows, params);
+  const empty = schoolPaperEmptyState(params);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="group flex flex-col gap-6">
       <PageHeading
         title="School Papers"
         subtitle="Every school's submission on record"
@@ -91,7 +97,10 @@ export default async function AdminSchoolPapersPage({
 
       <SchoolPaperFilterBar districts={districts ?? []} schools={schools ?? []} />
 
-      <div className="overflow-x-auto rounded-xl border">
+      {/* Dimmed while the filter bar's navigation is still rendering on the server,
+          so the table reads as catching up rather than as ignoring what was typed.
+          Driven by `data-pending` on the bar above. */}
+      <div className="overflow-x-auto rounded-xl border transition-opacity group-has-data-pending:opacity-50">
         <Table>
           <TableHeader>
             <TableRow>
@@ -179,8 +188,25 @@ export default async function AdminSchoolPapersPage({
             ))}
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                  No schools match these filters.
+                {/* `whitespace-normal`, because `TableCell` sets `whitespace-nowrap`
+                    in its base and this cell quotes back whatever was typed — a
+                    pasted line would otherwise stretch the table into a sideways
+                    scroll instead of wrapping. */}
+                <TableCell colSpan={6} className="py-10 text-center whitespace-normal">
+                  <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
+                    {empty.message}
+                  </p>
+                  {empty.narrowed && (
+                    // A way back, on the table itself. The Clear button in the bar
+                    // above also covers this — `SEARCH_PARAM` is in its
+                    // `FILTER_KEYS` — but an empty table is where the reader is
+                    // looking, and a link is the honest control for it in a server
+                    // component. Navigating here empties the search box too: the box
+                    // follows the URL, so it clears when the param goes.
+                    <Button asChild size="sm" variant="outline" className="mt-3">
+                      <Link href="/admin/school-papers">Show all schools</Link>
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             )}

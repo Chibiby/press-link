@@ -1,11 +1,13 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ANY, FilterSelect } from "@/components/admin/filter-select";
+import { FilterSearch } from "@/components/admin/filter-search";
+import { useFilterParams } from "@/hooks/use-filter-params";
+import { SEARCH_PARAM } from "@/lib/search/filter-params";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
 import { LANGUAGE_LABEL } from "@/lib/events-catalog";
 
@@ -14,7 +16,22 @@ interface Option {
   name: string;
 }
 
-const FILTER_KEYS = ["district", "school", "status", "lock", "language"] as const;
+/**
+ * Every key that narrows the table, and the list the Clear button counts.
+ *
+ * `SEARCH_PARAM` is first because the box is first in the bar, and it is in here at
+ * all for the same reason every other key is: a typed query is a filter, and one
+ * left out of this list is a reader on a filtered table with no Clear button and no
+ * way back.
+ */
+const FILTER_KEYS = [
+  SEARCH_PARAM,
+  "district",
+  "school",
+  "status",
+  "lock",
+  "language",
+] as const;
 
 export function SchoolPaperFilterBar({
   districts,
@@ -23,25 +40,21 @@ export function SchoolPaperFilterBar({
   districts: Option[];
   schools: Option[];
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  function setParam(key: string, value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value && value !== ANY) {
-      params.set(key, value);
-    } else {
-      params.delete(key);
-    }
-    const qs = params.toString();
-    router.push(qs ? `/admin/school-papers?${qs}` : "/admin/school-papers");
-  }
-
-  const activeCount = FILTER_KEYS.filter((k) => searchParams.get(k)).length;
+  // The URL writing this bar used to do by hand now comes from the hook, which adds
+  // the two things the search box needs and the dropdowns do not: the write is
+  // debounced, and it replaces rather than pushes, so typing a school name is one
+  // server render and one history entry instead of one per keystroke.
+  const { searchParams, setParam, search, clearAll, activeCount, isPending } =
+    useFilterParams(FILTER_KEYS);
 
   return (
-    <Card>
-      <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    // The page wraps this and the table in a `group`, so this one attribute is all
+    // the table needs to dim while the filtered render is in flight. Without it, a
+    // search 250ms plus a server round trip away looks like a page that ignored the
+    // typing.
+    <Card data-pending={isPending ? "" : undefined}>
+      <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <FilterSearch label="Search" placeholder="School name" {...search} />
         <FilterSelect
           label="District"
           value={searchParams.get("district") ?? ANY}
@@ -96,9 +109,12 @@ export function SchoolPaperFilterBar({
           ]}
         />
 
-        <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-5">
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-6">
           {activeCount > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => router.push("/admin/school-papers")}>
+            // `clearAll`, not a bare push to the path: it also cancels a search write
+            // that was still waiting and empties the box, which a push cannot do —
+            // the URL would come back 250ms later carrying the query.
+            <Button variant="ghost" size="sm" onClick={clearAll}>
               <X className="size-4" />
               Clear {activeCount} filter{activeCount === 1 ? "" : "s"}
             </Button>
