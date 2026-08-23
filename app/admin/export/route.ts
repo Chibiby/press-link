@@ -2,6 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import * as XLSX from "xlsx";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  entriesExportFilename,
+  entryFiltersFromParams,
+  filterEntryRows,
+} from "@/lib/entries/admin-entry-filters";
 import { buildEntriesWorkbook, type ExportEntry } from "@/lib/export/entries-workbook";
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { distinctCoaches } from "@/lib/roster/entry-coaches";
@@ -66,9 +71,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
-  const params = request.nextUrl.searchParams;
-  const school = params.get("school");
-  const event = params.get("event");
+  // Read through the same module that filters the table, so the file cannot
+  // answer a different question from the screen it was taken from. The Export
+  // link carries the page's whole query string, search included, and every key is
+  // named once — here nothing is spelled out, so the route cannot misspell one.
+  const filters = entryFiltersFromParams(request.nextUrl.searchParams);
 
   // Paged, not one select. This is the worse half of the truncation: a spreadsheet is
   // filed as a record, so a clipped read does not produce a short screen somebody
@@ -86,8 +93,8 @@ export async function GET(request: NextRequest) {
           "id, submitted_at, schools(name, district_id, districts(name)), events(name, category, level, language), entry_participants(participants(participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(id, first_name, middle_name, last_name, gender))"
         );
 
-      if (school) query = query.eq("school_id", school);
-      if (event) query = query.eq("event_id", event);
+      if (filters.school) query = query.eq("school_id", filters.school);
+      if (filters.event) query = query.eq("event_id", filters.event);
 
       return query
         .order("submitted_at", { ascending: false })
@@ -102,19 +109,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Could not load entries" }, { status: 500 });
   }
 
-  // Same post-fetch narrowing as the admin page, so the file matches the screen.
-  const district = params.get("district");
-  const category = params.get("category");
-  const level = params.get("level");
-  const language = params.get("language");
-
-  const filtered = rawEntries.filter((entry) => {
-    if (district && entry.schools?.district_id !== district) return false;
-    if (category && entry.events?.category !== category) return false;
-    if (level && entry.events?.level !== level) return false;
-    if (language && entry.events?.language !== language) return false;
-    return true;
-  });
+  // The same post-fetch narrowing the admin page applies, because it is literally
+  // the same function: the search, the district, and the category, level and
+  // language that live on joined tables. Re-implementing the search here is how
+  // the two would drift — a typed `%` or an accent would mean one thing on screen
+  // and another in the file.
+  const filtered = filterEntryRows(rawEntries, filters);
 
   const exportEntries: ExportEntry[] = filtered.map((entry) => ({
     schoolName: entry.schools?.name ?? "",
@@ -143,12 +143,17 @@ export async function GET(request: NextRequest) {
   const book = buildEntriesWorkbook(exportEntries);
   const buffer: Buffer = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
   const date = new Date().toISOString().slice(0, 10);
+  // "press-link-entries-filtered-2026-08-23.xlsx" whenever a control narrowed the
+  // rows, computed from the same filters that narrowed them. The file outlives the
+  // tab it came from, so a district's worth of entries must not be filed six
+  // months later as the division's entry list.
+  const filename = entriesExportFilename(filters, date);
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="press-link-entries-${date}.xlsx"`,
+      "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
     },
   });

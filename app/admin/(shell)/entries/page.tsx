@@ -1,17 +1,24 @@
+import Link from "next/link";
 import { Building2, FileText, Newspaper, User, Users } from "lucide-react";
 
 import { requireAdmin } from "@/app/admin/guard";
 import { FilterBar } from "@/app/admin/FilterBar";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { LanguageBadge, LevelBadge } from "@/components/entry-badges";
+import {
+  entryCoachNames,
+  entryEmptyState,
+  entryParticipantNames,
+  filterEntryRows,
+  type EntryFilters,
+} from "@/lib/entries/admin-entry-filters";
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import type { PaperParticipation } from "@/lib/paper/gate";
 import { PAPER_STATUS_LABEL, paperStatus } from "@/lib/paper/status";
-import { distinctCoaches } from "@/lib/roster/entry-coaches";
-import { surnameFirst } from "@/lib/roster/names";
 import { fetchAll, LoadFailure } from "@/lib/supabase/fetch-all";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -29,15 +36,6 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-PH", {
   hour: "numeric",
   minute: "2-digit",
 });
-
-interface SearchParams {
-  district?: string;
-  school?: string;
-  event?: string;
-  category?: string;
-  level?: string;
-  language?: string;
-}
 
 interface EntryRow {
   id: string;
@@ -65,7 +63,11 @@ interface EntryRow {
 export default async function AdminEntriesPage({
   searchParams,
 }: {
-  searchParams: Promise<SearchParams>;
+  // `EntryFilters` rather than a shape declared here: the page, the filter it
+  // hands these to and the export route that re-reads them cannot then disagree
+  // about a param's name, which is a mistake with no symptom other than a control
+  // that silently does nothing.
+  searchParams: Promise<EntryFilters>;
 }) {
   const params = await searchParams;
   const { supabase } = await requireAdmin();
@@ -125,15 +127,13 @@ export default async function AdminEntriesPage({
     entriesError = failure;
   }
 
-  // District, category, level and language live on joined tables, so they are
-  // narrowed here rather than in the query.
-  const filteredEntries = rawEntries.filter((entry) => {
-    if (params.district && entry.schools?.district_id !== params.district) return false;
-    if (params.category && entry.events?.category !== params.category) return false;
-    if (params.level && entry.events?.level !== params.level) return false;
-    if (params.language && entry.events?.language !== params.language) return false;
-    return true;
-  });
+  // Both halves live in `lib/entries/admin-entry-filters.ts`, tested there: which
+  // rows survive the search and the dropdowns, and the sentence to print when that
+  // is none of them. `app/admin/export/route.ts` reads the same two functions, so
+  // the workbook behind the Export button cannot answer a different question from
+  // the table it was taken from.
+  const filteredEntries = filterEntryRows(rawEntries, params);
+  const empty = entryEmptyState(params);
 
   const stats = {
     total: filteredEntries.length,
@@ -158,7 +158,7 @@ export default async function AdminEntriesPage({
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="group flex flex-col gap-6">
       <PageHeading
         title="Entries"
         subtitle="Every entry submitted across the division."
@@ -200,7 +200,10 @@ export default async function AdminEntriesPage({
           </AlertDescription>
         </Alert>
       ) : (
-      <div className="overflow-x-auto rounded-xl border">
+      /* Dimmed while the filter bar's navigation is still rendering on the
+         server, so the table reads as catching up rather than as ignoring what
+         was typed. Driven by `data-pending` on the bar above. */
+      <div className="overflow-x-auto rounded-xl border transition-opacity group-has-data-pending:opacity-50">
         <Table>
           <TableHeader>
             <TableRow>
@@ -238,17 +241,11 @@ export default async function AdminEntriesPage({
                   {entry.events && <LanguageBadge language={entry.events.language} />}
                 </TableCell>
                 <TableCell>
-                  {entry.entry_participants
-                    .map((link) => link.participants)
-                    .filter((p) => p !== null)
-                    .map((p) => `${p.first_name} ${p.last_name}`)
-                    .join(", ")}
+                  {/* The same two helpers the search reads, so a name that
+                      matched is a name printed here. */}
+                  {entryParticipantNames(entry).join(", ")}
                 </TableCell>
-                <TableCell>
-                  {distinctCoaches(entry.entry_coaches)
-                    .map((c) => surnameFirst(c))
-                    .join(", ")}
-                </TableCell>
+                <TableCell>{entryCoachNames(entry).join(", ")}</TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">
                   {entry.submitted_at ? DATE_FORMAT.format(new Date(entry.submitted_at)) : "—"}
                 </TableCell>
@@ -256,8 +253,26 @@ export default async function AdminEntriesPage({
             ))}
             {filteredEntries.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                  No entries match these filters.
+                {/* `whitespace-normal`, because `TableCell` sets
+                    `whitespace-nowrap` in its base and this cell quotes back
+                    whatever was typed — a pasted line would otherwise stretch the
+                    table into a sideways scroll instead of wrapping. */}
+                <TableCell colSpan={8} className="py-10 text-center whitespace-normal">
+                  <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
+                    {empty.message}
+                  </p>
+                  {empty.narrowed && (
+                    // A way back, on the table itself. The Clear button in the bar
+                    // above also covers this — `SEARCH_PARAM` is first in
+                    // `ENTRY_FILTER_KEYS` — but an empty table is where the reader
+                    // is looking, and a link is the honest control for it in a
+                    // server component. Navigating here empties the search box
+                    // too: the box follows the URL, so it clears when the param
+                    // goes.
+                    <Button asChild size="sm" variant="outline" className="mt-3">
+                      <Link href="/admin/entries">Show all entries</Link>
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             )}
