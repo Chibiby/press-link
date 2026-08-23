@@ -23,6 +23,18 @@ update schools
       paper_answered_at = null,
       submission_locked_at = null;
 
+-- The division-wide switch comes down for the same reason and in the same
+-- breath. It is a second, independent lock — the guard triggers refuse a write
+-- while it is on no matter what the school's own flag says — so clearing only
+-- the per-school flags above would leave every delete below still refused. All
+-- three columns are cleared together because the flag and its stamp are one
+-- fact: `app_settings_lock_stamp_check` rejects an open lock that still carries
+-- a timestamp.
+update app_settings
+  set submissions_locked = false,
+      submissions_locked_at = null,
+      submissions_locked_by = null;
+
 -- Link tables next. Both cascade from `entries`, but deleting them explicitly
 -- keeps this readable and safe to re-run.
 delete from entry_participants;
@@ -43,10 +55,11 @@ alter sequence participant_number_seq restart with 1;
 
 commit;
 
--- Expect four zeroes and a next number of 1.
+-- Expect four zeroes, a next number of 1, and the division-wide lock down.
 select
   (select count(*) from entries) as entries,
   (select count(*) from participants) as participants,
   (select count(*) from coaches) as coaches,
   (select count(*) from school_papers) as school_papers,
-  (select last_value from participant_number_seq) as next_participant_number;
+  (select last_value from participant_number_seq) as next_participant_number,
+  (select submissions_locked from app_settings) as submissions_locked;
