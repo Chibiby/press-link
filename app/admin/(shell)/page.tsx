@@ -22,8 +22,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { describeLockStamp } from "@/lib/submissions/lock-state";
 
 import { loadDashboardData } from "./dashboard-data";
+import { SubmissionsLockDialog } from "./SubmissionsLockDialog";
 
 /**
  * The timezone is pinned: this runs on a server whose clock is UTC, and an
@@ -89,13 +91,30 @@ function Panel({
 
 export default async function AdminDashboardPage() {
   const data = await loadDashboardData();
+  /**
+   * "Locked since … by …", or null unless the division-wide switch is on. It sits
+   * in the subtitle rather than in the button, so the *when* and the *by whom* are
+   * readable without opening anything and without lengthening a button row that is
+   * already three controls wide. Null in every other state, including when the flag
+   * is unreadable — there is nothing to date.
+   */
+  const lockStamp = describeLockStamp(data.submissionsLock);
 
   return (
     <div className="space-y-6">
       <PageHeading
         title={EVENT_TITLE}
         badge={data.timeline.statusPill}
-        subtitle={`Welcome back, ${data.adminName}. Division-wide figures as of ${AS_OF.format(data.now)}.`}
+        subtitle={
+          <>
+            {`Welcome back, ${data.adminName}. Division-wide figures as of ${AS_OF.format(data.now)}.`}
+            {lockStamp ? (
+              // Not colour alone: the sentence says it, and the pill above already
+              // reads "Registration Closed".
+              <span className="text-destructive"> {lockStamp}</span>
+            ) : null}
+          </>
+        }
         actions={
           <>
             {/* The two contest-day portals, in filled brand teal — the only filled
@@ -105,11 +124,20 @@ export default async function AdminDashboardPage() {
                 Icons are the sidebar's own Gavel and Calculator, so the button and the
                 nav item an admin already knows read as the same destination.
 
-                Kept as a tight gap-1 pair and fenced off with a hairline: two portals
-                on one side of the rule, one export errand on the other. The rule hides
-                below `sm`, where the row wraps and a stray vertical line would look
-                like a rendering bug rather than a divider. */}
-            <div className="flex items-center gap-1">
+                The division-wide lock leads, to the left of the portals, because it is
+                the one control here that changes what every other school can do; it is
+                deliberately not filled, so it cannot be mistaken for a third door.
+                All three stay a tight gap-1 group fenced off with a hairline: the
+                switch and the two portals on one side of the rule, one export errand on
+                the other. The rule hides below `sm`, where the row wraps and a stray
+                vertical line would look like a rendering bug rather than a divider.
+
+                `flex-wrap` on the group is what the third button costs: three of these
+                no longer fit a 360px viewport on one line, and a nowrap group would
+                push the page body sideways rather than stack. It has no effect at any
+                width where they do fit. */}
+            <div className="flex flex-wrap items-center gap-1">
+              <SubmissionsLockDialog lock={data.submissionsLock} />
               <Button asChild size="sm" className="shadow-sm">
                 <Link href="/admin/judges">
                   <Gavel />

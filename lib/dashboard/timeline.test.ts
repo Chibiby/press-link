@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import { buildTimeline, type TimelineInput } from "./timeline";
 
 function input(overrides: Partial<TimelineInput> = {}): TimelineInput {
-  return { schoolsLocked: 0, schoolsOpenWithEntries: 0, entries: 0, ...overrides };
+  return {
+    schoolsLocked: 0,
+    schoolsOpenWithEntries: 0,
+    entries: 0,
+    globallyLocked: false,
+    ...overrides,
+  };
 }
 
 describe("buildTimeline", () => {
@@ -116,5 +122,84 @@ describe("buildTimeline", () => {
     const open = buildTimeline(input({ schoolsOpenWithEntries: 16, entries: 41 }));
     const closed = buildTimeline(input({ schoolsLocked: 16, entries: 41 }));
     expect(open.steps.slice(1)).toEqual(closed.steps.slice(1));
+  });
+});
+
+describe("buildTimeline with the division-wide lock", () => {
+  // The whole point of the flag reaching this function. Without it the dashboard
+  // reads "Registration Open" while not one school in the division can save
+  // anything.
+  it("closes registration on the switch alone, with nothing locked per school", () => {
+    const { steps, registrationClosed, statusPill } = buildTimeline(
+      input({
+        globallyLocked: true,
+        schoolsLocked: 0,
+        schoolsOpenWithEntries: 16,
+        entries: 41,
+      }),
+    );
+    expect(steps[0].state).toBe("completed");
+    expect(steps[0].stateLabel).toBe("COMPLETED");
+    expect(registrationClosed).toBe(true);
+    expect(statusPill).toBe("Registration Closed");
+  });
+
+  // Same shape as the "locked outnumbers active" trap above, which stays open
+  // while the switch is off and must close while it is on.
+  it("overrides the per-school counts rather than being weighed against them", () => {
+    const counts = { schoolsLocked: 20, schoolsOpenWithEntries: 3, entries: 41 };
+    expect(buildTimeline(input({ ...counts })).registrationClosed).toBe(false);
+    expect(
+      buildTimeline(input({ ...counts, globallyLocked: true })).registrationClosed,
+    ).toBe(true);
+  });
+
+  // Reversibility, which is the design of the switch: it writes nothing to
+  // `schools`, so turning it off must return exactly the previous answer.
+  it("returns to the per-school answer when the switch goes off", () => {
+    const counts = { schoolsLocked: 3, schoolsOpenWithEntries: 16, entries: 41 };
+    const on = buildTimeline(input({ ...counts, globallyLocked: true }));
+    const off = buildTimeline(input({ ...counts, globallyLocked: false }));
+    expect(on.registrationClosed).toBe(true);
+    expect(off.registrationClosed).toBe(false);
+    expect(off.statusPill).toBe("Registration Open");
+    // Not merely open again — identical, step details included.
+    expect(off).toEqual(buildTimeline(input(counts)));
+  });
+
+  it("distinguishes a closure by the switch from one by the schools", () => {
+    expect(
+      buildTimeline(input({ globallyLocked: true, schoolsOpenWithEntries: 16 }))
+        .closedByGlobalLock,
+    ).toBe(true);
+    // Every school finished on its own. Nothing for an admin to switch back.
+    const finished = buildTimeline(input({ schoolsLocked: 16, entries: 41 }));
+    expect(finished.registrationClosed).toBe(true);
+    expect(finished.closedByGlobalLock).toBe(false);
+    expect(buildTimeline(input()).closedByGlobalLock).toBe(false);
+  });
+
+  // The counts stay: they are what says how much reopening would let back in.
+  it("adds the switch to the registration detail without dropping the counts", () => {
+    const { steps } = buildTimeline(
+      input({ globallyLocked: true, schoolsLocked: 3, entries: 41 }),
+    );
+    expect(steps[0].detail).toBe(
+      "3 schools locked · 41 entries submitted · locked division-wide",
+    );
+  });
+
+  it("says nothing about the switch while it is off", () => {
+    const { steps } = buildTimeline(input({ schoolsLocked: 3, entries: 41 }));
+    expect(steps[0].detail).toBe("3 schools locked · 41 entries submitted");
+    expect(steps[0].detail).not.toContain("division-wide");
+  });
+
+  it("leaves the later steps unavailable while the switch is on", () => {
+    const { steps } = buildTimeline(input({ globallyLocked: true, entries: 41 }));
+    for (const step of steps.slice(1)) {
+      expect(step.state).toBe("unavailable");
+      expect(step.stateLabel).toBe("Not yet available");
+    }
   });
 });

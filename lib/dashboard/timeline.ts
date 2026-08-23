@@ -23,11 +23,29 @@ export interface TimelineInput {
   schoolsOpenWithEntries: number;
   /** Total rows in `entries`. */
   entries: number;
+  /**
+   * `app_settings.submissions_locked` — the division-wide override switch from
+   * migration 0022. While it is on, every school-side write is refused whatever
+   * the two counts above say, so it closes registration on its own.
+   *
+   * The caller passes `false` when the flag cannot be read. That is the honest
+   * mapping: an unreadable flag is not evidence that registration has closed,
+   * and it leaves this function's answer identical to what it was before the
+   * switch existed.
+   */
+  globallyLocked: boolean;
 }
 
 export interface Timeline {
   steps: TimelineStep[];
   registrationClosed: boolean;
+  /**
+   * True when registration is closed because the division-wide switch is on
+   * rather than because every school finished. Separate from
+   * `registrationClosed` because the two are undone differently: one is a
+   * setting an admin flips back, the other is sixteen schools' own decisions.
+   */
+  closedByGlobalLock: boolean;
   /** The COMPETITION STATUS pill label. */
   statusPill: string;
 }
@@ -71,19 +89,27 @@ export function buildTimeline(input: TimelineInput): Timeline {
   // holding an entry is still open. Comparing `schoolsLocked` against the number
   // of active schools would be wrong: a school can lock with zero entries, so
   // locked can exceed active while active schools are still submitting.
-  const registrationClosed =
+  const everySchoolFinished =
     input.schoolsLocked > 0 && input.schoolsOpenWithEntries === 0;
+
+  // The division-wide switch closes registration by itself, including with
+  // nothing locked per school. Anything else would print "Registration Open"
+  // above a division in which not one school can save a thing — the one lie this
+  // pill must never tell.
+  const registrationClosed = input.globallyLocked || everySchoolFinished;
 
   const registration: TimelineStep = {
     key: "registration",
     label: "Registration",
     state: registrationClosed ? "completed" : "in-progress",
     stateLabel: registrationClosed ? "COMPLETED" : "IN PROGRESS",
+    // The per-school counts stay in the line even while the switch is on: they
+    // are what an admin needs to see to know what turning it off would reopen.
     detail: `${count(input.schoolsLocked, "school", "schools")} locked · ${count(
       input.entries,
       "entry",
       "entries",
-    )} submitted`,
+    )} submitted${input.globallyLocked ? " · locked division-wide" : ""}`,
   };
 
   return {
@@ -96,6 +122,7 @@ export function buildTimeline(input: TimelineInput): Timeline {
       })),
     ],
     registrationClosed,
+    closedByGlobalLock: input.globallyLocked,
     statusPill: registrationClosed ? "Registration Closed" : "Registration Open",
   };
 }

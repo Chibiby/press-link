@@ -26,6 +26,7 @@ import {
   type EventLanguage,
   type EventLevel,
 } from "@/lib/events-catalog";
+import type { SubmissionsLock } from "@/lib/submissions/lock-state";
 
 /** Rows on screen in the Per School Summary panel. The totals row still sums all of them. */
 const PER_SCHOOL_LIMIT = 15;
@@ -87,6 +88,12 @@ export interface DashboardData {
    */
   activity: ActivityFeed;
   timeline: Timeline;
+  /**
+   * The division-wide submissions switch, for the header control. Three states,
+   * not a boolean: "unknown" is a real answer here and must not be flattened
+   * into "unlocked".
+   */
+  submissionsLock: SubmissionsLock;
   eventGroups: EventOptionGroup[];
 }
 
@@ -124,6 +131,82 @@ export const loadAdminName = cache(async (): Promise<string> => {
     .overrideTypes<{ full_name: string | null }>();
 
   return data?.full_name?.trim() || "Division Admin";
+});
+
+/**
+ * The division-wide submissions switch: `app_settings`, one row, `id = true`.
+ *
+ * **This read fails soft on purpose, and it is not a hole.** Enforcement lives
+ * entirely in the trigger functions migration 0022 installs, which raise inside
+ * the database on every school-side write and cannot be reached around; nothing
+ * in this file is a guard. All this read decides is what the dashboard header
+ * shows. So when the table or the row is not there — the state of production
+ * until 0022 is applied — the dashboard must render exactly as it did before this
+ * feature existed rather than 500 on a `select` against a missing relation. Do
+ * not "harden" this into a throw: it would take the whole admin dashboard down
+ * without making one single write more, or less, permitted.
+ *
+ * The two failures are kept apart because they mean opposite things. `unreadable`
+ * is almost always "not deployed here yet", and nothing is frozen. `no-row` is an
+ * emergency: `submissions_locked_globally()` raises when the singleton is gone,
+ * so every school-side write is being refused right now — and the RPC's insert
+ * branch is the repair, which is why the control stays live in that state.
+ */
+export const loadSubmissionsLock = cache(async (): Promise<SubmissionsLock> => {
+  const supabase = await getAdminClient();
+
+  const { data, error } = await supabase
+    .from("app_settings")
+    .select("submissions_locked, submissions_locked_at, submissions_locked_by")
+    .eq("id", true)
+    .maybeSingle()
+    .overrideTypes<{
+      submissions_locked: boolean | null;
+      submissions_locked_at: string | null;
+      submissions_locked_by: string | null;
+    }>();
+
+  if (error) {
+    console.error("loadSubmissionsLock", error);
+    return { state: "unknown", reason: "unreadable", detail: error.message };
+  }
+
+  // Not `false`. The select policy is scoped `to authenticated`, so a caller
+  // without a session reads zero rows rather than an unlocked flag — and a
+  // deleted singleton reads the same way. Either is "we do not know".
+  if (!data) {
+    return {
+      state: "unknown",
+      reason: "no-row",
+      detail: "app_settings returned no row for id = true.",
+    };
+  }
+
+  if (!data.submissions_locked) return { state: "unlocked" };
+
+  // Who locked it, if that can be answered at all. `admin_profiles` is
+  // self-read under RLS ("self read admin_profiles", 0001), so this resolves a
+  // name exactly when the admin who locked the division is the admin reading the
+  // page, and comes back empty for anyone else. That is the whole reason the
+  // copy has an "another administrator" branch: a raw uuid on screen would be
+  // worse than no name at all.
+  let byName: string | null = null;
+  if (data.submissions_locked_by) {
+    const { data: owner } = await supabase
+      .from("admin_profiles")
+      .select("full_name")
+      .eq("user_id", data.submissions_locked_by)
+      .maybeSingle()
+      .overrideTypes<{ full_name: string | null }>();
+    byName = owner?.full_name?.trim() || null;
+  }
+
+  return {
+    state: "locked",
+    at: data.submissions_locked_at,
+    by: data.submissions_locked_by,
+    byName,
+  };
 });
 /**
  * The dashboard's slice of the schools query. The query itself lives in
@@ -370,16 +453,25 @@ export const loadActivity = cache(async (): Promise<ActivityFeed> => {
 
 /** Everything the overview page renders, in one call. */
 export const loadDashboardData = cache(async (): Promise<DashboardData> => {
-  const [schools, roster, entryFacts, events, activity, attentionInput, adminName] =
-    await Promise.all([
-      loadSchoolFacts(),
-      loadRosterFacts(),
-      loadEntryFacts(),
-      loadEventFacts(),
-      loadActivity(),
-      loadAttentionInput(),
-      loadAdminName(),
-    ]);
+  const [
+    schools,
+    roster,
+    entryFacts,
+    events,
+    activity,
+    attentionInput,
+    adminName,
+    submissionsLock,
+  ] = await Promise.all([
+    loadSchoolFacts(),
+    loadRosterFacts(),
+    loadEntryFacts(),
+    loadEventFacts(),
+    loadActivity(),
+    loadAttentionInput(),
+    loadAdminName(),
+    loadSubmissionsLock(),
+  ]);
 
   return {
     now: new Date(),
@@ -420,7 +512,12 @@ export const loadDashboardData = cache(async (): Promise<DashboardData> => {
       schoolsLocked: schools.schoolsLocked,
       schoolsOpenWithEntries: schools.schoolsOpenWithEntries,
       entries: entryFacts.entries,
+      // Only a flag we positively read as true closes registration on its own.
+      // An unreadable flag is not evidence that anything is frozen, and the pill
+      // keeps saying exactly what it said before this switch existed.
+      globallyLocked: submissionsLock.state === "locked",
     }),
+    submissionsLock,
     eventGroups: events.groups,
   };
 });
