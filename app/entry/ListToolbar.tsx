@@ -98,7 +98,14 @@ export function ListToolbar({
             <div
               className={cn(
                 "grid min-w-0 flex-1 gap-2 sm:flex sm:flex-none",
-                filters.length > 1 ? "grid-cols-2" : "grid-cols-1"
+                filters.length > 1 ? "grid-cols-2" : "grid-cols-1",
+                // An odd number of filters would leave the last one stranded at
+                // half width beside an empty cell. Let it take the whole row
+                // instead, matching the search box directly above it. Inert from
+                // sm up, where the grid gives way to a flex row.
+                filters.length > 2 &&
+                  filters.length % 2 === 1 &&
+                  "[&>*:last-child]:col-span-2"
               )}
             >
               {filters.map((filter) => (

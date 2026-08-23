@@ -1,4 +1,4 @@
-import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
+import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
 import type { UsageMap } from "@/lib/roster/limits";
 import type { EntryRow, RosterCoach, RosterParticipant } from "./types";
 
@@ -10,6 +10,8 @@ export type AssignmentFilter = typeof ANY | "assigned" | "unassigned";
 export type GenderFilter = typeof ANY | "M" | "F";
 export type LevelFilter = typeof ANY | EventLevel;
 export type LanguageFilter = typeof ANY | EventLanguage;
+/** Whether an event is contested by one learner or by a team. */
+export type CategoryFilter = typeof ANY | EventCategory;
 
 /**
  * A school types the fragment it remembers — half a surname, a number off a
@@ -65,7 +67,13 @@ export function filterEntries(
     query,
     level,
     language,
-  }: { query: string; level: LevelFilter; language: LanguageFilter }
+    category,
+  }: {
+    query: string;
+    level: LevelFilter;
+    language: LanguageFilter;
+    category: CategoryFilter;
+  }
 ): EntryRow[] {
   return entries.filter((entry) => {
     // "Where is Cruz entered?" is the question a school actually asks, so a
@@ -77,6 +85,9 @@ export function filterEntries(
     ];
     if (!matchesQuery(searchable, query)) return false;
     if (level !== ANY && entry.level !== level) return false;
-    return language === ANY || entry.language === language;
+    if (language !== ANY && entry.language !== language) return false;
+    // Individual and group are the two halves of the contest, and a school
+    // preparing one of them has no use for the other on screen.
+    return category === ANY || entry.category === category;
   });
 }

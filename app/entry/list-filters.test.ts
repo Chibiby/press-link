@@ -45,7 +45,8 @@ function entry(
   level: EntryRow["level"],
   language: EntryRow["language"],
   participants: RosterParticipant[] = [],
-  coaches: RosterCoach[] = []
+  coaches: RosterCoach[] = [],
+  category: EntryRow["category"] = "individual"
 ): EntryRow {
   return {
     id,
@@ -54,7 +55,7 @@ function entry(
     submitted_label: "Aug 22, 2026",
     event_type_id: `type-${id}`,
     event_name,
-    category: "individual",
+    category,
     level,
     language,
     participants,
@@ -170,48 +171,124 @@ describe("filterEntries", () => {
   const editorial = entry("e1", "Editorial Writing", "elementary", "english", [ANA], [
     coach("c1", "Reyes, Mario", "M"),
   ]);
-  const radio = entry("e2", "Radio Broadcasting", "secondary", "filipino", [BEN], [
-    coach("c2", "Santos, Liza", "F"),
-  ]);
+  // Radio Broadcasting is a group event in the catalog, so the pair covers both
+  // halves of the contest without inventing an event that does not exist.
+  const radio = entry(
+    "e2",
+    "Radio Broadcasting",
+    "secondary",
+    "filipino",
+    [BEN],
+    [coach("c2", "Santos, Liza", "F")],
+    "group"
+  );
   const all = [editorial, radio];
 
   it("returns every entry when nothing is set", () => {
-    expect(filterEntries(all, { query: "", level: ANY, language: ANY })).toEqual(all);
+    expect(
+      filterEntries(all, { query: "", level: ANY, language: ANY, category: ANY })
+    ).toEqual(all);
   });
 
   it("finds an entry by its event name", () => {
-    expect(filterEntries(all, { query: "radio", level: ANY, language: ANY })).toEqual([
-      radio,
-    ]);
+    expect(
+      filterEntries(all, { query: "radio", level: ANY, language: ANY, category: ANY })
+    ).toEqual([radio]);
   });
 
   it("finds an entry by a participant on it", () => {
-    expect(filterEntries(all, { query: "cruz", level: ANY, language: ANY })).toEqual([
-      editorial,
-    ]);
+    expect(
+      filterEntries(all, { query: "cruz", level: ANY, language: ANY, category: ANY })
+    ).toEqual([editorial]);
   });
 
   it("finds an entry by a coach on it", () => {
-    expect(filterEntries(all, { query: "santos", level: ANY, language: ANY })).toEqual([
-      radio,
-    ]);
+    expect(
+      filterEntries(all, { query: "santos", level: ANY, language: ANY, category: ANY })
+    ).toEqual([radio]);
   });
 
   it("filters by level and by language", () => {
     expect(
-      filterEntries(all, { query: "", level: "secondary", language: ANY })
+      filterEntries(all, {
+        query: "",
+        level: "secondary",
+        language: ANY,
+        category: ANY,
+      })
     ).toEqual([radio]);
     expect(
-      filterEntries(all, { query: "", level: ANY, language: "english" })
+      filterEntries(all, {
+        query: "",
+        level: ANY,
+        language: "english",
+        category: ANY,
+      })
     ).toEqual([editorial]);
+  });
+
+  it("keeps only the requested category", () => {
+    expect(
+      filterEntries(all, { query: "", level: ANY, language: ANY, category: "group" })
+    ).toEqual([radio]);
+    expect(
+      filterEntries(all, {
+        query: "",
+        level: ANY,
+        language: ANY,
+        category: "individual",
+      })
+    ).toEqual([editorial]);
+  });
+
+  it("splits the list into complements, so no entry is hidden from both", () => {
+    const base = { query: "", level: ANY, language: ANY } as const;
+    const individual = filterEntries(all, { ...base, category: "individual" });
+    const group = filterEntries(all, { ...base, category: "group" });
+
+    expect(individual.length + group.length).toBe(all.length);
+    expect(individual.some((one) => group.some((other) => other.id === one.id))).toBe(
+      false
+    );
   });
 
   it("applies level and language together", () => {
     expect(
-      filterEntries(all, { query: "", level: "secondary", language: "filipino" })
+      filterEntries(all, {
+        query: "",
+        level: "secondary",
+        language: "filipino",
+        category: ANY,
+      })
     ).toEqual([radio]);
     expect(
-      filterEntries(all, { query: "", level: "secondary", language: "english" })
+      filterEntries(all, {
+        query: "",
+        level: "secondary",
+        language: "english",
+        category: ANY,
+      })
+    ).toEqual([]);
+  });
+
+  it("applies the category alongside every other filter", () => {
+    expect(
+      filterEntries(all, {
+        query: "katigbak",
+        level: "secondary",
+        language: "filipino",
+        category: "group",
+      })
+    ).toEqual([radio]);
+    // The only group entry is the secondary one, so this pair cannot both hold
+    // and the search box is not what emptied the list.
+    expect(
+      filterEntries(all, {
+        query: "",
+        level: "elementary",
+        language: ANY,
+        category: "group",
+      })
     ).toEqual([]);
   });
 });

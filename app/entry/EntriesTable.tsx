@@ -9,6 +9,7 @@ import { deleteEntryAction } from "./actions";
 import {
   ANY,
   filterEntries,
+  type CategoryFilter,
   type LanguageFilter,
   type LevelFilter,
 } from "./list-filters";
@@ -74,12 +75,13 @@ export function EntriesTable({
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState<LevelFilter>(ANY);
   const [language, setLanguage] = useState<LanguageFilter>(ANY);
+  const [category, setCategory] = useState<CategoryFilter>(ANY);
 
   // The whole list is already on the client, so narrowing it is a render away —
   // no search params, no round trip.
   const shown = useMemo(
-    () => filterEntries(entries, { query, level, language }),
-    [entries, query, level, language]
+    () => filterEntries(entries, { query, level, language, category }),
+    [entries, query, level, language, category]
   );
   const { rows, topRef, reset, pager } = useListPage(shown);
 
@@ -87,6 +89,7 @@ export function EntriesTable({
     setQuery("");
     setLevel(ANY);
     setLanguage(ANY);
+    setCategory(ANY);
     reset();
   }
 
@@ -162,6 +165,21 @@ export function EntriesTable({
                 { value: "filipino", label: "Filipino" },
               ],
               ariaLabel: "Filter entries by language",
+            },
+            {
+              value: category,
+              onChange: (value) => {
+                setCategory(value as CategoryFilter);
+                reset();
+              },
+              // Last of the three, so it takes the whole second row on a phone
+              // and leaves the pair a school already knows where it was.
+              placeholder: "All types",
+              options: [
+                { value: "individual", label: "Individual" },
+                { value: "group", label: "Group" },
+              ],
+              ariaLabel: "Filter entries by type",
             },
           ]}
           shown={shown.length}
