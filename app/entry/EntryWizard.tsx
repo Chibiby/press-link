@@ -100,8 +100,19 @@ export function EntryWizard({
       setTypeId(entry.event_type_id);
       setLevel(entry.level);
       setLanguage(entry.language);
-      setParticipantIds(entry.participants.map((p) => p.id));
-      setCoachIds(entry.coaches.length > 0 ? entry.coaches.map((c) => c.id) : [UNSET]);
+      const savedParticipants = entry.participants.map((p) => p.id);
+      const savedCoaches =
+        entry.coaches.length > 0 ? entry.coaches.map((c) => c.id) : [UNSET];
+      // An individual entry is read back in pairs, so open with as many coach
+      // rows as there are contestants. The empty ones save as nothing.
+      if ((type?.category ?? "individual") === "individual") {
+        const cap = maxCoachesFor("individual");
+        while (savedCoaches.length < savedParticipants.length && savedCoaches.length < cap) {
+          savedCoaches.push(UNSET);
+        }
+      }
+      setParticipantIds(savedParticipants);
+      setCoachIds(savedCoaches);
       setStep(5);
     } else {
       setCategory(null);
@@ -203,11 +214,18 @@ export function EntryWizard({
 
     const newCategory: EventCategory = newType?.category ?? category ?? "individual";
     const newMaxCoaches = maxCoachesFor(newCategory);
-    const filledCoaches = coachIds.filter((id) => id !== UNSET);
-    if (filledCoaches.length > newMaxCoaches) {
-      const trimmed = filledCoaches.slice(0, Math.max(newMaxCoaches, 1));
-      setCoachIds(trimmed.length === 0 ? [UNSET] : trimmed);
+    let coachRows = coachIds.filter((id) => id !== UNSET);
+    if (coachRows.length > newMaxCoaches) {
+      coachRows = coachRows.slice(0, newMaxCoaches);
     }
+    // An individual contest pairs each contestant with a coach, so the coach
+    // rows follow the participant rows — up to the cap, and never below one.
+    const wantedCoaches =
+      newCategory === "individual"
+        ? Math.min(Math.max(participantRows.length, 1), newMaxCoaches)
+        : 1;
+    while (coachRows.length < wantedCoaches) coachRows.push(UNSET);
+    setCoachIds(coachRows);
 
     setStep(5);
   }
@@ -263,6 +281,172 @@ export function EntryWizard({
       onOpenChange(false);
       router.refresh();
     });
+  }
+
+  /**
+   * An individual contest is prepared one contestant at a time: a school picks
+   * who competes and, in the same breath, who coaches them. So the two fields are
+   * paired — a participant with its coach directly beneath it — instead of every
+   * participant first and every coach after. Adding a participant opens the coach
+   * row that goes with it.
+   *
+   * The pairing is a way through the form, not a fact in the database:
+   * entry_participants and entry_coaches are independent link tables, so an entry
+   * names a set of contestants and a set of coaches with nothing tying one to the
+   * other. That is why coaches stay numbered instead of being labelled with a
+   * contestant's name, and why the read-only View dialog keeps its two lists.
+   */
+  const paired = effectiveCategory === "individual";
+  const pairRows = Math.max(participantIds.length, coachIds.length);
+
+  function addParticipantRow() {
+    setParticipantIds((prev) => [...prev, UNSET]);
+    // The coach that comes with a new contestant — unless the entry is already at
+    // its coach cap, which for an individual contest is three.
+    if (paired) {
+      setCoachIds((prev) => (prev.length < maxCoaches ? [...prev, UNSET] : prev));
+    }
+  }
+
+  function removeParticipantRow(index: number) {
+    setParticipantIds((prev) => prev.filter((_, i) => i !== index));
+    // A pair goes as a pair. The last coach row stays either way: an entry with
+    // no coach cannot be saved.
+    if (paired) {
+      setCoachIds((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+    }
+  }
+
+  /**
+   * One contestant may still be coached by up to three people — see
+   * INDIVIDUAL_COACH_CAP — so coaches past the number of participants are added
+   * here and sit under the pairs.
+   */
+  function addCoachRow() {
+    setCoachIds((prev) => [...prev, UNSET]);
+  }
+
+  function removeCoachRow(index: number) {
+    setCoachIds((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function participantSlot(index: number, selected: string) {
+    return (
+      <div className="flex items-center gap-2">
+        <Label className="sr-only" htmlFor={`participant-slot-${index}`}>
+          Participant {index + 1}
+        </Label>
+        <Select
+          value={selected}
+          onValueChange={(value) =>
+            setParticipantIds((prev) =>
+              prev.map((row, idx) => (idx === index ? value : row))
+            )
+          }
+        >
+          <SelectTrigger id={`participant-slot-${index}`} className="w-full">
+            <SelectValue placeholder={`Select participant ${index + 1}`} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={UNSET}>Select participant {index + 1}</SelectItem>
+            {participants.map((participant) => {
+              const alreadyHere =
+                participant.id !== selected &&
+                chosenParticipants.includes(participant.id);
+              // Editing an entry must not count that entry against its own
+              // members, so anyone already on it stays selectable.
+              const onThisEntry = Boolean(
+                entry?.participants.some((p) => p.id === participant.id)
+              );
+              const reason = onThisEntry
+                ? null
+                : capReason(usage[participant.id], effectiveCategory);
+              const disabled = alreadyHere || reason !== null;
+              return (
+                <SelectItem
+                  key={participant.id}
+                  value={participant.id}
+                  disabled={disabled}
+                >
+                  {participant.number_label} · {participant.full_name}
+                  {reason ? ` — ${reason}` : alreadyHere ? " — already added" : ""}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+        {participantIds.length > minParticipants && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove participant ${index + 1}`}
+            onClick={() => removeParticipantRow(index)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  function coachSlot(index: number, selected: string) {
+    return (
+      <div
+        className={cn(
+          "flex items-center gap-2",
+          // Ruled off from the contestant above so the pair reads as one block.
+          // A coach past the last participant starts its own row and needs no rule.
+          paired && index < participantIds.length && "border-t pt-2"
+        )}
+      >
+        <Label
+          htmlFor={`coach-slot-${index}`}
+          className={cn(
+            "shrink-0 text-xs font-normal text-muted-foreground",
+            // A filled pair is otherwise two names with nothing to tell them
+            // apart. Under the two-list layout the heading already does that.
+            !paired && "sr-only"
+          )}
+        >
+          Coach{paired ? "" : " " + (index + 1)}
+        </Label>
+        <Select
+          value={selected}
+          onValueChange={(value) =>
+            setCoachIds((prev) => prev.map((row, idx) => (idx === index ? value : row)))
+          }
+        >
+          <SelectTrigger id={`coach-slot-${index}`} className="w-full">
+            <SelectValue placeholder={`Select coach ${index + 1}`} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={UNSET}>Select coach {index + 1}</SelectItem>
+            {coaches.map((coach) => {
+              const alreadyHere =
+                coach.id !== selected && chosenCoaches.includes(coach.id);
+              return (
+                <SelectItem key={coach.id} value={coach.id} disabled={alreadyHere}>
+                  {coach.full_name}
+                  {alreadyHere ? " — already added" : ""}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+        {coachIds.length > 1 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove coach ${index + 1}`}
+            onClick={() => removeCoachRow(index)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -377,158 +561,119 @@ export function EntryWizard({
               </Button>
             </div>
 
-            <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">
-                  Participants{" "}
-                  <span className="font-normal text-muted-foreground">
-                    ({maxParticipants === null
-                      ? `at least ${minParticipants}`
-                      : minParticipants === maxParticipants
-                        ? `exactly ${minParticipants}`
-                        : `${minParticipants}–${maxParticipants}`}
-                    )
-                  </span>
-                </h3>
-                {(maxParticipants === null || participantIds.length < maxParticipants) && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setParticipantIds((prev) => [...prev, UNSET])}
-                  >
-                    <Plus className="size-4" />
-                    Add participant
-                  </Button>
-                )}
-              </div>
-
-              {participantIds.map((selected, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Label className="sr-only" htmlFor={`participant-slot-${i}`}>
-                    Participant {i + 1}
-                  </Label>
-                  <Select
-                    value={selected}
-                    onValueChange={(value) =>
-                      setParticipantIds((prev) =>
-                        prev.map((row, idx) => (idx === i ? value : row))
+            {paired ? (
+              <section className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">
+                    Contestants and coaches{" "}
+                    <span className="font-normal text-muted-foreground">
+                      ({maxParticipants === null
+                        ? `at least ${minParticipants}`
+                        : minParticipants === maxParticipants
+                          ? `exactly ${minParticipants}`
+                          : `${minParticipants}–${maxParticipants}`}
                       )
-                    }
-                  >
-                    <SelectTrigger id={`participant-slot-${i}`} className="w-full">
-                      <SelectValue placeholder={`Select participant ${i + 1}`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={UNSET}>Select participant {i + 1}</SelectItem>
-                      {participants.map((participant) => {
-                        const alreadyHere =
-                          participant.id !== selected &&
-                          chosenParticipants.includes(participant.id);
-                        // Editing an entry must not count that entry against its
-                        // own members, so anyone already on it stays selectable.
-                        const onThisEntry = Boolean(
-                          entry?.participants.some((p) => p.id === participant.id)
-                        );
-                        const reason = onThisEntry
-                          ? null
-                          : capReason(usage[participant.id], effectiveCategory);
-                        const disabled = alreadyHere || reason !== null;
-                        return (
-                          <SelectItem
-                            key={participant.id}
-                            value={participant.id}
-                            disabled={disabled}
-                          >
-                            {participant.number_label} · {participant.full_name}
-                            {reason ? ` — ${reason}` : alreadyHere ? " — already added" : ""}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                  {participantIds.length > minParticipants && (
+                    </span>
+                  </h3>
+                  {(maxParticipants === null ||
+                    participantIds.length < maxParticipants) && (
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Remove participant ${i + 1}`}
-                      onClick={() =>
-                        setParticipantIds((prev) => prev.filter((_, idx) => idx !== i))
-                      }
+                      variant="outline"
+                      size="sm"
+                      onClick={addParticipantRow}
                     >
-                      <Trash2 className="size-4" />
+                      <Plus className="size-4" />
+                      Add participant
                     </Button>
                   )}
                 </div>
-              ))}
-            </section>
 
-            <Separator />
+                {Array.from({ length: pairRows }, (_, i) => (
+                  <div key={i} className="flex flex-col gap-2 rounded-xl border p-3">
+                    {i < participantIds.length && participantSlot(i, participantIds[i])}
+                    {i < coachIds.length && coachSlot(i, coachIds[i])}
+                  </div>
+                ))}
 
-            <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">
-                  Coaches{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (1{maxCoaches > 1 ? `–${maxCoaches}` : ""})
-                  </span>
-                </h3>
                 {coachIds.length < maxCoaches && (
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    onClick={() => setCoachIds((prev) => [...prev, UNSET])}
+                    className="self-start"
+                    onClick={addCoachRow}
                   >
                     <Plus className="size-4" />
-                    Add coach
+                    Add another coach
                   </Button>
                 )}
-              </div>
+              </section>
+            ) : (
+              <>
+                {/* A seven-member team shares two coaches, so pairing them off
+                    would be a fiction. Group entries keep the two lists. */}
+                <section className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">
+                      Participants{" "}
+                      <span className="font-normal text-muted-foreground">
+                        ({maxParticipants === null
+                          ? `at least ${minParticipants}`
+                          : minParticipants === maxParticipants
+                            ? `exactly ${minParticipants}`
+                            : `${minParticipants}–${maxParticipants}`}
+                        )
+                      </span>
+                    </h3>
+                    {(maxParticipants === null ||
+                      participantIds.length < maxParticipants) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addParticipantRow}
+                      >
+                        <Plus className="size-4" />
+                        Add participant
+                      </Button>
+                    )}
+                  </div>
 
-              {coachIds.map((selected, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Label className="sr-only" htmlFor={`coach-slot-${i}`}>
-                    Coach {i + 1}
-                  </Label>
-                  <Select
-                    value={selected}
-                    onValueChange={(value) =>
-                      setCoachIds((prev) => prev.map((row, idx) => (idx === i ? value : row)))
-                    }
-                  >
-                    <SelectTrigger id={`coach-slot-${i}`} className="w-full">
-                      <SelectValue placeholder={`Select coach ${i + 1}`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={UNSET}>Select coach {i + 1}</SelectItem>
-                      {coaches.map((coach) => {
-                        const alreadyHere =
-                          coach.id !== selected && chosenCoaches.includes(coach.id);
-                        return (
-                          <SelectItem key={coach.id} value={coach.id} disabled={alreadyHere}>
-                            {coach.full_name}
-                            {alreadyHere ? " — already added" : ""}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                  {coachIds.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Remove coach ${i + 1}`}
-                      onClick={() => setCoachIds((prev) => prev.filter((_, idx) => idx !== i))}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </section>
+                  {participantIds.map((selected, i) => (
+                    <div key={i}>{participantSlot(i, selected)}</div>
+                  ))}
+                </section>
+
+                <Separator />
+
+                <section className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">
+                      Coaches{" "}
+                      <span className="font-normal text-muted-foreground">
+                        (1{maxCoaches > 1 ? `–${maxCoaches}` : ""})
+                      </span>
+                    </h3>
+                    {coachIds.length < maxCoaches && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addCoachRow}
+                      >
+                        <Plus className="size-4" />
+                        Add coach
+                      </Button>
+                    )}
+                  </div>
+
+                  {coachIds.map((selected, i) => (
+                    <div key={i}>{coachSlot(i, selected)}</div>
+                  ))}
+                </section>
+              </>
+            )}
           </div>
         )}
 
