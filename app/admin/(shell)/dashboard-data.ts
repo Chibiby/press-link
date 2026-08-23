@@ -27,8 +27,7 @@ import {
   type EventLevel,
 } from "@/lib/events-catalog";
 import {
-  isMissingLockGuard,
-  submissionsWritesRefused,
+  writesAfterFailedLockRead,
   type SubmissionsLock,
 } from "@/lib/submissions/lock-state";
 
@@ -150,11 +149,14 @@ export const loadAdminName = cache(async (): Promise<string> => {
  * not "harden" this into a throw: it would take the whole admin dashboard down
  * without making one single write more, or less, permitted.
  *
- * The two failures are kept apart because they mean opposite things. `unreadable`
- * is almost always "not deployed here yet", and nothing is frozen. `no-row` is an
- * emergency: `submissions_locked_globally()` raises when the singleton is gone,
- * so every school-side write is being refused right now — and the RPC's insert
- * branch is the repair, which is why the control stays live in that state.
+ * The failures are kept apart because they mean different things. `no-row` is an
+ * emergency: `submissions_locked_globally()` raises when the singleton is gone, so
+ * every school-side write is being refused right now — and the RPC's insert branch
+ * is the repair, which is why the control stays live in that state. `unreadable`
+ * covers everything else, and it carries `writes` because those failures are not
+ * one situation: the switch reporting itself absent means nothing is frozen, a
+ * raise from Postgres over objects that exist means everything is, and a timeout
+ * or an expired session means this page learned nothing and must say so.
  */
 export const loadSubmissionsLock = cache(async (): Promise<SubmissionsLock> => {
   const supabase = await getAdminClient();
@@ -176,17 +178,22 @@ export const loadSubmissionsLock = cache(async (): Promise<SubmissionsLock> => {
     // it is safe to shrug here because nothing in this file enforces the lock —
     // the 0022 triggers do, in the database, on every school-side write.
     //
-    // What the code decides is what the dashboard *claims* meanwhile, and the two
-    // failures are opposites. An absent table, function or column means 0022 has
-    // not been applied, so no trigger consults a flag and writes really are open.
-    // Any other failure leaves the guard standing, and the guard fails closed —
-    // it raises 'submission lock state unavailable' rather than returning false —
-    // so writes are being refused whatever this read managed to see.
+    // What the code decides is what the dashboard *claims* meanwhile, and there
+    // are three answers rather than two. `writesAfterFailedLockRead()` requires
+    // positive evidence for each of the two definite ones: the schema saying the
+    // switch is absent, so no trigger consults a flag and writes really are open;
+    // or Postgres raising over objects that exist, so the guard is standing over a
+    // flag it cannot read and refuses every write. An expired JWT, a statement
+    // timeout, a 5xx or a `fetch` that never landed establishes neither, and the
+    // panel says so instead of picking one. It used to pick "refused" for all of
+    // them — `!isMissingLockGuard(error.code)` — which is why a timeout on
+    // production, where 0022 is not applied and submissions are open, printed
+    // "Registration Closed".
     return {
       state: "unknown",
       reason: "unreadable",
       detail: error.message,
-      writesRefused: !isMissingLockGuard(error.code),
+      writes: writesAfterFailedLockRead(error.code),
     };
   }
 
@@ -201,11 +208,26 @@ export const loadSubmissionsLock = cache(async (): Promise<SubmissionsLock> => {
       // Not a guess: `submissions_locked_globally()` selects that row and raises
       // when it is not there, so every school-side write is being refused right
       // now.
-      writesRefused: true,
+      writes: "refused",
     };
   }
 
-  if (!data.submissions_locked) return { state: "unlocked" };
+  // Both branches named explicitly, and anything else routed to unknown. 0022
+  // declares the column `not null default false`, so a null is unreachable — but
+  // the old `if (!data.submissions_locked)` read one as "unlocked", which means a
+  // column altered by hand could have reported an open division on no evidence at
+  // all. A value nobody can interpret is not a state; it is a missing reading.
+  if (data.submissions_locked !== true && data.submissions_locked !== false) {
+    return {
+      state: "unknown",
+      reason: "unusable-flag",
+      detail:
+        "app_settings.submissions_locked is neither true nor false, on a column migration 0022 declares not null.",
+      writes: "undetermined",
+    };
+  }
+
+  if (data.submissions_locked === false) return { state: "unlocked" };
 
   // Who locked it, if that can be answered at all. `admin_profiles` is
   // self-read under RLS ("self read admin_profiles", 0001), so this resolves a
@@ -535,13 +557,13 @@ export const loadDashboardData = cache(async (): Promise<DashboardData> => {
       schoolsLocked: schools.schoolsLocked,
       schoolsOpenWithEntries: schools.schoolsOpenWithEntries,
       entries: entryFacts.entries,
-      // Not `state === "locked"`. `submissions_locked_globally()` fails closed:
-      // it raises rather than returning false when it cannot read the flag, so an
-      // unknown state refuses every school-side write and "Registration Closed"
-      // is the truthful pill above it. `submissionsWritesRefused()` carries the
-      // one exception — a database 0022 never reached, where nothing consults a
-      // flag and every school really can save.
-      globallyLocked: submissionsWritesRefused(submissionsLock),
+      // The whole state, not a boolean. buildTimeline() needs both of the
+      // questions it answers — whether school-side writes are being refused,
+      // which closes registration, and whether an administrator actually locked
+      // anything, which is all the detail line may claim — and it needs the third
+      // answer to the first: a read that established nothing renders as "state
+      // unknown" rather than as either "Closed" or "Open".
+      submissionsLock,
     }),
     submissionsLock,
     eventGroups: events.groups,

@@ -1,13 +1,31 @@
 import { describe, expect, it } from "vitest";
 
 import { buildTimeline, type TimelineInput } from "./timeline";
+import type { SubmissionsLock, SubmissionsWrites } from "@/lib/submissions/lock-state";
+
+/** The switch read as locked by an administrator. */
+const LOCKED: SubmissionsLock = {
+  state: "locked",
+  at: "2026-08-12T08:31:00.000Z",
+  by: null,
+  byName: null,
+};
+
+/**
+ * The switch that could not be read, in each of the three things that can mean.
+ * The reason only changes the dialog's sentence; what the timeline may claim comes
+ * from `writes`.
+ */
+function unreadable(writes: SubmissionsWrites): SubmissionsLock {
+  return { state: "unknown", reason: "unreadable", detail: "…", writes };
+}
 
 function input(overrides: Partial<TimelineInput> = {}): TimelineInput {
   return {
     schoolsLocked: 0,
     schoolsOpenWithEntries: 0,
     entries: 0,
-    globallyLocked: false,
+    submissionsLock: { state: "unlocked" },
     ...overrides,
   };
 }
@@ -32,50 +50,50 @@ describe("buildTimeline", () => {
   });
 
   it("keeps registration in progress while nothing is locked", () => {
-    const { steps, registrationClosed, statusPill } = buildTimeline(
+    const { steps, registration, statusPill } = buildTimeline(
       input({ schoolsLocked: 0, schoolsOpenWithEntries: 16, entries: 41 }),
     );
     expect(steps[0].state).toBe("in-progress");
     expect(steps[0].stateLabel).toBe("IN PROGRESS");
-    expect(registrationClosed).toBe(false);
+    expect(registration).toBe("open");
     expect(statusPill).toBe("Registration Open");
   });
 
   it("keeps registration in progress while any school holding an entry is unlocked", () => {
-    const { steps, registrationClosed } = buildTimeline(
+    const { steps, registration } = buildTimeline(
       input({ schoolsLocked: 3, schoolsOpenWithEntries: 16, entries: 41 }),
     );
     expect(steps[0].state).toBe("in-progress");
-    expect(registrationClosed).toBe(false);
+    expect(registration).toBe("open");
   });
 
   // The trap: locked schools can outnumber active ones because a school may lock
   // with zero entries. A count comparison would call this closed. It is not.
   it("does not close registration just because locked outnumbers active", () => {
-    const { steps, registrationClosed, statusPill } = buildTimeline(
+    const { steps, registration, statusPill } = buildTimeline(
       input({ schoolsLocked: 20, schoolsOpenWithEntries: 3, entries: 41 }),
     );
     expect(steps[0].state).toBe("in-progress");
-    expect(registrationClosed).toBe(false);
+    expect(registration).toBe("open");
     expect(statusPill).toBe("Registration Open");
   });
 
   it("closes registration once no school holding an entry is unlocked", () => {
-    const { steps, registrationClosed, statusPill } = buildTimeline(
+    const { steps, registration, statusPill } = buildTimeline(
       input({ schoolsLocked: 16, schoolsOpenWithEntries: 0, entries: 41 }),
     );
     expect(steps[0].state).toBe("completed");
     expect(steps[0].stateLabel).toBe("COMPLETED");
-    expect(registrationClosed).toBe(true);
+    expect(registration).toBe("closed");
     expect(statusPill).toBe("Registration Closed");
   });
 
   // An empty database has nothing locked and nothing open. That is the start of
   // registration, not the end of it.
   it("treats a database with no locks at all as open", () => {
-    const { steps, registrationClosed } = buildTimeline(input());
+    const { steps, registration } = buildTimeline(input());
     expect(steps[0].state).toBe("in-progress");
-    expect(registrationClosed).toBe(false);
+    expect(registration).toBe("open");
   });
 
   it("reports locked schools and submitted entries in the registration detail", () => {
@@ -130,9 +148,9 @@ describe("buildTimeline with the division-wide lock", () => {
   // reads "Registration Open" while not one school in the division can save
   // anything.
   it("closes registration on the switch alone, with nothing locked per school", () => {
-    const { steps, registrationClosed, statusPill } = buildTimeline(
+    const { steps, registration, statusPill } = buildTimeline(
       input({
-        globallyLocked: true,
+        submissionsLock: LOCKED,
         schoolsLocked: 0,
         schoolsOpenWithEntries: 16,
         entries: 41,
@@ -140,7 +158,7 @@ describe("buildTimeline with the division-wide lock", () => {
     );
     expect(steps[0].state).toBe("completed");
     expect(steps[0].stateLabel).toBe("COMPLETED");
-    expect(registrationClosed).toBe(true);
+    expect(registration).toBe("closed");
     expect(statusPill).toBe("Registration Closed");
   });
 
@@ -148,20 +166,20 @@ describe("buildTimeline with the division-wide lock", () => {
   // while the switch is off and must close while it is on.
   it("overrides the per-school counts rather than being weighed against them", () => {
     const counts = { schoolsLocked: 20, schoolsOpenWithEntries: 3, entries: 41 };
-    expect(buildTimeline(input({ ...counts })).registrationClosed).toBe(false);
+    expect(buildTimeline(input({ ...counts })).registration).toBe("open");
     expect(
-      buildTimeline(input({ ...counts, globallyLocked: true })).registrationClosed,
-    ).toBe(true);
+      buildTimeline(input({ ...counts, submissionsLock: LOCKED })).registration,
+    ).toBe("closed");
   });
 
   // Reversibility, which is the design of the switch: it writes nothing to
   // `schools`, so turning it off must return exactly the previous answer.
   it("returns to the per-school answer when the switch goes off", () => {
     const counts = { schoolsLocked: 3, schoolsOpenWithEntries: 16, entries: 41 };
-    const on = buildTimeline(input({ ...counts, globallyLocked: true }));
-    const off = buildTimeline(input({ ...counts, globallyLocked: false }));
-    expect(on.registrationClosed).toBe(true);
-    expect(off.registrationClosed).toBe(false);
+    const on = buildTimeline(input({ ...counts, submissionsLock: LOCKED }));
+    const off = buildTimeline(input({ ...counts, submissionsLock: { state: "unlocked" } }));
+    expect(on.registration).toBe("closed");
+    expect(off.registration).toBe("open");
     expect(off.statusPill).toBe("Registration Open");
     // Not merely open again — identical, step details included.
     expect(off).toEqual(buildTimeline(input(counts)));
@@ -170,7 +188,7 @@ describe("buildTimeline with the division-wide lock", () => {
   // The counts stay: they are what says how much reopening would let back in.
   it("adds the switch to the registration detail without dropping the counts", () => {
     const { steps } = buildTimeline(
-      input({ globallyLocked: true, schoolsLocked: 3, entries: 41 }),
+      input({ submissionsLock: LOCKED, schoolsLocked: 3, entries: 41 }),
     );
     expect(steps[0].detail).toBe(
       "3 schools locked · 41 entries submitted · locked division-wide",
@@ -184,10 +202,97 @@ describe("buildTimeline with the division-wide lock", () => {
   });
 
   it("leaves the later steps unavailable while the switch is on", () => {
-    const { steps } = buildTimeline(input({ globallyLocked: true, entries: 41 }));
+    const { steps } = buildTimeline(
+      input({ submissionsLock: LOCKED, entries: 41 }),
+    );
     for (const step of steps.slice(1)) {
       expect(step.state).toBe("unavailable");
       expect(step.stateLabel).toBe("Not yet available");
+    }
+  });
+});
+
+describe("buildTimeline when the switch could not be read", () => {
+  // A guard standing over a flag it cannot read refuses every school-side save, so
+  // registration really is shut — but nobody locked anything, and the old copy said
+  // "locked division-wide" beside a header reading "Lock state unknown".
+  it("closes registration for refused writes without claiming an admin locked it", () => {
+    const { steps, registration, statusPill } = buildTimeline(
+      input({
+        submissionsLock: unreadable("refused"),
+        schoolsLocked: 3,
+        schoolsOpenWithEntries: 16,
+        entries: 41,
+      }),
+    );
+    expect(registration).toBe("closed");
+    expect(statusPill).toBe("Registration Closed");
+    expect(steps[0].detail).toBe(
+      "3 schools locked · 41 entries submitted · division-wide saves refused: lock state unreadable",
+    );
+    expect(steps[0].detail).not.toContain("locked division-wide");
+  });
+
+  // The live bug. A statement timeout, an expired JWT or a `fetch` that never
+  // landed arrives here as "undetermined", and the dashboard used to answer it with
+  // "Registration Closed" over a production database where 0022 is not applied and
+  // every school could save.
+  it("asserts neither state when nothing was established", () => {
+    const { steps, registration, statusPill } = buildTimeline(
+      input({
+        submissionsLock: unreadable("undetermined"),
+        schoolsLocked: 3,
+        schoolsOpenWithEntries: 16,
+        entries: 41,
+      }),
+    );
+    expect(registration).toBe("unknown");
+    expect(statusPill).toBe("Registration state unknown");
+    expect(steps[0].state).toBe("unknown");
+    expect(steps[0].stateLabel).toBe("STATE UNKNOWN");
+    expect(steps[0].detail).toBe(
+      "3 schools locked · 41 entries submitted · division-wide lock state could not be read",
+    );
+    // Neither of the two confident answers, in either direction.
+    expect(statusPill).not.toBe("Registration Closed");
+    expect(statusPill).not.toBe("Registration Open");
+    expect(steps[0].detail).not.toContain("locked division-wide");
+  });
+
+  // The counts are evidence of their own, and they outrank a reading that failed:
+  // every school holding an entry has locked itself, so registration is finished
+  // whatever the switch would have said.
+  it("still closes registration on the counts alone while the switch is unreadable", () => {
+    const { registration, statusPill } = buildTimeline(
+      input({
+        submissionsLock: unreadable("undetermined"),
+        schoolsLocked: 16,
+        schoolsOpenWithEntries: 0,
+        entries: 41,
+      }),
+    );
+    expect(registration).toBe("closed");
+    expect(statusPill).toBe("Registration Closed");
+  });
+
+  // The pre-migration read: the error codes say the switch is not installed, so
+  // nothing consults a flag and this is the open division it has always been.
+  it("renders an absent switch exactly as an open one", () => {
+    const counts = { schoolsLocked: 3, schoolsOpenWithEntries: 16, entries: 41 };
+    expect(buildTimeline(input({ ...counts, submissionsLock: unreadable("open") }))).toEqual(
+      buildTimeline(input(counts)),
+    );
+  });
+
+  it("leaves the later steps unavailable while the switch is unreadable", () => {
+    for (const writes of ["refused", "open", "undetermined"] as const) {
+      const { steps } = buildTimeline(
+        input({ submissionsLock: unreadable(writes), entries: 41 }),
+      );
+      for (const step of steps.slice(1)) {
+        expect(step.state, writes).toBe("unavailable");
+        expect(step.stateLabel, writes).toBe("Not yet available");
+      }
     }
   });
 });

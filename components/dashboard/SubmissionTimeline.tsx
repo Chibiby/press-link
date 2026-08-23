@@ -1,4 +1,4 @@
-import { Check, Circle, CircleDot } from "lucide-react";
+import { Check, Circle, CircleDot, TriangleAlert } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -7,12 +7,24 @@ import type { Timeline, TimelineState } from "@/lib/dashboard/timeline";
 const STATE_ICON: Record<TimelineState, LucideIcon> = {
   completed: Check,
   "in-progress": CircleDot,
+  unknown: TriangleAlert,
   unavailable: Circle,
 };
 
 const STATE_CHIP: Record<TimelineState, string> = {
   completed: "bg-primary/10 text-primary",
   "in-progress": "bg-primary text-primary-foreground",
+  // Warning, not destructive: a state that could not be read is not a closed
+  // division, and the amber has to stop an admin reading past it as either.
+  unknown: "bg-warning/15 text-warning-foreground dark:text-warning",
+  unavailable: "bg-muted text-muted-foreground",
+};
+
+/** The dot beside the step. Muted for what has not started, amber for what could not be read. */
+const STATE_MARK: Record<TimelineState, string> = {
+  completed: "bg-primary/10 text-primary",
+  "in-progress": "bg-primary/10 text-primary",
+  unknown: "bg-warning/15 text-warning-foreground dark:text-warning",
   unavailable: "bg-muted text-muted-foreground",
 };
 
@@ -30,9 +42,7 @@ export function SubmissionTimeline({ timeline }: { timeline: Timeline }) {
                 aria-hidden
                 className={cn(
                   "flex size-7 shrink-0 items-center justify-center rounded-full",
-                  step.state === "unavailable"
-                    ? "bg-muted text-muted-foreground"
-                    : "bg-primary/10 text-primary",
+                  STATE_MARK[step.state],
                 )}
               >
                 <Icon className="size-3.5" />

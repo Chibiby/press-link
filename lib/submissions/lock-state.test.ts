@@ -6,7 +6,8 @@ import {
   formatLockedAt,
   isMissingLockGuard,
   submissionsLockControl,
-  submissionsWritesRefused,
+  submissionsWrites,
+  writesAfterFailedLockRead,
   type SubmissionsLock,
   type SubmissionsLockUnknown,
 } from "./lock-state";
@@ -21,14 +22,15 @@ function locked(overrides: Partial<LockedState> = {}): LockedState {
 }
 
 /**
- * An unknown state. `writesRefused` defaults to true because that is what the
- * loader passes for everything except an absent switch: the guard fails closed, so
- * not knowing means writes are being refused.
+ * An unknown state. `writes` defaults to "refused" because that is the case the
+ * copy has to be most careful about: the guard is standing over a flag it cannot
+ * read, so it raises and every school-side save is refused. The other two are
+ * passed explicitly wherever they matter.
  */
 function unknown(
   overrides: Partial<SubmissionsLockUnknown> & { reason: SubmissionsLockUnknown["reason"] },
 ): SubmissionsLockUnknown {
-  return { state: "unknown", detail: "…", writesRefused: true, ...overrides };
+  return { state: "unknown", detail: "…", writes: "refused", ...overrides };
 }
 
 /**
@@ -128,26 +130,86 @@ describe("isMissingLockGuard", () => {
   });
 });
 
-describe("submissionsWritesRefused", () => {
-  it("is true while the flag reads locked and false while it reads open", () => {
-    expect(submissionsWritesRefused(locked())).toBe(true);
-    expect(submissionsWritesRefused({ state: "unlocked" })).toBe(false);
+describe("writesAfterFailedLockRead", () => {
+  // The one failure that positively establishes an open division: the switch's own
+  // table, function or column reporting itself absent. Nothing consults a flag on
+  // such a database.
+  it("reads an absent switch as writes going through", () => {
+    for (const code of [
+      "42P01",
+      "42883",
+      "42703",
+      "PGRST205",
+      "PGRST202",
+      "PGRST204",
+    ]) {
+      expect(writesAfterFailedLockRead(code), code).toBe("open");
+    }
+  });
+
+  // Postgres raising over objects that exist: 0022 is installed, the flag could
+  // not be read, and `submissions_locked_globally()` answers that by raising
+  // rather than returning false.
+  it("reads a raise from Postgres over an existing switch as writes refused", () => {
+    // 42501 insufficient_privilege, P0001 raise_exception, 22023 invalid_parameter.
+    for (const code of ["42501", "P0001", "22023"]) {
+      expect(writesAfterFailedLockRead(code), code).toBe("refused");
+    }
+  });
+
+  // The live defect. Every one of these used to answer "refused", so a dashboard
+  // reading a production database with no 0022 on it printed "Registration Closed"
+  // over a division where every school could save.
+  it("establishes nothing from a failure that never reached the flag", () => {
+    for (const code of [
+      "PGRST301", // expired JWT — PostgREST refused before Postgres saw anything
+      "PGRST100", // any other PostgREST answer
+      "57014", // statement timeout
+      "57P03", // cannot_connect_now
+      "08006", // connection_failure
+      "53300", // too_many_connections
+      "XX000", // internal_error
+      "500", // a proxy status where a code was expected
+      "", // an error object with no code at all
+    ]) {
+      expect(writesAfterFailedLockRead(code), code).toBe("undetermined");
+    }
+    // A network failure: `fetch` rejected and there is no code to read.
+    expect(writesAfterFailedLockRead(null)).toBe("undetermined");
+    expect(writesAfterFailedLockRead(undefined)).toBe("undetermined");
+  });
+});
+
+describe("submissionsWrites", () => {
+  it("is refused while the flag reads locked and open while it reads open", () => {
+    expect(submissionsWrites(locked())).toBe("refused");
+    expect(submissionsWrites({ state: "unlocked" })).toBe("open");
   });
 
   // The defect this exists for: `state === "locked"` answered false for an
   // unknown flag, and the dashboard printed "Registration Open" over a division
   // in which every school-side write was being refused.
-  it("refuses writes for an unknown flag, whatever the reason", () => {
-    expect(submissionsWritesRefused(unknown({ reason: "no-row" }))).toBe(true);
-    expect(submissionsWritesRefused(unknown({ reason: "unreadable" }))).toBe(true);
+  it("carries a missing settings row through as refused", () => {
+    expect(submissionsWrites(unknown({ reason: "no-row" }))).toBe("refused");
   });
 
-  // The sole exception, and it is not a guess: an absent table has no trigger
-  // behind it, so nothing consults a flag and every school really can save.
+  // The sole open case among the unknowns, and it is not a guess: an absent table
+  // has no trigger behind it, so nothing consults a flag and every school can save.
   it("leaves writes open where the switch is not installed at all", () => {
+    expect(submissionsWrites(unknown({ reason: "unreadable", writes: "open" }))).toBe(
+      "open",
+    );
+  });
+
+  // The third answer, which is the whole point: it must not collapse into either
+  // of the other two on its way to the pill.
+  it("passes an undetermined read on undetermined", () => {
     expect(
-      submissionsWritesRefused(unknown({ reason: "unreadable", writesRefused: false })),
-    ).toBe(false);
+      submissionsWrites(unknown({ reason: "unreadable", writes: "undetermined" })),
+    ).toBe("undetermined");
+    expect(submissionsWrites(unknown({ reason: "unusable-flag", writes: "undetermined" }))).toBe(
+      "undetermined",
+    );
   });
 });
 
@@ -170,11 +232,33 @@ describe("describeUnknownLock", () => {
   // Where the codes say the switch is absent, saying so is not a guess — and it
   // is the state every un-migrated environment is in.
   it("says saves are unaffected only where the switch is absent", () => {
-    const line = describeUnknownLock(
-      unknown({ reason: "unreadable", writesRefused: false }),
-    );
+    const line = describeUnknownLock(unknown({ reason: "unreadable", writes: "open" }));
     expect(line).toContain("going through as usual");
     expect(line).toContain("0022");
+  });
+
+  // The live defect, in copy: a timeout or an expired session got the sentence
+  // written for a standing guard, so an admin was told the division was frozen on
+  // no evidence at all.
+  it("claims neither state when the failure established nothing", () => {
+    const line = describeUnknownLock(
+      unknown({ reason: "unreadable", writes: "undetermined" }),
+    );
+    expect(line).toContain("cannot tell you which state the division is in");
+    // Not the standing-guard sentence, and not the absent-switch one either.
+    expect(line).not.toContain("whichever way");
+    expect(line).not.toContain("going through as usual");
+    // And it says why an unknown here is not a lock failing open: this panel
+    // reports, the triggers enforce.
+    expect(line).toContain("the guards in the database");
+  });
+
+  it("names the flag itself when the row is there but unusable", () => {
+    const line = describeUnknownLock(
+      unknown({ reason: "unusable-flag", writes: "undetermined" }),
+    );
+    expect(line).toContain("neither true nor false");
+    expect(line).not.toContain("going through as usual");
   });
 });
 
@@ -199,10 +283,10 @@ describe("submissionsLockControl", () => {
     ]);
   });
 
-  // The state that must never look like "open": neither unknown case is evidence
-  // that anything is unfrozen.
+  // The state that must never look like "open": none of the unknown cases is
+  // evidence that anything is unfrozen.
   it("does not present an unreadable flag as either locked or open", () => {
-    for (const reason of ["no-row", "unreadable"] as const) {
+    for (const reason of ["no-row", "unusable-flag", "unreadable"] as const) {
       const control = submissionsLockControl(unknown({ reason }));
       expect(control.label).toBe("Lock state unknown");
       expect(control.icon).toBe("alert");
@@ -238,7 +322,10 @@ describe("submissionsLockControl", () => {
   // the same pair. Only the sentence above them differs.
   it("offers the same pair whether or not the switch is installed", () => {
     expect(submissionsLockControl(unknown({ reason: "unreadable" }))).toEqual(
-      submissionsLockControl(unknown({ reason: "unreadable", writesRefused: false })),
+      submissionsLockControl(unknown({ reason: "unreadable", writes: "open" })),
+    );
+    expect(submissionsLockControl(unknown({ reason: "unreadable" }))).toEqual(
+      submissionsLockControl(unknown({ reason: "unreadable", writes: "undetermined" })),
     );
   });
 
@@ -255,7 +342,10 @@ describe("submissionsLockControl", () => {
       locked(),
       { state: "unlocked" },
       unknown({ reason: "no-row" }),
+      unknown({ reason: "unusable-flag", writes: "undetermined" }),
       unknown({ reason: "unreadable" }),
+      unknown({ reason: "unreadable", writes: "open" }),
+      unknown({ reason: "unreadable", writes: "undetermined" }),
     ];
     for (const state of states) {
       expect(submissionsLockControl(state).actions.length).toBeGreaterThan(0);
