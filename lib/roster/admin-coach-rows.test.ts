@@ -52,6 +52,21 @@ describe("toAdminCoachRows", () => {
     expect(row.entryCount).toBe(2);
   });
 
+  it("counts one entry once, however many contestants the coach takes", () => {
+    // An individual entry pairs a coach with each contestant, so a coach who
+    // takes all three is three link rows naming one entry. Counting the rows
+    // would asterisk them as working several contests.
+    const [row] = toAdminCoachRows([
+      raw({
+        entry_coaches: [{ entries: entry() }, { entries: entry() }, { entries: entry() }],
+      }),
+    ]);
+    expect(row.entryCount).toBe(1);
+    expect(row.isMultiEntry).toBe(false);
+    expect(row.displayName).toBe("Reyes, Mario");
+    expect(row.eventIds).toEqual(["ev1"]);
+  });
+
   it("keeps a coach on no entry at zero", () => {
     const [row] = toAdminCoachRows([raw({ entry_coaches: [] })]);
     expect(row.entryCount).toBe(0);

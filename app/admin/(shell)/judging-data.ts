@@ -27,6 +27,7 @@ import type {
   TabulationRow,
   UnitIdentity,
 } from "@/lib/judging/types";
+import { distinctCoaches } from "@/lib/roster/entry-coaches";
 import { surnameFirst } from "@/lib/roster/names";
 import { isIntegratedName } from "@/lib/schools/integrated";
 
@@ -524,7 +525,14 @@ interface RawIdentityEntryRow {
     | { participants: { id: string; first_name: string; middle_name: string | null; last_name: string } | null }[]
     | null;
   entry_coaches:
-    | { coaches: { first_name: string; middle_name: string | null; last_name: string } | null }[]
+    | {
+        coaches: {
+          id: string;
+          first_name: string;
+          middle_name: string | null;
+          last_name: string;
+        } | null;
+      }[]
     | null;
 }
 
@@ -584,7 +592,7 @@ export const loadEventSheet = cache(async (eventId: string): Promise<EventSheet>
         supabase
           .from("entries")
           .select(
-            "id, schools(name, districts(name), school_papers(language, level, paper_name)), entry_participants(participants(id, first_name, middle_name, last_name)), entry_coaches(coaches(first_name, middle_name, last_name))"
+            "id, schools(name, districts(name), school_papers(language, level, paper_name)), entry_participants(participants(id, first_name, middle_name, last_name)), entry_coaches(coaches(id, first_name, middle_name, last_name))"
           )
           .eq("event_id", eventId)
           .range(from, to)
@@ -600,9 +608,7 @@ export const loadEventSheet = cache(async (eventId: string): Promise<EventSheet>
 
       const school = entry.schools;
       const shared = {
-        coaches: (entry.entry_coaches ?? []).flatMap((link) =>
-          link.coaches ? [surnameFirst(link.coaches)] : []
-        ),
+        coaches: distinctCoaches(entry.entry_coaches).map(surnameFirst),
         // The event's level and language pick the paper, not the school's — an
         // integrated school files one per level and a secondary contestant is
         // credited to the secondary paper. `schoolPaperForEvent` holds that rule.

@@ -61,9 +61,17 @@ export interface CoachFilters {
 export function toAdminCoachRows(raw: RawAdminCoach[]): AdminCoachRow[] {
   return raw
     .map((row) => {
-      const entries = row.entry_coaches
-        .map((link) => link.entries)
-        .filter((e): e is NonNullable<typeof e> => e !== null);
+      // Deduped by entry, not counted by link row: a coach who takes two
+      // contestants in one contest is two rows on one entry, and that is one
+      // entry — otherwise they would be marked as working several.
+      const entries = [
+        ...new Map(
+          row.entry_coaches
+            .map((link) => link.entries)
+            .filter((e): e is NonNullable<typeof e> => e !== null)
+            .map((e) => [e.id, e] as const)
+        ).values(),
+      ];
       const entryCount = entries.length;
       const isMultiEntry = entryCount > 1;
 

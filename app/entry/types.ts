@@ -37,7 +37,28 @@ export interface EntryRow {
   level: EventLevel;
   language: EventLanguage;
   participants: RosterParticipant[];
+  /**
+   * The people coaching this entry, each listed once. A coach may cover more than
+   * one contestant, so this is shorter than the number of link rows behind it.
+   */
   coaches: RosterCoach[];
+  /**
+   * Contestant id to the id of the coach paired with them.
+   *
+   * Only individual entries pair anyone, and only entries filed after migration
+   * 0019 — see `coachingPending`. A group entry's coaches belong to the whole
+   * team, so this is always empty for one.
+   */
+  coachByParticipant: Record<string, string>;
+  /**
+   * An individual entry whose coaches are on record but not yet matched to
+   * contestants, because it was filed before the pairing existed.
+   *
+   * Nothing about the entry is lost: its coaches are still listed. What the
+   * school owes is which of them coaches whom, which it settles the next time it
+   * opens the entry.
+   */
+  coachingPending: boolean;
 }
 
 /** Re-exported so the paper rules live in exactly one module. */

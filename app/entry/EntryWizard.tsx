@@ -24,6 +24,7 @@ import {
   capReason,
   maxCoachesFor,
   validateEntryCounts,
+  type EntryCoach,
   type UsageMap,
 } from "@/lib/roster/limits";
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
@@ -101,18 +102,16 @@ export function EntryWizard({
       setLevel(entry.level);
       setLanguage(entry.language);
       const savedParticipants = entry.participants.map((p) => p.id);
+      // An individual entry reads back one coach per contestant, in the order
+      // the contestants are listed. An entry filed before the pairing existed
+      // has nothing to read back, so every coach row opens empty and the school
+      // says who coaches whom — see `coachingPending`.
       const savedCoaches =
-        entry.coaches.length > 0 ? entry.coaches.map((c) => c.id) : [UNSET];
-      // An individual entry is read back in pairs, so open with as many coach
-      // rows as there are contestants. The empty ones save as nothing.
-      if ((type?.category ?? "individual") === "individual") {
-        const cap = maxCoachesFor("individual");
-        while (savedCoaches.length < savedParticipants.length && savedCoaches.length < cap) {
-          savedCoaches.push(UNSET);
-        }
-      }
+        (type?.category ?? "individual") === "individual"
+          ? savedParticipants.map((id) => entry.coachByParticipant[id] ?? UNSET)
+          : entry.coaches.map((c) => c.id);
       setParticipantIds(savedParticipants);
-      setCoachIds(savedCoaches);
+      setCoachIds(savedCoaches.length > 0 ? savedCoaches : [UNSET]);
       setStep(5);
     } else {
       setCategory(null);
@@ -162,6 +161,24 @@ export function EntryWizard({
   const chosenParticipants = participantIds.filter((id) => id !== UNSET);
   const chosenCoaches = coachIds.filter((id) => id !== UNSET);
   const maxCoaches = maxCoachesFor(effectiveCategory);
+
+  /**
+   * What is saved: every coach with the contestant they are for.
+   *
+   * An individual entry pairs by row — the coach in row 2 is for the contestant
+   * in row 2 — and a row missing either half is not a pairing, so it is left out
+   * and the count check reports the gap rather than saving half of one. A group
+   * entry's coaches belong to the whole team, so they are paired with nobody.
+   */
+  const coachPairs: EntryCoach[] =
+    effectiveCategory === "individual"
+      ? participantIds.flatMap((participantId, index) => {
+          const coachId = coachIds[index] ?? UNSET;
+          return participantId === UNSET || coachId === UNSET
+            ? []
+            : [{ coachId, participantId }];
+        })
+      : chosenCoaches.map((coachId) => ({ coachId, participantId: null }));
 
   function chooseCategory(next: EventCategory) {
     setCategory(next);
@@ -218,13 +235,14 @@ export function EntryWizard({
     if (coachRows.length > newMaxCoaches) {
       coachRows = coachRows.slice(0, newMaxCoaches);
     }
-    // An individual contest pairs each contestant with a coach, so the coach
-    // rows follow the participant rows — up to the cap, and never below one.
-    const wantedCoaches =
-      newCategory === "individual"
-        ? Math.min(Math.max(participantRows.length, 1), newMaxCoaches)
-        : 1;
-    while (coachRows.length < wantedCoaches) coachRows.push(UNSET);
+    if (newCategory === "individual") {
+      // One coach each, so the coach rows are the participant rows: cut the
+      // extras a larger contest left behind as well as opening the missing ones.
+      coachRows = coachRows.slice(0, participantRows.length);
+      while (coachRows.length < participantRows.length) coachRows.push(UNSET);
+    } else if (coachRows.length === 0) {
+      coachRows.push(UNSET);
+    }
     setCoachIds(coachRows);
 
     setStep(5);
@@ -250,7 +268,7 @@ export function EntryWizard({
     const input = {
       eventId: resolved.id,
       participantIds: chosenParticipants,
-      coachIds: chosenCoaches,
+      coaches: coachPairs,
     };
 
     const parsed = entrySchema.safeParse(input);
@@ -262,7 +280,7 @@ export function EntryWizard({
     const countError = validateEntryCounts({
       category: effectiveCategory,
       participantIds: chosenParticipants,
-      coachIds: chosenCoaches,
+      coaches: coachPairs,
       minParticipants,
       maxParticipants,
     });
@@ -297,30 +315,36 @@ export function EntryWizard({
    * contestant's name, and why the read-only View dialog keeps its two lists.
    */
   const paired = effectiveCategory === "individual";
+
+  /**
+   * The coaches offered in a pair row.
+   *
+   * An entry still waiting to be paired is being re-filed, not re-staffed: its
+   * coaches are already on record and the only open question is which contestant
+   * each one is for. Offering the school's whole roster there would invite a
+   * fourth name onto an entry that has three. Every other row offers everyone.
+   */
+  const coachOptions = paired && entry?.coachingPending ? entry.coaches : coaches;
   const pairRows = Math.max(participantIds.length, coachIds.length);
 
   function addParticipantRow() {
     setParticipantIds((prev) => [...prev, UNSET]);
-    // The coach that comes with a new contestant — unless the entry is already at
-    // its coach cap, which for an individual contest is three.
-    if (paired) {
-      setCoachIds((prev) => (prev.length < maxCoaches ? [...prev, UNSET] : prev));
-    }
+    // The coach field that comes with a new contestant. One coach each, so the
+    // two lists move together and neither can run ahead of the other.
+    if (paired) setCoachIds((prev) => [...prev, UNSET]);
   }
 
   function removeParticipantRow(index: number) {
     setParticipantIds((prev) => prev.filter((_, i) => i !== index));
-    // A pair goes as a pair. The last coach row stays either way: an entry with
-    // no coach cannot be saved.
-    if (paired) {
-      setCoachIds((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
-    }
+    // A pair goes as a pair: dropping a contestant drops their coach field, not
+    // the coach beneath the next contestant.
+    if (paired) setCoachIds((prev) => prev.filter((_, i) => i !== index));
   }
 
   /**
-   * One contestant may still be coached by up to three people — see
-   * INDIVIDUAL_COACH_CAP — so coaches past the number of participants are added
-   * here and sit under the pairs.
+   * Group entries only. Their coaches are a list the team shares, so it is added
+   * to on its own; on an individual entry a coach field arrives with a
+   * contestant and never by itself.
    */
   function addCoachRow() {
     setCoachIds((prev) => [...prev, UNSET]);
@@ -396,8 +420,7 @@ export function EntryWizard({
         className={cn(
           "flex items-center gap-2",
           // Ruled off from the contestant above so the pair reads as one block.
-          // A coach past the last participant starts its own row and needs no rule.
-          paired && index < participantIds.length && "border-t pt-2"
+          paired && "border-t pt-2"
         )}
       >
         <Label
@@ -418,13 +441,19 @@ export function EntryWizard({
           }
         >
           <SelectTrigger id={`coach-slot-${index}`} className="w-full">
-            <SelectValue placeholder={`Select coach ${index + 1}`} />
+            <SelectValue placeholder={paired ? "Select coach" : `Select coach ${index + 1}`} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={UNSET}>Select coach {index + 1}</SelectItem>
-            {coaches.map((coach) => {
+            <SelectItem value={UNSET}>
+              {paired ? "Select coach" : `Select coach ${index + 1}`}
+            </SelectItem>
+            {coachOptions.map((coach) => {
+              // One coach may take more than one contestant in the same contest,
+              // which is common enough that a school sends one for all three. So
+              // on a pair row a name already chosen stays open; on a group entry,
+              // where the coaches are one shared list, it does not.
               const alreadyHere =
-                coach.id !== selected && chosenCoaches.includes(coach.id);
+                !paired && coach.id !== selected && chosenCoaches.includes(coach.id);
               return (
                 <SelectItem key={coach.id} value={coach.id} disabled={alreadyHere}>
                   {coach.full_name}
@@ -434,7 +463,10 @@ export function EntryWizard({
             })}
           </SelectContent>
         </Select>
-        {coachIds.length > 1 && (
+        {/* A contestant must have a coach, so a pair row has nothing to remove —
+            it goes when the contestant does. To change the answer, pick another
+            name; to clear it, pick "Select coach". */}
+        {!paired && coachIds.length > 1 && (
           <Button
             type="button"
             variant="ghost"
@@ -563,10 +595,12 @@ export function EntryWizard({
 
             {paired ? (
               <section className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold">
                     Contestants and coaches{" "}
-                    <span className="font-normal text-muted-foreground">
+                    {/* Kept on one line: a 390px screen otherwise breaks the
+                        range apart and leaves "3)" stranded under the heading. */}
+                    <span className="font-normal whitespace-nowrap text-muted-foreground">
                       ({maxParticipants === null
                         ? `at least ${minParticipants}`
                         : minParticipants === maxParticipants
@@ -589,25 +623,23 @@ export function EntryWizard({
                   )}
                 </div>
 
+                {entry?.coachingPending && (
+                  <Alert>
+                    <AlertDescription>
+                      This entry was filed before contestants and coaches were
+                      matched up, so the coach fields start empty. Choose from the
+                      coaches already on this entry. A coach you leave unmatched is
+                      dropped when you save.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {Array.from({ length: pairRows }, (_, i) => (
                   <div key={i} className="flex flex-col gap-2 rounded-xl border p-3">
                     {i < participantIds.length && participantSlot(i, participantIds[i])}
                     {i < coachIds.length && coachSlot(i, coachIds[i])}
                   </div>
                 ))}
-
-                {coachIds.length < maxCoaches && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="self-start"
-                    onClick={addCoachRow}
-                  >
-                    <Plus className="size-4" />
-                    Add another coach
-                  </Button>
-                )}
               </section>
             ) : (
               <>

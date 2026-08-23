@@ -145,7 +145,11 @@ export async function saveEntryAction(
     };
   }
 
-  const { participantIds, coachIds, eventId } = parsed.data;
+  const { participantIds, coaches, eventId } = parsed.data;
+  // On an individual entry one coach may cover more than one contestant, so the
+  // same id can arrive several times. Ownership is a question about people, and
+  // the count below is compared against a list of people.
+  const coachIds = [...new Set(coaches.map((coach) => coach.coachId))];
 
   // Counts come from the database, never from the client.
   const { data: event } = await supabase
@@ -177,7 +181,7 @@ export async function saveEntryAction(
   const countError = validateEntryCounts({
     category: event.category,
     participantIds,
-    coachIds,
+    coaches,
     minParticipants: event.event_types.min_participants,
     maxParticipants: event.event_types.max_participants,
   });
@@ -235,7 +239,7 @@ export async function saveEntryAction(
     const [{ data: participantSnapshot, error: participantSnapshotError }, { data: coachSnapshot, error: coachSnapshotError }] =
       await Promise.all([
         supabase.from("entry_participants").select("participant_id").eq("entry_id", id),
-        supabase.from("entry_coaches").select("coach_id").eq("entry_id", id),
+        supabase.from("entry_coaches").select("coach_id, participant_id").eq("entry_id", id),
       ]);
     if (participantSnapshotError || coachSnapshotError) {
       console.error("saveEntryAction", participantSnapshotError ?? coachSnapshotError);
@@ -269,7 +273,12 @@ export async function saveEntryAction(
     // manual check instead of being reassured nothing changed.
     const restoreSnapshot = async (): Promise<boolean> => {
       const previousParticipantIds = (participantSnapshot ?? []).map((row) => row.participant_id as string);
-      const previousCoachIds = (coachSnapshot ?? []).map((row) => row.coach_id as string);
+      // Carries the pairing back with the coach. Restoring the names alone would
+      // quietly un-pair a valid entry, turning a failed save into lost work.
+      const previousCoaches = (coachSnapshot ?? []).map((row) => ({
+        coach_id: row.coach_id as string,
+        participant_id: (row.participant_id ?? null) as string | null,
+      }));
 
       const { error: restoreDeleteParticipantsError } = await supabase
         .from("entry_participants")
@@ -296,10 +305,10 @@ export async function saveEntryAction(
           return false;
         }
       }
-      if (previousCoachIds.length) {
+      if (previousCoaches.length) {
         const { error: restoreCoachesError } = await supabase
           .from("entry_coaches")
-          .insert(previousCoachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
+          .insert(previousCoaches.map((coach) => ({ entry_id: id, ...coach })));
         if (restoreCoachesError) {
           console.error("saveEntryAction.restoreSnapshot", restoreCoachesError);
           return false;
@@ -322,7 +331,13 @@ export async function saveEntryAction(
 
     const { error: coachesError } = await supabase
       .from("entry_coaches")
-      .insert(coachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
+      .insert(
+        coaches.map((coach) => ({
+          entry_id: id,
+          coach_id: coach.coachId,
+          participant_id: coach.participantId,
+        }))
+      );
     if (coachesError) {
       console.error("saveEntryAction", coachesError);
       const restored = await restoreSnapshot();
@@ -375,7 +390,13 @@ export async function saveEntryAction(
 
   const { error: coachesError } = await supabase
     .from("entry_coaches")
-    .insert(coachIds.map((coachId) => ({ entry_id: id, coach_id: coachId })));
+    .insert(
+      coaches.map((coach) => ({
+        entry_id: id,
+        coach_id: coach.coachId,
+        participant_id: coach.participantId,
+      }))
+    );
   if (coachesError) {
     console.error("saveEntryAction", coachesError);
     return { error: "Could not save coaches." };

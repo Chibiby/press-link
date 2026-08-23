@@ -56,7 +56,7 @@ interface RawEntry {
     event_type_id: string;
   } | null;
   entry_participants: { participants: RawParticipant | null }[];
-  entry_coaches: { coaches: RawCoach | null }[];
+  entry_coaches: { participant_id: string | null; coaches: RawCoach | null }[];
 }
 
 /** "Dela Cruz, Ana M." — surname first, the way the division office lists people. */
@@ -173,34 +173,57 @@ export default async function EntryPage() {
     supabase
       .from("entries")
       .select(
-        "id, event_id, submitted_at, events(name, category, level, language, event_type_id), entry_participants(participants(id, participant_number, first_name, middle_name, last_name, gender)), entry_coaches(coaches(id, first_name, middle_name, last_name, gender))"
+        "id, event_id, submitted_at, events(name, category, level, language, event_type_id), entry_participants(participants(id, participant_number, first_name, middle_name, last_name, gender)), entry_coaches(participant_id, coaches(id, first_name, middle_name, last_name, gender))"
       )
       .eq("school_id", school.id)
       .order("submitted_at", { ascending: false })
       .overrideTypes<RawEntry[]>(),
   ]);
 
-  const entries: EntryRow[] = (rawEntries ?? []).map((row) => ({
-    id: row.id,
-    event_id: row.event_id,
-    submitted_at: row.submitted_at,
-    submitted_label: row.submitted_at
-      ? DATE_FORMAT.format(new Date(row.submitted_at))
-      : "—",
-    event_type_id: row.events?.event_type_id ?? "",
-    event_name: row.events?.name ?? "Unknown event",
-    category: row.events?.category ?? "individual",
-    level: row.events?.level ?? "elementary",
-    language: row.events?.language ?? "english",
-    participants: row.entry_participants
-      .map((link) => link.participants)
-      .filter((p): p is RawParticipant => p !== null)
-      .map(toRosterParticipant),
-    coaches: row.entry_coaches
-      .map((link) => link.coaches)
-      .filter((c): c is RawCoach => c !== null)
-      .map(toRosterCoach),
-  }));
+  const entries: EntryRow[] = (rawEntries ?? []).map((row) => {
+    const category = row.events?.category ?? "individual";
+    const coachLinks = row.entry_coaches.filter(
+      (link): link is { participant_id: string | null; coaches: RawCoach } =>
+        link.coaches !== null
+    );
+
+    // One coach may cover several contestants, which is several link rows naming
+    // the same person. Every list that reads `coaches` is a list of people, so
+    // the repeats are dropped once here instead of in each of them.
+    const coachesById = new Map<string, RosterCoach>();
+    const coachByParticipant: Record<string, string> = {};
+    for (const link of coachLinks) {
+      if (!coachesById.has(link.coaches.id)) {
+        coachesById.set(link.coaches.id, toRosterCoach(link.coaches));
+      }
+      if (link.participant_id) coachByParticipant[link.participant_id] = link.coaches.id;
+    }
+
+    return {
+      id: row.id,
+      event_id: row.event_id,
+      submitted_at: row.submitted_at,
+      submitted_label: row.submitted_at
+        ? DATE_FORMAT.format(new Date(row.submitted_at))
+        : "—",
+      event_type_id: row.events?.event_type_id ?? "",
+      event_name: row.events?.name ?? "Unknown event",
+      category,
+      level: row.events?.level ?? "elementary",
+      language: row.events?.language ?? "english",
+      participants: row.entry_participants
+        .map((link) => link.participants)
+        .filter((p): p is RawParticipant => p !== null)
+        .map(toRosterParticipant),
+      coaches: [...coachesById.values()],
+      coachByParticipant,
+      // Filed before the pairing existed — migration 0019 back-filled nothing,
+      // because guessing which coach belonged to which contestant would put a
+      // wrong name against a real contestant.
+      coachingPending:
+        category === "individual" && coachLinks.some((link) => link.participant_id === null),
+    };
+  });
 
   // How many entries each participant already sits in, so the wizard can grey
   // out anyone at their cap without a second round trip.

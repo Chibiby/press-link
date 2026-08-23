@@ -58,6 +58,8 @@ function entry(
     category,
     level,
     language,
+    coachByParticipant: {},
+    coachingPending: false,
     participants,
     coaches,
   };

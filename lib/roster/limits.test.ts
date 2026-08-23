@@ -52,13 +52,47 @@ describe("maxCoachesFor", () => {
 
 describe("validateEntryCounts", () => {
   const ids = (n: number) => Array.from({ length: n }, (_, i) => `p${i}`);
+  /** Every contestant paired with the same coach — the ordinary small school. */
+  const oneCoachFor = (n: number, coachId = "c1") =>
+    ids(n).map((participantId) => ({ coachId, participantId }));
+  /** A group entry's coaches, who are shared by the team and paired with nobody. */
+  const shared = (...coachIds: string[]) =>
+    coachIds.map((coachId) => ({ coachId, participantId: null }));
 
-  it("accepts a 1-participant 1-coach individual entry", () => {
+  it("accepts a contestant with their coach", () => {
     expect(
       validateEntryCounts({
         category: "individual",
         participantIds: ids(1),
-        coachIds: ["c1"],
+        coaches: oneCoachFor(1),
+        minParticipants: 1,
+        maxParticipants: 3,
+      })
+    ).toBeNull();
+  });
+
+  it("accepts one coach covering all three contestants", () => {
+    expect(
+      validateEntryCounts({
+        category: "individual",
+        participantIds: ids(3),
+        coaches: oneCoachFor(3),
+        minParticipants: 1,
+        maxParticipants: 3,
+      })
+    ).toBeNull();
+  });
+
+  it("accepts a different coach for each contestant", () => {
+    expect(
+      validateEntryCounts({
+        category: "individual",
+        participantIds: ids(3),
+        coaches: [
+          { coachId: "c1", participantId: "p0" },
+          { coachId: "c2", participantId: "p1" },
+          { coachId: "c3", participantId: "p2" },
+        ],
         minParticipants: 1,
         maxParticipants: 3,
       })
@@ -70,7 +104,7 @@ describe("validateEntryCounts", () => {
       validateEntryCounts({
         category: "individual",
         participantIds: ids(4),
-        coachIds: ["c1"],
+        coaches: oneCoachFor(4),
         minParticipants: 1,
         maxParticipants: 3,
       })
@@ -82,7 +116,7 @@ describe("validateEntryCounts", () => {
       validateEntryCounts({
         category: "group",
         participantIds: ids(6),
-        coachIds: ["c1"],
+        coaches: shared("c1"),
         minParticipants: 7,
         maxParticipants: 7,
       })
@@ -94,47 +128,62 @@ describe("validateEntryCounts", () => {
       validateEntryCounts({
         category: "group",
         participantIds: ids(9),
-        coachIds: ["c1"],
+        coaches: shared("c1", "c2"),
         minParticipants: 2,
         maxParticipants: null,
       })
     ).toBeNull();
   });
 
-  it("accepts 3 coaches on a 1-participant individual entry", () => {
+  it("rejects a contestant left without a coach", () => {
+    expect(
+      validateEntryCounts({
+        category: "individual",
+        participantIds: ids(3),
+        coaches: oneCoachFor(2),
+        minParticipants: 1,
+        maxParticipants: 3,
+      })
+    ).toBe("Choose a coach for every contestant");
+  });
+
+  it("rejects a second coach on one contestant", () => {
+    expect(
+      validateEntryCounts({
+        category: "individual",
+        participantIds: ids(2),
+        coaches: [
+          { coachId: "c1", participantId: "p0" },
+          { coachId: "c2", participantId: "p0" },
+        ],
+        minParticipants: 1,
+        maxParticipants: 3,
+      })
+    ).toBe("A contestant can have only 1 coach");
+  });
+
+  it("rejects an individual entry whose coach is paired with nobody", () => {
     expect(
       validateEntryCounts({
         category: "individual",
         participantIds: ids(1),
-        coachIds: ["c1", "c2", "c3"],
+        coaches: shared("c1"),
         minParticipants: 1,
         maxParticipants: 3,
       })
-    ).toBeNull();
+    ).toBe("Choose which contestant each coach is for");
   });
 
-  it("rejects 4 coaches on an individual entry", () => {
+  it("rejects a coach matched to someone off the entry", () => {
     expect(
       validateEntryCounts({
         category: "individual",
         participantIds: ids(1),
-        coachIds: ["c1", "c2", "c3", "c4"],
+        coaches: [{ coachId: "c1", participantId: "someone-else" }],
         minParticipants: 1,
         maxParticipants: 3,
       })
-    ).toBe("This entry allows at most 3 coaches");
-  });
-
-  it("rejects 3 coaches on a group entry", () => {
-    expect(
-      validateEntryCounts({
-        category: "group",
-        participantIds: ids(7),
-        coachIds: ["c1", "c2", "c3"],
-        minParticipants: 7,
-        maxParticipants: 7,
-      })
-    ).toBe("This entry allows at most 2 coaches");
+    ).toBe("A coach was matched to someone who is not in this entry");
   });
 
   it("rejects an entry with no coach", () => {
@@ -142,7 +191,7 @@ describe("validateEntryCounts", () => {
       validateEntryCounts({
         category: "individual",
         participantIds: ids(1),
-        coachIds: [],
+        coaches: [],
         minParticipants: 1,
         maxParticipants: 3,
       })
@@ -154,22 +203,46 @@ describe("validateEntryCounts", () => {
       validateEntryCounts({
         category: "individual",
         participantIds: ["p1", "p1"],
-        coachIds: ["c1"],
+        coaches: oneCoachFor(1),
         minParticipants: 1,
         maxParticipants: 3,
       })
     ).toBe("The same participant cannot be added twice");
   });
 
-  it("rejects the same coach twice in one entry", () => {
+  it("rejects a group coach matched to one member", () => {
     expect(
       validateEntryCounts({
-        category: "individual",
-        participantIds: ["p1", "p2"],
-        coachIds: ["c1", "c1"],
-        minParticipants: 1,
-        maxParticipants: 3,
+        category: "group",
+        participantIds: ids(7),
+        coaches: [{ coachId: "c1", participantId: "p0" }],
+        minParticipants: 7,
+        maxParticipants: 7,
+      })
+    ).toBe("A group entry's coaches are shared by the team, not matched to one member");
+  });
+
+  it("rejects the same coach twice on a group entry", () => {
+    expect(
+      validateEntryCounts({
+        category: "group",
+        participantIds: ids(7),
+        coaches: shared("c1", "c1"),
+        minParticipants: 7,
+        maxParticipants: 7,
       })
     ).toBe("The same coach cannot be added twice");
+  });
+
+  it("rejects 3 coaches on a group entry", () => {
+    expect(
+      validateEntryCounts({
+        category: "group",
+        participantIds: ids(7),
+        coaches: shared("c1", "c2", "c3"),
+        minParticipants: 7,
+        maxParticipants: 7,
+      })
+    ).toBe("This entry allows at most 2 coaches");
   });
 });

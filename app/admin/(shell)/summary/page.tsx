@@ -34,6 +34,7 @@ import {
 import type { PaperParticipation } from "@/lib/paper/gate";
 import { PAPER_LEVEL_LABEL, paperSlots, type PaperLevel } from "@/lib/paper/level";
 import { PAPER_STATUS_LABEL, paperStatus } from "@/lib/paper/status";
+import { distinctCoaches } from "@/lib/roster/entry-coaches";
 import { surnameFirst } from "@/lib/roster/names";
 
 /**
@@ -274,10 +275,11 @@ export default async function AdminSummaryPage({
                 name: surnameFirst(person),
                 number: person.participant_number,
               })),
-            coaches: row.entry_coaches
-              .map((link) => link.coaches)
-              .filter((coach): coach is NonNullable<typeof coach> => coach !== null)
-              .map((coach) => ({ id: coach.id, name: surnameFirst(coach), number: null })),
+            coaches: distinctCoaches(row.entry_coaches).map((coach) => ({
+              id: coach.id,
+              name: surnameFirst(coach),
+              number: null,
+            })),
           },
         ]
       : []

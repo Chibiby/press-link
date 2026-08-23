@@ -7,11 +7,23 @@ const P2 = "323e4567-e89b-12d3-a456-426614174002";
 const C1 = "423e4567-e89b-12d3-a456-426614174003";
 
 describe("entrySchema", () => {
-  it("accepts an entry referencing roster ids", () => {
+  it("accepts coaches that name the contestant they are for", () => {
     const result = entrySchema.safeParse({
       eventId: EVENT,
       participantIds: [P1, P2],
-      coachIds: [C1],
+      coaches: [
+        { coachId: C1, participantId: P1 },
+        { coachId: C1, participantId: P2 },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a coach paired with nobody, as a group entry's are", () => {
+    const result = entrySchema.safeParse({
+      eventId: EVENT,
+      participantIds: [P1, P2],
+      coaches: [{ coachId: C1, participantId: null }],
     });
     expect(result.success).toBe(true);
   });
@@ -20,7 +32,7 @@ describe("entrySchema", () => {
     const result = entrySchema.safeParse({
       eventId: EVENT,
       participantIds: [],
-      coachIds: [C1],
+      coaches: [{ coachId: C1, participantId: null }],
     });
     expect(result.success).toBe(false);
   });
@@ -29,7 +41,25 @@ describe("entrySchema", () => {
     const result = entrySchema.safeParse({
       eventId: EVENT,
       participantIds: [P1],
-      coachIds: [],
+      coaches: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a bare coach id where a pairing belongs", () => {
+    const result = entrySchema.safeParse({
+      eventId: EVENT,
+      participantIds: [P1],
+      coaches: [C1],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a contestant named instead of referenced", () => {
+    const result = entrySchema.safeParse({
+      eventId: EVENT,
+      participantIds: [P1],
+      coaches: [{ coachId: C1, participantId: "the first one" }],
     });
     expect(result.success).toBe(false);
   });
@@ -38,7 +68,7 @@ describe("entrySchema", () => {
     const result = entrySchema.safeParse({
       eventId: EVENT,
       participantIds: ["Ana Dela Cruz"],
-      coachIds: [C1],
+      coaches: [{ coachId: C1, participantId: null }],
     });
     expect(result.success).toBe(false);
   });
@@ -47,7 +77,7 @@ describe("entrySchema", () => {
     const result = entrySchema.safeParse({
       eventId: "news-writing",
       participantIds: [P1],
-      coachIds: [C1],
+      coaches: [{ coachId: C1, participantId: P1 }],
     });
     expect(result.success).toBe(false);
   });
