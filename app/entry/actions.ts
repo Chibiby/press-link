@@ -7,6 +7,7 @@ import { schoolPaperSchema } from "@/lib/validation/school-paper";
 import { entrySchema } from "@/lib/validation/entry";
 import { levelBelongsTo, PAPER_LEVEL_LABEL } from "@/lib/paper/level";
 import { capReason, validateEntryCounts, type UsageMap } from "@/lib/roster/limits";
+import { SCHOOL_LOCK_MESSAGES, schoolLockMessage } from "@/lib/submissions/school-lock";
 
 const DUPLICATE_EVENT_MESSAGE = "Your school already has an entry for this event.";
 
@@ -63,10 +64,13 @@ export async function saveSchoolPaperAction(
   // contest still keeps its information current, and one that is may correct a
   // typo. Only the school's own lock closes this form, and only the division
   // office can undo that.
+  //
+  // The division-wide switch from 0022 is not read here. It cannot be: that table
+  // may not exist on this database yet, and a pre-flight that fails would be a
+  // second guard to keep in step with the trigger that already refuses the write.
+  // Every failure below goes through `schoolLockMessage`, which names it.
   if (submissionLockedAt !== null) {
-    return {
-      error: "Your submission is locked. Ask the division office to reopen it.",
-    };
+    return { error: SCHOOL_LOCK_MESSAGES.school };
   }
 
   // The level arrives from the client, so it is a claim, not a fact. An
@@ -109,7 +113,7 @@ export async function saveSchoolPaperAction(
 
   if (upsertError || !paper) {
     console.error("saveSchoolPaperAction", upsertError);
-    return { error: "Could not save school paper." };
+    return { error: schoolLockMessage(upsertError, "Could not save school paper.") };
   }
 
   await supabase.from("paper_staff").delete().eq("school_paper_id", paper.id);
@@ -122,7 +126,7 @@ export async function saveSchoolPaperAction(
   );
   if (staffError) {
     console.error("saveSchoolPaperAction", staffError);
-    return { error: "Could not save section heads." };
+    return { error: schoolLockMessage(staffError, "Could not save section heads.") };
   }
 
   revalidatePath("/entry");
@@ -140,9 +144,7 @@ export async function saveEntryAction(
   }
   const { supabase, schoolId, submissionLockedAt } = await getSchoolId();
   if (submissionLockedAt !== null) {
-    return {
-      error: "Your submission is locked. Ask the division office to reopen it.",
-    };
+    return { error: SCHOOL_LOCK_MESSAGES.school };
   }
 
   const { participantIds, coaches, eventId } = parsed.data;
@@ -252,7 +254,7 @@ export async function saveEntryAction(
       .eq("entry_id", id);
     if (deleteParticipantsError) {
       console.error("saveEntryAction", deleteParticipantsError);
-      return { error: "Could not update entry." };
+      return { error: schoolLockMessage(deleteParticipantsError, "Could not update entry.") };
     }
 
     const { error: deleteCoachesError } = await supabase
@@ -261,7 +263,7 @@ export async function saveEntryAction(
       .eq("entry_id", id);
     if (deleteCoachesError) {
       console.error("saveEntryAction", deleteCoachesError);
-      return { error: "Could not update entry." };
+      return { error: schoolLockMessage(deleteCoachesError, "Could not update entry.") };
     }
 
     // Restores both tables to the pre-mutation snapshot. Called after a
@@ -326,7 +328,14 @@ export async function saveEntryAction(
     if (participantsError) {
       console.error("saveEntryAction", participantsError);
       const restored = await restoreSnapshot();
-      return { error: restored ? "Could not save participants." : RESTORE_FAILED_MESSAGE };
+      // A lock refusal cannot politely replace RESTORE_FAILED_MESSAGE: that one
+      // is telling the school its entry may need checking by hand, which stays
+      // true whatever refused the write.
+      return {
+        error: restored
+          ? schoolLockMessage(participantsError, "Could not save participants.")
+          : RESTORE_FAILED_MESSAGE,
+      };
     }
 
     const { error: coachesError } = await supabase
@@ -341,7 +350,11 @@ export async function saveEntryAction(
     if (coachesError) {
       console.error("saveEntryAction", coachesError);
       const restored = await restoreSnapshot();
-      return { error: restored ? "Could not save coaches." : RESTORE_FAILED_MESSAGE };
+      return {
+        error: restored
+          ? schoolLockMessage(coachesError, "Could not save coaches.")
+          : RESTORE_FAILED_MESSAGE,
+      };
     }
 
     // Only flip the entry onto the new event once both member inserts have
@@ -357,7 +370,7 @@ export async function saveEntryAction(
       return {
         error: isDuplicateEventViolation(updateError)
           ? DUPLICATE_EVENT_MESSAGE
-          : "Could not update entry.",
+          : schoolLockMessage(updateError, "Could not update entry."),
       };
     }
 
@@ -374,7 +387,7 @@ export async function saveEntryAction(
       return {
         error: isDuplicateEventViolation(error)
           ? DUPLICATE_EVENT_MESSAGE
-          : "Could not create entry.",
+          : schoolLockMessage(error, "Could not create entry."),
       };
     }
     id = inserted.id;
@@ -385,7 +398,7 @@ export async function saveEntryAction(
     .insert(participantIds.map((participantId) => ({ entry_id: id, participant_id: participantId })));
   if (participantsError) {
     console.error("saveEntryAction", participantsError);
-    return { error: "Could not save participants." };
+    return { error: schoolLockMessage(participantsError, "Could not save participants.") };
   }
 
   const { error: coachesError } = await supabase
@@ -399,7 +412,7 @@ export async function saveEntryAction(
     );
   if (coachesError) {
     console.error("saveEntryAction", coachesError);
-    return { error: "Could not save coaches." };
+    return { error: schoolLockMessage(coachesError, "Could not save coaches.") };
   }
 
   revalidatePath("/entry");
@@ -409,14 +422,12 @@ export async function saveEntryAction(
 export async function deleteEntryAction(entryId: string): Promise<{ error: string } | { success: true }> {
   const { supabase, schoolId, submissionLockedAt } = await getSchoolId();
   if (submissionLockedAt !== null) {
-    return {
-      error: "Your submission is locked. Ask the division office to reopen it.",
-    };
+    return { error: SCHOOL_LOCK_MESSAGES.school };
   }
   const { error } = await supabase.from("entries").delete().eq("id", entryId).eq("school_id", schoolId);
   if (error) {
     console.error("deleteEntryAction", error);
-    return { error: "Could not delete entry." };
+    return { error: schoolLockMessage(error, "Could not delete entry.") };
   }
   revalidatePath("/entry");
   return { success: true as const };

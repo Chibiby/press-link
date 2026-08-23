@@ -16,6 +16,7 @@ import { paperStatus } from "@/lib/paper/status";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { formatParticipantNumber, type UsageMap } from "@/lib/roster/limits";
 import type { EventCategory } from "@/lib/events-catalog";
+import { entrySubmissionLock, globalFreezeFromRead } from "@/lib/submissions/school-lock";
 import { DashboardHeader } from "@/components/dashboard-header";
 
 /** Formatted server-side so the client never re-derives a locale string. */
@@ -130,6 +131,7 @@ export default async function EntryPage() {
     { data: rawParticipants },
     { data: rawCoaches },
     { data: rawEntries },
+    { data: settings, error: settingsError },
   ] = await Promise.all([
     supabase
       .from("school_papers")
@@ -178,6 +180,18 @@ export default async function EntryPage() {
       .eq("school_id", school.id)
       .order("submitted_at", { ascending: false })
       .overrideTypes<RawEntry[]>(),
+    // The division-wide submissions switch from migration 0022. Read here so the
+    // school is told about a freeze before it types, instead of after a trigger
+    // refuses the save — and read with `maybeSingle`, because a missing row is a
+    // state this page has to tell apart from an unlocked flag. What each outcome
+    // means, and why a failure is not allowed to break this page, is in
+    // `globalFreezeFromRead`.
+    supabase
+      .from("app_settings")
+      .select("submissions_locked")
+      .eq("id", true)
+      .maybeSingle()
+      .overrideTypes<{ submissions_locked: boolean | null }>(),
   ]);
 
   const entries: EntryRow[] = (rawEntries ?? []).map((row) => {
@@ -257,6 +271,18 @@ export default async function EntryPage() {
     lockedAt: school.submission_locked_at,
   });
 
+  // Logged, not surfaced: the school can do nothing with a PostgREST message, and
+  // the ordinary cause is that 0022 has not reached this database yet, which the
+  // school must not see as a broken dashboard.
+  if (settingsError) console.error("EntryPage submissions lock", settingsError);
+
+  // One banner, and one read-only decision, for both locks — see
+  // lib/submissions/school-lock.ts for which one wins when both apply.
+  const submissionLock = entrySubmissionLock({
+    schoolLocked: paperFlow.submissionLocked,
+    global: globalFreezeFromRead({ data: settings, error: settingsError }),
+  });
+
   return (
     <div className="flex min-h-screen flex-col">
       <DashboardHeader
@@ -277,6 +303,7 @@ export default async function EntryPage() {
           usage={usage}
           paperFlow={paperFlow}
           paperStatus={status}
+          submissionLock={submissionLock}
           participation={school.paper_participation}
           isIntegrated={school.is_integrated}
         />

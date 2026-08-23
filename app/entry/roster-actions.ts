@@ -10,6 +10,7 @@ import {
 import { paperFlowState, type PaperParticipation } from "@/lib/paper/gate";
 import type { PaperLevel } from "@/lib/paper/level";
 import type { EventLanguage } from "@/lib/events-catalog";
+import { SCHOOL_LOCK_MESSAGES, schoolLockMessage } from "@/lib/submissions/school-lock";
 
 async function getSchoolId() {
   const supabase = await createClient();
@@ -73,6 +74,12 @@ async function assertPaperSettled(
 /**
  * A locked submission is read-only. The triggers refuse these writes anyway;
  * this turns the refusal into a sentence the school can act on.
+ *
+ * Only the school's own lock is read here. The division-wide switch from 0022 is
+ * deliberately not pre-flighted: `app_settings` may not exist on this database
+ * yet, the trigger refuses the write either way, and every caller below now
+ * translates that refusal through `schoolLockMessage`. One read fewer per write,
+ * and no second guard to keep in step with the first.
  */
 async function assertUnlocked(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -84,9 +91,7 @@ async function assertUnlocked(
     .eq("id", schoolId)
     .single<{ submission_locked_at: string | null }>();
   if (!school) return "School not found.";
-  return school.submission_locked_at !== null
-    ? "Your submission is locked. Ask the division office to reopen it."
-    : null;
+  return school.submission_locked_at !== null ? SCHOOL_LOCK_MESSAGES.school : null;
 }
 
 export async function addParticipantAction(
@@ -113,7 +118,7 @@ export async function addParticipantAction(
   });
   if (error) {
     console.error("addParticipantAction", error);
-    return { error: "Could not add participant." };
+    return { error: schoolLockMessage(error, "Could not add participant.") };
   }
 
   revalidatePath("/entry");
@@ -142,7 +147,7 @@ export async function deleteParticipantAction(
     .eq("school_id", schoolId);
   if (error) {
     console.error("deleteParticipantAction", error);
-    return { error: "Could not delete participant." };
+    return { error: schoolLockMessage(error, "Could not delete participant.") };
   }
 
   revalidatePath("/entry");
@@ -172,7 +177,7 @@ export async function addCoachAction(
   });
   if (error) {
     console.error("addCoachAction", error);
-    return { error: "Could not add coach." };
+    return { error: schoolLockMessage(error, "Could not add coach.") };
   }
 
   revalidatePath("/entry");
@@ -201,7 +206,7 @@ export async function deleteCoachAction(
     .eq("school_id", schoolId);
   if (error) {
     console.error("deleteCoachAction", error);
-    return { error: "Could not delete coach." };
+    return { error: schoolLockMessage(error, "Could not delete coach.") };
   }
 
   revalidatePath("/entry");
@@ -213,12 +218,16 @@ export async function deleteCoachAction(
  * reasons the school can act on — another tab locked the details, or the form
  * was never saved. Postgres hands those back as one opaque failure, so match
  * the sentences we raised and keep the generic line for anything else.
+ *
+ * The lock sentences are matched by `schoolLockMessage` rather than here, so the
+ * three of them are recognised in one place. That is also the fix for a real
+ * hole: this function used to test for 'submission is locked' as a substring,
+ * which 'submissions are locked division-wide' does not contain — plural, and
+ * "are" — so a school in a division-wide freeze was answered with the generic
+ * fallback and nothing told it why.
  */
 function rpcMessage(error: { message?: string }, fallback: string): string {
   const raised = error.message ?? "";
-  if (raised.includes("submission is locked")) {
-    return "Your submission is locked. Ask the division office to reopen it.";
-  }
   if (raised.includes("save your school paper information first")) {
     return "Save your school paper information first.";
   }
@@ -228,7 +237,7 @@ function rpcMessage(error: { message?: string }, fallback: string): string {
   if (raised.includes("create at least one entry first")) {
     return "Create at least one entry before locking your submission.";
   }
-  return fallback;
+  return schoolLockMessage(error, fallback);
 }
 
 export async function setPaperParticipationAction(

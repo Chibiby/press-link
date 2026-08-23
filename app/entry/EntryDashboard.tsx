@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, Newspaper, Plus, Trophy, Users } from "lucide-react";
+import { Lock, Newspaper, Plus, TriangleAlert, Trophy, Users } from "lucide-react";
 
 import { EntriesTable } from "./EntriesTable";
 import { EntryWizard } from "./EntryWizard";
@@ -20,6 +20,7 @@ import type {
 import type { PaperFlowState } from "@/lib/paper/gate";
 import { PAPER_LEVEL_LABEL } from "@/lib/paper/level";
 import { PAPER_STATUS_LABEL, type PaperStatus } from "@/lib/paper/status";
+import type { EntrySubmissionLock } from "@/lib/submissions/school-lock";
 import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { type UsageMap } from "@/lib/roster/limits";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -37,6 +38,7 @@ export function EntryDashboard({
   usage,
   paperFlow,
   paperStatus,
+  submissionLock,
   participation,
   isIntegrated,
 }: {
@@ -52,6 +54,13 @@ export function EntryDashboard({
   paperFlow: PaperFlowState;
   /** The three-state label shared with the admin pages. */
   paperStatus: PaperStatus;
+  /**
+   * The school's own lock and the division-wide switch, already resolved into
+   * one banner and one read-only decision — see lib/submissions/school-lock.ts.
+   * `paperFlow.submissionLocked` still decides everything that is only about
+   * this school's own lock, such as whether it may lock itself.
+   */
+  submissionLock: EntrySubmissionLock;
   participation: PaperParticipation;
   /** Integrated schools file two papers per language — see lib/paper/level.ts. */
   isIntegrated: boolean;
@@ -64,8 +73,19 @@ export function EntryDashboard({
 
   // Each dialog is forced open while its stage is unfinished; only then can the
   // school open it itself.
-  const paperOpen = paperFlow.paperFormOpen || (paperOpenOverride ?? false);
-  const gateOpen = paperFlow.askQuestion || gateOpenOverride;
+  //
+  // A freeze suspends that demand for both. `paperFormOpen` and `askQuestion`
+  // each open their dialog with no close button and no Escape, and during a
+  // freeze neither dialog's action can succeed — the paper form writes
+  // `school_papers`, guarded by the 0022 triggers, and the contest question calls
+  // `set_paper_participation`, which migration 0023 gave the same division-wide
+  // guard for exactly this reason. Forcing either open would trap the school in a
+  // dialog it can neither complete nor dismiss. Nothing is lost by waiting: both
+  // are still owed, and both come back the moment submissions do.
+  const paperRequired = paperFlow.paperFormOpen && !submissionLock.readOnly;
+  const gateRequired = paperFlow.askQuestion && !submissionLock.readOnly;
+  const paperOpen = paperRequired || (paperOpenOverride ?? false);
+  const gateOpen = gateRequired || gateOpenOverride;
 
   function openCreate() {
     setEditing(null);
@@ -78,7 +98,11 @@ export function EntryDashboard({
   }
 
   const canCreateEntry =
-    !paperFlow.submissionLocked && participants.length > 0 && coaches.length > 0;
+    !submissionLock.readOnly && participants.length > 0 && coaches.length > 0;
+
+  // The meaning comes from the derivation, the component from here — the same
+  // split the admin lock control uses.
+  const BannerIcon = submissionLock.banner?.icon === "alert" ? TriangleAlert : Lock;
 
   const rosterCount = participants.length + coaches.length;
 
@@ -87,18 +111,19 @@ export function EntryDashboard({
       <PaperGateDialog
         open={gateOpen}
         onOpenChange={setGateOpenOverride}
-        required={paperFlow.askQuestion}
+        required={gateRequired}
         current={participation}
       />
 
-      {paperFlow.submissionLocked && (
+      {/* One banner, whichever lock the school is actually held by. The
+          division-wide cases reuse this exact alert rather than a louder one of
+          their own: to a school being frozen is being frozen, and the only thing
+          that differs is who did it and what, if anything, it can do next. */}
+      {submissionLock.banner && (
         <Alert>
-          <Lock />
-          <AlertTitle>Your submission is locked</AlertTitle>
-          <AlertDescription>
-            Everything below is read-only. Contact the division office if you need a
-            change.
-          </AlertDescription>
+          <BannerIcon />
+          <AlertTitle>{submissionLock.banner.title}</AlertTitle>
+          <AlertDescription>{submissionLock.banner.description}</AlertDescription>
         </Alert>
       )}
 
@@ -130,6 +155,13 @@ export function EntryDashboard({
               Change contest answer
             </Button>
           )}
+          {/* Still `paperFlow`, not the read-only state, and that is a statement
+              about one specific RPC: `lock_submission()` is defined in 0011 and
+              neither 0022 nor 0023 ever touched it, so it is the one school-side
+              write with no division-wide guard — a school really can still lock
+              itself mid-freeze, and would then need `admin_unlock_submission` to
+              get back. Hiding the button would be this page refusing something the
+              database allows. */}
           {!paperFlow.submissionLocked && (
             <LockSubmissionDialog canLock={paperFlow.canLock} />
           )}
@@ -194,7 +226,7 @@ export function EntryDashboard({
               participants={participants}
               coaches={coaches}
               usage={usage}
-              locked={paperFlow.submissionLocked || !paperFlow.rosterEnabled}
+              locked={submissionLock.readOnly || !paperFlow.rosterEnabled}
             />
           </div>
         </section>
@@ -214,11 +246,10 @@ export function EntryDashboard({
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {paperFlow.submissionLocked
-                  ? "Your submission is locked. Contact the division office if you need a change."
-                  : canCreateEntry
+                {submissionLock.entriesNote ??
+                  (canCreateEntry
                     ? "Every contest your school is competing in."
-                    : "Add at least one participant and one coach before creating an entry."}
+                    : "Add at least one participant and one coach before creating an entry.")}
               </p>
             </div>
             <Button onClick={openCreate} disabled={!canCreateEntry}>
@@ -231,7 +262,7 @@ export function EntryDashboard({
             entries={entries}
             onCreate={openCreate}
             onEdit={openEdit}
-            locked={paperFlow.submissionLocked}
+            locked={submissionLock.readOnly}
           />
         </section>
       </div>
@@ -253,8 +284,8 @@ export function EntryDashboard({
         onOpenChange={setPaperOpenOverride}
         papers={papers}
         archivedPapers={archivedPapers}
-        locked={paperFlow.submissionLocked}
-        required={paperFlow.paperFormOpen}
+        locked={submissionLock.readOnly}
+        required={paperRequired}
         isIntegrated={isIntegrated}
       />
     </div>
