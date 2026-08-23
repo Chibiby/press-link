@@ -5,7 +5,6 @@ import {
   filterCoaches,
   filterEntries,
   filterParticipants,
-  matchesQuery,
 } from "./list-filters";
 import type { EntryRow, RosterCoach, RosterParticipant } from "./types";
 import type { UsageMap } from "@/lib/roster/limits";
@@ -75,21 +74,9 @@ const USAGE: UsageMap = {
   p3: { individualCount: 0, groupCount: 0 },
 };
 
-describe("matchesQuery", () => {
-  it("treats an empty or blank query as no filter", () => {
-    expect(matchesQuery(["Dela Cruz, Ana"], "")).toBe(true);
-    expect(matchesQuery(["Dela Cruz, Ana"], "   ")).toBe(true);
-  });
-
-  it("ignores case and surrounding whitespace", () => {
-    expect(matchesQuery(["Dela Cruz, Ana"], "  cRUz ")).toBe(true);
-  });
-
-  it("matches any one of the fields, and reports a miss on all of them", () => {
-    expect(matchesQuery(["Editorial Writing", "Dela Cruz, Ana"], "ana")).toBe(true);
-    expect(matchesQuery(["Editorial Writing", "Dela Cruz, Ana"], "reyes")).toBe(false);
-  });
-});
+// The `matchesQuery` suite moved with the predicate, to
+// `lib/search/matches-query.test.ts`. What is left here is what these three
+// filters do with it, which is the part specific to a school's own lists.
 
 describe("filterParticipants", () => {
   const all = [ANA, BEN, CARLA];

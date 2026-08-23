@@ -1,5 +1,6 @@
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
 import type { UsageMap } from "@/lib/roster/limits";
+import { matchesQuery } from "@/lib/search/matches-query";
 import type { EntryRow, RosterCoach, RosterParticipant } from "./types";
 
 /** Radix Select forbids an empty item value, so "any" stands in for "no filter". */
@@ -13,17 +14,10 @@ export type LanguageFilter = typeof ANY | EventLanguage;
 /** Whether an event is contested by one learner or by a team. */
 export type CategoryFilter = typeof ANY | EventCategory;
 
-/**
- * A school types the fragment it remembers — half a surname, a number off a
- * form — so this matches anywhere in any of the fields rather than only at the
- * start. An empty box is no filter, and trailing spaces from a paste are not a
- * reason to show nothing.
- */
-export function matchesQuery(haystacks: string[], query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (needle === "") return true;
-  return haystacks.some((haystack) => haystack.toLowerCase().includes(needle));
-}
+// `matchesQuery` used to live here. The admin tables above these lists ask the
+// same question of their rows, so it moved to `@/lib/search/matches-query`
+// unchanged — with its tests — and the three filters below now import it. The
+// filters themselves stay: they are about this school's own lists.
 
 /** A participant with no usage entry has never been picked, so they count here. */
 function isUnassigned(usage: UsageMap[string] | undefined): boolean {
