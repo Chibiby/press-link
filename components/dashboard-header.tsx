@@ -18,7 +18,7 @@ export function DashboardHeader({
 }) {
   return (
     <header className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 xl:max-w-[90rem]">
         <Wordmark />
         <div className="hidden h-8 w-px bg-border sm:block" />
         <div className="min-w-0 flex-1">

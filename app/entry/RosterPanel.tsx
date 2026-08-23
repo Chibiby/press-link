@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2 } from "lucide-react";
@@ -11,7 +11,17 @@ import {
   deleteCoachAction,
   deleteParticipantAction,
 } from "./roster-actions";
+import {
+  ANY,
+  filterCoaches,
+  filterParticipants,
+  type AssignmentFilter,
+  type GenderFilter,
+} from "./list-filters";
+import { ListPager, useListPage } from "./ListPager";
+import { ListToolbar } from "./ListToolbar";
 import type { RosterCoach, RosterParticipant } from "./types";
+import { eventUsageLabel, participantMetaLabel } from "./roster-usage";
 import { type UsageMap } from "@/lib/roster/limits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +37,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+/**
+ * The remove button rides along the right edge, so it stays reachable no matter
+ * how far a long name pushes the row sideways.
+ */
+const ACTION_CELL =
+  "sticky right-0 w-12 border-l bg-background group-hover/row:bg-muted/50";
 
 export function RosterPanel({
   participants,
@@ -81,6 +98,21 @@ function ParticipantsTab({
   const [middleName, setMiddleName] = useState("");
   const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState<"M" | "F">("M");
+  const [query, setQuery] = useState("");
+  const [assignment, setAssignment] = useState<AssignmentFilter>(ANY);
+
+  // The whole roster is already on the client, so narrowing it is a render away.
+  const shown = useMemo(
+    () => filterParticipants(participants, { query, usage, assignment }),
+    [participants, query, usage, assignment]
+  );
+  const { rows, topRef, reset, pager } = useListPage(shown);
+
+  function clearFilters() {
+    setQuery("");
+    setAssignment(ANY);
+    reset();
+  }
 
   function handleAdd() {
     startTransition(async () => {
@@ -93,6 +125,9 @@ function ParticipantsTab({
       setMiddleName("");
       setLastName("");
       setGender("M");
+      // A filter left over from a search would hide the row that was just
+      // added, so the school would think the add failed.
+      clearFilters();
       toast.success("Participant added.");
       router.refresh();
     });
@@ -180,35 +215,76 @@ function ParticipantsTab({
           No participants yet. Add your contestants here before creating entries.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">No.</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead className="w-20">Gender</TableHead>
-                <TableHead className="w-40">Events</TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {participants.map((participant) => {
-                const entry = usage[participant.id];
-                const individual = entry?.individualCount ?? 0;
-                const group = entry?.groupCount ?? 0;
-                return (
-                  <TableRow key={participant.id}>
-                    <TableCell className="font-mono tabular-nums">
+        <div ref={topRef} className="flex scroll-mt-28 flex-col gap-3">
+          <ListToolbar
+            searchPlaceholder="Search name or number"
+            query={query}
+            onQueryChange={(value) => {
+              // A new search re-numbers the pages under it, so page 4 of the
+              // old list is not a place to stay.
+              setQuery(value);
+              reset();
+            }}
+            filters={[
+              {
+                value: assignment,
+                onChange: (value) => {
+                  setAssignment(value as AssignmentFilter);
+                  reset();
+                },
+                placeholder: "All participants",
+                options: [
+                  { value: "assigned", label: "In an entry" },
+                  { value: "unassigned", label: "Not in an entry" },
+                ],
+                ariaLabel: "Filter participants by entry status",
+              },
+            ]}
+            shown={shown.length}
+            total={participants.length}
+            onClear={clearFilters}
+          />
+
+          {shown.length === 0 ? (
+            <p className="rounded-xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+              No participants match{" "}
+              {query.trim() ? `“${query.trim()}”` : "this filter"}.{" "}
+              <Button variant="link" className="h-auto p-0" onClick={clearFilters}>
+                Clear
+              </Button>
+            </p>
+          ) : (
+            <Table containerClassName="rounded-xl border">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-14">No.</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="hidden w-14 sm:table-cell">Gender</TableHead>
+                  <TableHead className="hidden w-28 sm:table-cell">Events</TableHead>
+                  <TableHead className={ACTION_CELL} />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((participant) => (
+                  <TableRow key={participant.id} className="group/row">
+                    <TableCell className="font-mono text-xs tabular-nums">
                       {participant.number_label}
                     </TableCell>
-                    <TableCell className="font-medium">{participant.full_name}</TableCell>
-                    <TableCell>{participant.gender}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {individual + group === 0
-                        ? "—"
-                        : `${individual} individual · ${group} group`}
+                    <TableCell className="font-medium whitespace-normal">
+                      {participant.full_name}
+                      {/* Too narrow for their own columns, Gender and Events fold in
+                          here, so a phone reads down the list instead of sideways. */}
+                      <span className="mt-0.5 block text-xs font-normal text-muted-foreground sm:hidden">
+                        {participantMetaLabel(participant.gender, usage[participant.id])}
+                      </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {participant.gender}
+                    </TableCell>
+                    <TableCell className="hidden text-xs text-muted-foreground sm:table-cell">
+                      {eventUsageLabel(usage[participant.id])}
+                    </TableCell>
+                    <TableCell className={ACTION_CELL}>
                       <Button
                         type="button"
                         variant="ghost"
@@ -221,10 +297,12 @@ function ParticipantsTab({
                       </Button>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          <ListPager {...pager} label="Participants" />
         </div>
       )}
     </div>
@@ -238,6 +316,20 @@ function CoachesTab({ coaches, locked }: { coaches: RosterCoach[]; locked: boole
   const [middleName, setMiddleName] = useState("");
   const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState<"M" | "F">("M");
+  const [query, setQuery] = useState("");
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>(ANY);
+
+  const shown = useMemo(
+    () => filterCoaches(coaches, { query, gender: genderFilter }),
+    [coaches, query, genderFilter]
+  );
+  const { rows, topRef, reset, pager } = useListPage(shown);
+
+  function clearFilters() {
+    setQuery("");
+    setGenderFilter(ANY);
+    reset();
+  }
 
   function handleAdd() {
     startTransition(async () => {
@@ -250,6 +342,9 @@ function CoachesTab({ coaches, locked }: { coaches: RosterCoach[]; locked: boole
       setMiddleName("");
       setLastName("");
       setGender("M");
+      // A filter left over from a search would hide the row that was just
+      // added, so the school would think the add failed.
+      clearFilters();
       toast.success("Coach added.");
       router.refresh();
     });
@@ -337,36 +432,76 @@ function CoachesTab({ coaches, locked }: { coaches: RosterCoach[]; locked: boole
           No coaches yet. Add them here so entries can select them.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead className="w-20">Gender</TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {coaches.map((coach) => (
-                <TableRow key={coach.id}>
-                  <TableCell className="font-medium">{coach.full_name}</TableCell>
-                  <TableCell>{coach.gender}</TableCell>
-                  <TableCell>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Remove ${coach.full_name}`}
-                      disabled={locked || isPending}
-                      onClick={() => handleDelete(coach)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </TableCell>
+        <div ref={topRef} className="flex scroll-mt-28 flex-col gap-3">
+          <ListToolbar
+            searchPlaceholder="Search coaches"
+            query={query}
+            onQueryChange={(value) => {
+              setQuery(value);
+              reset();
+            }}
+            filters={[
+              {
+                value: genderFilter,
+                onChange: (value) => {
+                  setGenderFilter(value as GenderFilter);
+                  reset();
+                },
+                placeholder: "All coaches",
+                options: [
+                  { value: "M", label: "Male" },
+                  { value: "F", label: "Female" },
+                ],
+                ariaLabel: "Filter coaches by gender",
+              },
+            ]}
+            shown={shown.length}
+            total={coaches.length}
+            onClear={clearFilters}
+          />
+
+          {shown.length === 0 ? (
+            <p className="rounded-xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+              No coaches match {query.trim() ? `“${query.trim()}”` : "this filter"}.{" "}
+              <Button variant="link" className="h-auto p-0" onClick={clearFilters}>
+                Clear
+              </Button>
+            </p>
+          ) : (
+            <Table containerClassName="rounded-xl border">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="w-14">Gender</TableHead>
+                  <TableHead className={ACTION_CELL} />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {rows.map((coach) => (
+                  <TableRow key={coach.id} className="group/row">
+                    <TableCell className="font-medium whitespace-normal">
+                      {coach.full_name}
+                    </TableCell>
+                    <TableCell>{coach.gender}</TableCell>
+                    <TableCell className={ACTION_CELL}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Remove ${coach.full_name}`}
+                        disabled={locked || isPending}
+                        onClick={() => handleDelete(coach)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          <ListPager {...pager} label="Coaches" />
         </div>
       )}
     </div>

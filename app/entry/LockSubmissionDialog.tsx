@@ -27,15 +27,16 @@ import { Button } from "@/components/ui/button";
  * it. A control that appears only once its preconditions are met leaves a school
  * hunting for a feature it was told exists; a disabled one that explains itself
  * tells it what is still missing.
+ *
+ * It is a ghost, not an outline: a school opens its school paper every visit and
+ * locks once, so the routine button next to this one should be the louder of the
+ * two. Once locked the dashboard drops this entirely and the alert speaks for it.
  */
 export function LockSubmissionDialog({
   canLock,
-  locked,
 }: {
   /** The school has answered the contest question and has at least one entry. */
   canLock: boolean;
-  /** Already locked — the button stays, but only to report that state. */
-  locked: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -57,19 +58,17 @@ export function LockSubmissionDialog({
   return (
     <>
       <Button
-        variant="outline"
+        variant="ghost"
         disabled={!canLock}
         title={
-          locked
-            ? "Only the division office can reopen your submission."
-            : canLock
-              ? undefined
-              : "Create at least one entry before locking your submission."
+          canLock
+            ? undefined
+            : "Create at least one entry before locking your submission."
         }
         onClick={() => setOpen(true)}
       >
         <Lock className="size-4" />
-        {locked ? "Submission Locked" : "Lock Submission"}
+        Lock Submission
       </Button>
 
       <AlertDialog open={open} onOpenChange={setOpen}>

@@ -242,7 +242,7 @@ export default async function EntryPage() {
         badge={`${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
         signOutAction={signOutAction}
       />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 xl:max-w-[90rem]">
         <EntryDashboard
           entries={entries}
           types={types ?? []}
