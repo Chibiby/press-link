@@ -1,10 +1,12 @@
-import { FileText, FilePen, Lock, MessageSquare, UserRound, Users } from "lucide-react";
+import { FileText, FilePen, Layers, Lock, MessageSquare, UserRound, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 
 import { relativeTime, type ActivityItem, type ActivityKind } from "@/lib/dashboard/activity";
 
 const KIND_ICON: Record<ActivityKind, LucideIcon> = {
+  // Stacked, because a session row is several actions folded into one line.
+  session: Layers,
   entry: FileText,
   participant: Users,
   coach: UserRound,

@@ -12,6 +12,8 @@
  * the tail of the feed is wrong in a way nothing will flag.
  */
 export type ActivityKind =
+  /** One login-to-logout session summarised as a sentence (`lib/dashboard/activity-sessions.ts`). */
+  | "session"
   | "entry"
   | "participant"
   | "coach"
