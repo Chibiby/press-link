@@ -39,6 +39,17 @@ create table if not exists app_settings (
 alter table app_settings drop constraint if exists app_settings_singleton;
 alter table app_settings add constraint app_settings_singleton check (id);
 
+-- The flag itself is added the same way as its two stamps, and for the same
+-- reason. `create table if not exists` adds nothing to a table that already
+-- stands, so on a database where 0001's app_settings survived — or where an
+-- earlier run of this file got part-way — the create above is a no-op and every
+-- statement below that names `submissions_locked` is resting on a column nobody
+-- has checked for. Without this line the backfill below aborts the whole
+-- migration. `not null default false` so that if the column does have to
+-- be added, every row on file reads open, which is the same value the seed insert
+-- below asks for. This must stay above the backfill: the backfill reads this
+-- column, and the check constraint after it depends on the backfill having run.
+alter table app_settings add column if not exists submissions_locked boolean not null default false;
 alter table app_settings add column if not exists submissions_locked_at timestamptz;
 alter table app_settings add column if not exists submissions_locked_by uuid;
 
@@ -80,11 +91,25 @@ alter table app_settings add constraint app_settings_lock_stamp_check
         and submissions_locked_by is null)
   );
 
--- Open is the state every environment is already in: nothing is frozen today by
--- a flag that does not exist yet, so seeding `false` makes this migration a
--- no-op for every row already on file, in every table. `do nothing` rather than
--- an upsert, because a table that survived from 0001 already holds its row and
--- this migration has no business overwriting the value it holds.
+-- Open is the state a fresh row starts in: nothing is frozen today by a flag no
+-- code reads, so seeding `false` is what makes this migration a no-op on every
+-- database 0010 reached. `do nothing` rather than an upsert, because a table
+-- that survived from 0001 already holds its row and this migration has no
+-- business overwriting the value it holds.
+--
+-- Which leaves one case this file is deliberately *not* a no-op for, and the
+-- commit that introduced it claimed otherwise: a database where 0010 never ran
+-- and 0001's row was left with `submissions_locked = true`. That value has been
+-- inert for as long as nothing read it; the guard functions in section 4 start
+-- reading it the moment this file commits, so applying it there freezes every
+-- school at once. Preserving the value is still the right call — clearing it
+-- would silently unfreeze a division that froze itself, see the backfill above —
+-- but it should not arrive as a surprise. Check before applying:
+--
+--   select submissions_locked, submissions_locked_at from app_settings;
+--
+-- If that comes back true and the freeze is not wanted, the admin control (or
+-- `select admin_set_submissions_lock(false)`) lifts it once this file is in.
 insert into app_settings (id, submissions_locked) values (true, false)
   on conflict (id) do nothing;
 
@@ -118,6 +143,39 @@ create policy "authenticated read app_settings" on app_settings for select
 drop policy if exists "admin write app_settings" on app_settings;
 create policy "admin write app_settings" on app_settings for update
   using (exists (select 1 from admin_profiles where user_id = auth.uid()));
+
+-- And the grants under those policies, following section 8 of 0024 and section 10
+-- of 0018.
+--
+-- RLS sits on top of table privileges, and Supabase's default privileges on schema
+-- `public` hand every new table to `anon` and `authenticated` with insert, update
+-- and delete included. The absent policies above already refuse all three, because
+-- a policy that does not exist permits nothing — but of every table in this schema
+-- this is the one whose deletion is an outage: with the singleton gone,
+-- `submissions_locked_globally()` below raises and every school-side write in the
+-- division comes back 'submission lock state unavailable'. "Nobody can delete the
+-- row" should not rest on the continued absence of a delete policy somebody adds
+-- in haste, so it is made true at the privilege layer too.
+--
+-- What is deliberately left in place:
+--
+--   * `select` to `authenticated` — app/admin/(shell)/dashboard-data.ts reads this
+--     row through the signed-in admin's own client, not the service role, so the
+--     read policy above is worthless without the privilege behind it.
+--   * `update` to `authenticated` — "admin write app_settings" is an update
+--     policy, and RLS can only narrow a privilege, never widen one. Revoking
+--     update would leave that policy inert and the two layers disagreeing about
+--     whether an admin may write this table by hand.
+--
+-- Neither function needs a table grant: `submissions_locked_globally()` and
+-- `admin_set_submissions_lock()` are both `security definer` and run as the owner.
+--
+-- `anon` keeps nothing at all, select included. The read policy above is already
+-- scoped `to authenticated` — that is the 0001 leak this file closes — and this
+-- closes it a second time, at a layer a future policy cannot reopen.
+grant select, update on app_settings to authenticated;
+revoke insert, delete, truncate on app_settings from anon, authenticated;
+revoke select, update on app_settings from anon;
 
 -- 3. Reading the switch from inside a trigger, without the possibility of
 --    failing open.
