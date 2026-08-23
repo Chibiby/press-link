@@ -204,9 +204,18 @@ reopens the wizard.
 
 Entries you filed earlier already have a coach under each contestant. Those
 entries named their coaches without recording which contestant each one was for,
-so the matching was filled in for you rather than asking you to re-file every
-entry. It may not be the pairing you intended — check it, and change what is
-wrong.
+so the matching was filled in rather than asking you to re-file every entry. How
+much of it to trust depends on how many coaches the entry named:
+
+- **One coach** — nothing was guessed. That coach is now under every contestant
+  on the entry, which is who it was always going to be, because there was nobody
+  else on it. This is almost every entry.
+- **Two or three coaches** — the pairing is an assumption. The names were matched
+  down the list in the order this site shows them, contestant by contestant, and
+  a coach past the number of contestants was left off, since an individual
+  contest holds one coach for each contestant and no more. Open those entries and
+  correct anything wrong; every coach you registered is still on your Coaches
+  tab.
 
 ---
 
@@ -260,7 +269,7 @@ you will simply be asked the question again on your next visit.
 | "Your submission is locked. Ask the division office to reopen it." | You tried to change something after locking. | Contact the division office. |
 | "Create at least one entry before locking your submission." | The Lock button is not available yet. | Create at least one entry first. |
 | "Your school already has an entry for this event." | That exact contest is already entered. | Edit the existing entry instead. |
-| "This event requires at least N participants" | Too few learners ticked. | Add more, or pick a different contest. |
+| "This event requires at least N participants" | Too few learners chosen. | Add more, or pick a different contest. |
 | "At least 1 coach is required" | No coach chosen. | Choose at least one coach. |
 | "Choose a coach for every contestant" | An individual entry has a contestant with an empty coach field. | Fill in the coach under each contestant. |
 | "This entry allows at most 2 coaches" | A group entry names three or more. | Remove the extra ones. |
