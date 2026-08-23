@@ -1,8 +1,10 @@
 import { Suspense, type ReactNode } from "react";
 
+import { SHELL_INSET } from "@/components/admin/shell/inset";
 import { Sidebar, SidebarCollapseProvider } from "@/components/admin/shell/Sidebar";
 import { Topbar } from "@/components/admin/shell/Topbar";
 import { UserChip } from "@/components/admin/shell/UserChip";
+import { cn } from "@/lib/utils";
 
 import { loadAdminName } from "./dashboard-data";
 
@@ -41,13 +43,9 @@ export default function AdminShellLayout({ children }: { children: ReactNode }) 
               </Suspense>
             }
           />
-          {/* No `mx-auto max-w-7xl` here. A centred cap inside a shell that already has
-              a rail spends the leftover width as margin on both sides: with the rail
-              collapsed on a 1920px display that was ~290px of dead space per side, and
-              it left the page heading floating well right of the topbar's hamburger.
-              The rail is the frame, so the content fills what the rail leaves and the
-              padding matches Topbar's, which puts both on one left edge. */}
-          <main className="w-full flex-1 px-3 py-6 sm:px-4">{children}</main>
+          {/* SHELL_INSET, not a cap of its own: the topbar row carries the same one, so
+              the hamburger and the page heading share a left edge. */}
+          <main className={cn(SHELL_INSET, "flex-1 py-6")}>{children}</main>
         </div>
       </div>
     </SidebarCollapseProvider>

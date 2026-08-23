@@ -48,10 +48,10 @@ export function EventDonut({ summary }: { summary: PerEventSummary }) {
     // viewport, the row layout switched on at exactly the width where the room for it
     // ran out, and the table spilled into Card's `overflow-hidden`.
     //
-    // 42rem, not 36rem: a third of the dashboard grid lands near 566px on a 1920px
-    // display, which would sit ~10px under a 36rem threshold and flip the layout on any
-    // small change in the rail or the zoom. 42rem keeps the dashboard reliably stacked
-    // and saves the row for a panel with room to spare.
+    // 42rem is above anything a third of the dashboard grid reaches under SHELL_INSET
+    // (~467px on a 1920px display, either rail state), so that panel stays stacked and
+    // stays stacked as the shell moves. The row layout is here for a panel actually
+    // given the room — widen this one and it takes it without another change.
     <div className="@container" onMouseLeave={() => setActive(null)}>
       <div className="flex flex-col items-center gap-6 @2xl:flex-row @2xl:items-start">
         <div className="relative shrink-0">
