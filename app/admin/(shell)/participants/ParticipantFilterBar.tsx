@@ -1,11 +1,13 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
 import { Asterisk, UserMinus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ANY, FilterSelect } from "@/components/admin/filter-select";
+import { FilterSearch } from "@/components/admin/filter-search";
+import { useFilterParams } from "@/hooks/use-filter-params";
+import { SEARCH_PARAM } from "@/lib/search/filter-params";
 
 interface Option {
   id: string;
@@ -20,8 +22,11 @@ interface Option {
  * other filter set gave `activeCount === 0`, so Clear never rendered — a reader saw a
  * heavily filtered table with nothing on screen saying it was filtered and no route
  * back. `/admin/coaches` has always had this right; this is the same list.
+ *
+ * `SEARCH_PARAM` is in here for exactly that reason and no other: a typed query is a
+ * filter, and one left out of this list is a filtered table with no way back.
  */
-const FILTER_KEYS = ["district", "school", "multi", "unassigned"] as const;
+const FILTER_KEYS = [SEARCH_PARAM, "district", "school", "multi", "unassigned"] as const;
 
 export function ParticipantFilterBar({
   districts,
@@ -30,31 +35,28 @@ export function ParticipantFilterBar({
   districts: Option[];
   schools: Option[];
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  function setParam(key: string, value: string | null, clearKey?: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value && value !== ANY) {
-      params.set(key, value);
-    } else {
-      params.delete(key);
-    }
-    // The two toggles are mutually exclusive — "in more than one event" and "in no
-    // event" cannot both hold — so switching one on clears the other in the same
-    // navigation rather than leaving a stale, contradictory param in the URL.
-    if (clearKey) params.delete(clearKey);
-    const qs = params.toString();
-    router.push(qs ? `/admin/participants?${qs}` : "/admin/participants");
-  }
+  // The URL writing this bar used to do by hand now comes from the hook, which
+  // adds the two things the search box needs and the dropdowns do not: the write
+  // is debounced, and it replaces rather than pushes, so typing "cruz" is one
+  // server render and one history entry instead of four of each.
+  const { searchParams, setParam, search, clearAll, activeCount, isPending } =
+    useFilterParams(FILTER_KEYS);
 
   const multiOnly = searchParams.get("multi") === "1";
   const unassignedOnly = searchParams.get("unassigned") === "1";
-  const activeCount = FILTER_KEYS.filter((k) => searchParams.get(k)).length;
 
   return (
-    <Card>
+    // The page wraps this and the table in a `group`, so this one attribute is
+    // all the table needs to dim while the filtered render is in flight. Without
+    // it, a search 250ms plus a server round trip away looks like a page that
+    // ignored the typing.
+    <Card data-pending={isPending ? "" : undefined}>
       <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <FilterSearch
+          label="Search"
+          placeholder="Name, school or number"
+          {...search}
+        />
         <FilterSelect
           label="District"
           value={searchParams.get("district") ?? ANY}
@@ -70,12 +72,16 @@ export function ParticipantFilterBar({
           options={schools.map((s) => ({ value: s.id, label: s.name }))}
         />
 
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
           <Button
             type="button"
             variant={multiOnly ? "default" : "outline"}
             aria-pressed={multiOnly}
-            onClick={() => setParam("multi", multiOnly ? null : "1", "unassigned")}
+            // The two toggles are mutually exclusive — "in more than one event" and
+            // "in no event" cannot both hold — so switching one on clears the other
+            // in the same navigation rather than leaving a stale, contradictory
+            // param in the URL.
+            onClick={() => setParam("multi", multiOnly ? null : "1", ["unassigned"])}
           >
             <Asterisk className="size-4" />
             Multi-event only
@@ -84,19 +90,18 @@ export function ParticipantFilterBar({
             type="button"
             variant={unassignedOnly ? "default" : "outline"}
             aria-pressed={unassignedOnly}
-            onClick={() => setParam("unassigned", unassignedOnly ? null : "1", "multi")}
+            onClick={() => setParam("unassigned", unassignedOnly ? null : "1", ["multi"])}
           >
             <UserMinus className="size-4" />
             Unassigned only
           </Button>
           {activeCount > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push("/admin/participants")}
-            >
+            // `clearAll`, not a bare push to the path: it also cancels a search
+            // write that was still waiting and empties the box, which a push
+            // cannot do — the URL would come back 250ms later carrying the query.
+            <Button variant="ghost" size="sm" onClick={clearAll}>
               <X className="size-4" />
-              Clear
+              Clear {activeCount} filter{activeCount === 1 ? "" : "s"}
             </Button>
           )}
         </div>

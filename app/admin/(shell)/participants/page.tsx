@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { requireAdmin } from "@/app/admin/guard";
 import { ParticipantFilterBar } from "./ParticipantFilterBar";
 import { ResetPaperButton } from "./ResetPaperButton";
@@ -6,6 +8,11 @@ import {
   toAdminParticipantRows,
   type RawAdminParticipant,
 } from "@/lib/roster/admin-rows";
+import {
+  filterParticipantRows,
+  participantEmptyState,
+  type ParticipantFilters,
+} from "@/lib/roster/participant-filters";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 
@@ -22,6 +29,7 @@ type RawAdminParticipantWithAggregate = Omit<RawAdminParticipant, "schools"> & {
     | null;
 };
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -32,17 +40,13 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-interface SearchParams {
-  district?: string;
-  school?: string;
-  multi?: string;
-  unassigned?: string;
-}
-
 export default async function AdminParticipantsPage({
   searchParams,
 }: {
-  searchParams: Promise<SearchParams>;
+  // `ParticipantFilters` rather than a shape declared here: the page and the
+  // filter it hands these to cannot then disagree about a param's name, which is
+  // a mistake with no symptom other than a control that silently does nothing.
+  searchParams: Promise<ParticipantFilters>;
 }) {
   const params = await searchParams;
   const { supabase } = await requireAdmin();
@@ -79,23 +83,27 @@ export default async function AdminParticipantsPage({
         }
       : null,
   }));
-  let rows = toAdminParticipantRows(rawWithCounts);
-  if (params.district) rows = rows.filter((r) => r.districtId === params.district);
-  if (params.school) rows = rows.filter((r) => r.schoolId === params.school);
-  if (params.multi === "1") rows = rows.filter((r) => r.isMultiEvent);
-  // Same parameter and same meaning as /admin/coaches?unassigned=1: registered
-  // but on no entry. An unrecognised value is no filter, matching the sibling
-  // pages — a hand-edited URL should not show an empty table as if the division
-  // had no learners.
-  if (params.unassigned === "1") rows = rows.filter((r) => r.eventCount === 0);
+  // Both halves live in `lib/roster/participant-filters.ts`, tested there: the row
+  // predicate, and the sentence to print when it keeps nothing. Filtering happens
+  // here in memory rather than in the query because the read above already pulls
+  // every row — it has to, or the count below lies — so narrowing in the database
+  // would buy nothing and would introduce a second matching semantics beside
+  // `matchesQuery`, where a `%` or an accent a parent typed would behave
+  // differently from the same query on the school's own lists.
+  const allRows = toAdminParticipantRows(rawWithCounts);
+  const rows = filterParticipantRows(allRows, params);
+  const empty = participantEmptyState(params);
 
   const multiCount = rows.filter((r) => r.isMultiEvent).length;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="group flex flex-col gap-6">
       <PageHeading
         title="Participants"
-        badge={`${rows.length} listed`}
+        // "12 of 2273", the way /admin/coaches and /admin/school-papers read it.
+        // `allRows` is the whole roster because `fetchAll` paged it, so the total
+        // is the division's real figure and not PostgREST's row cap.
+        badge={`${rows.length} of ${allRows.length}`}
         subtitle={
           <>
             Every registered contestant in the division. An asterisk marks a participant competing
@@ -106,7 +114,10 @@ export default async function AdminParticipantsPage({
 
       <ParticipantFilterBar districts={districts ?? []} schools={schools ?? []} />
 
-      <div className="overflow-x-auto rounded-xl border">
+      {/* Dimmed while the filter bar's navigation is still rendering on the
+          server, so the table reads as catching up rather than as ignoring what
+          was typed. Driven by `data-pending` on the bar above. */}
+      <div className="overflow-x-auto rounded-xl border transition-opacity group-has-data-pending:opacity-50">
         <Table>
           <TableHeader>
             <TableRow>
@@ -167,8 +178,25 @@ export default async function AdminParticipantsPage({
             ))}
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                  No participants match these filters.
+                {/* `whitespace-normal`, because `TableCell` sets
+                    `whitespace-nowrap` in its base and this cell quotes back
+                    whatever was typed — a pasted line would otherwise stretch the
+                    table into a sideways scroll instead of wrapping. */}
+                <TableCell colSpan={7} className="py-10 text-center whitespace-normal">
+                  <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
+                    {empty.message}
+                  </p>
+                  {empty.narrowed && (
+                    // A way back, on the table itself. The Clear button in the bar
+                    // above also covers this — `SEARCH_PARAM` is in its
+                    // `FILTER_KEYS` — but an empty table is where the reader is
+                    // looking, and a link is the honest control for it in a server
+                    // component. Navigating here empties the search box too: the
+                    // box follows the URL, so it clears when the param goes.
+                    <Button asChild size="sm" variant="outline" className="mt-3">
+                      <Link href="/admin/participants">Show all participants</Link>
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             )}
