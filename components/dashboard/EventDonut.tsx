@@ -47,8 +47,13 @@ export function EventDonut({ summary }: { summary: PerEventSummary }) {
     // third of a grid that only becomes three columns at `lg` — so keyed on the
     // viewport, the row layout switched on at exactly the width where the room for it
     // ran out, and the table spilled into Card's `overflow-hidden`.
+    //
+    // 42rem, not 36rem: a third of the dashboard grid lands near 566px on a 1920px
+    // display, which would sit ~10px under a 36rem threshold and flip the layout on any
+    // small change in the rail or the zoom. 42rem keeps the dashboard reliably stacked
+    // and saves the row for a panel with room to spare.
     <div className="@container" onMouseLeave={() => setActive(null)}>
-      <div className="flex flex-col items-center gap-6 @xl:flex-row @xl:items-start">
+      <div className="flex flex-col items-center gap-6 @2xl:flex-row @2xl:items-start">
         <div className="relative shrink-0">
           <svg
             width={SIZE}
