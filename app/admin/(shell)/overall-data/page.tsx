@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/app/admin/guard";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { PerSchoolTable } from "@/components/dashboard/PerSchoolTable";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -19,6 +20,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  filterOverallDataRows,
+  overallDataEmptyState,
+  overallDataListDescription,
+  overallDataResetHref,
+  overallDataSearchQuery,
+  type OverallDataFilters,
+} from "@/lib/admin/overall-data-filters";
 import { countByEventType, summarisePerEvent } from "@/lib/dashboard/per-event";
 import { summarisePerSchool } from "@/lib/dashboard/per-school";
 import { fetchSchoolFacts } from "@/lib/dashboard/school-facts";
@@ -48,10 +57,16 @@ export default async function OverallDataPage({
 }: {
   // Next 16: a Promise, and awaiting it is what makes this page dynamic — which is
   // also why the client filter needs no Suspense boundary around useSearchParams.
-  searchParams: Promise<{ district?: string }>;
+  //
+  // `OverallDataFilters` rather than a shape declared here, so this page and the
+  // filter it hands these to cannot disagree about a param's name — a mistake with
+  // no symptom other than a control that silently does nothing.
+  searchParams: Promise<OverallDataFilters>;
 }) {
   const { supabase } = await requireAdmin();
-  const { district } = await searchParams;
+  const params = await searchParams;
+  const { district } = params;
+  const query = overallDataSearchQuery(params);
 
   const [facts, districtResult, entryRows, typeCount] = await Promise.all([
     fetchSchoolFacts(supabase),
@@ -84,6 +99,13 @@ export default async function OverallDataPage({
     ? facts.active.filter((school) => school.districtId === district)
     : facts.active;
 
+  // Summarised from the *unsearched* set, on purpose. `summarisePerSchool` derives
+  // `totals`, `activeSchools` and `registeredSchools` from what it is handed, so
+  // passing it a searched array would turn the row labelled "Division total" into
+  // the total of whatever someone typed — a wrong number presented as an official
+  // one, on the page these figures get read out of. The district filter above is
+  // upstream of it because a district selection is *meant* to move the totals and
+  // the denominator; the search is not, so it is applied to the rows below instead.
   const perSchool = summarisePerSchool(activeSchools, {
     limit: activeSchools.length,
     registeredSchools: district
@@ -91,6 +113,19 @@ export default async function OverallDataPage({
       : facts.registeredSchools,
   });
 
+  // The rows the panel lists. `perSchool.rows` is already ranked and uncut, so this
+  // only removes; the order the reader sees is still biggest-first.
+  const shownRows = filterOverallDataRows(perSchool.rows, params);
+  // Rows swapped, every figure kept. `hiddenSchools` stays as `summarisePerSchool`
+  // left it — 0, because `limit` is the whole set — so the shared table's "showing
+  // the top N by entries" note stays off: nothing here was cut by rank, and that
+  // sentence would be the wrong explanation for a search.
+  const shownPerSchool = { ...perSchool, rows: shownRows };
+  const empty = overallDataEmptyState(params);
+
+  // District only. The search box deliberately does not reach this: these are
+  // population figures for the whole selection, and "entries by event type" filtered
+  // to one school's name would be a different question wearing this table's heading.
   const typeRows = entryRows
     .filter((row) => (district ? row.schools?.district_id === district : true))
     .map((row) => ({
@@ -109,14 +144,27 @@ export default async function OverallDataPage({
   const withoutData = perSchool.registeredSchools - perSchool.activeSchools;
 
   return (
-    <div className="space-y-6">
+    // `group`, so the filter bar's `data-pending` can dim the school list below it
+    // while the filtered render is still on the server. Nothing in this subtree
+    // uses an unnamed `group-*` variant — every group in `components/ui` is named
+    // (`/card`, `/input-group`) — so there is nothing here to cross-talk with.
+    <div className="group space-y-6">
       <PageHeading
         title="Overall Data"
         badge={districtName ?? undefined}
         subtitle={
-          districtName
-            ? `Every school in ${districtName} that has registered a learner, a coach or an entry, and the events they entered.`
-            : "Every school that has registered a learner, a coach or an entry, and the events they entered. Nothing on this page is truncated."
+          <>
+            {districtName
+              ? `Every school in ${districtName} that has registered a learner, a coach or an entry, and the events they entered.`
+              : "Every school that has registered a learner, a coach or an entry, and the events they entered."}
+            {query
+              ? // The unfiltered page promises nothing on it is truncated, so a search
+                // has to say what it narrowed and what it left alone. The school list
+                // is the only thing it touches: every total here, and the whole
+                // event-type table, still covers the selection.
+                ` The school list is narrowed to “${query}”; the totals and the event-type table below are not.`
+              : " Nothing on this page is truncated."}
+          </>
         }
       />
 
@@ -126,13 +174,44 @@ export default async function OverallDataPage({
         <CardHeader>
           <CardTitle className="text-base">Schools with data</CardTitle>
           <CardDescription>
-            {perSchool.activeSchools === 0
-              ? "No school in this selection has registered anything yet."
-              : `All ${perSchool.activeSchools}, biggest first.`}
+            {overallDataListDescription(params, {
+              shown: shownRows.length,
+              activeSchools: perSchool.activeSchools,
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <PerSchoolTable summary={perSchool} />
+          {/* Dimmed while the bar's navigation is still rendering, so the list reads
+              as catching up rather than as ignoring what was typed. Only this panel:
+              the event-type table below is not searched, and dimming it would imply
+              it was about to change. */}
+          <div className="transition-opacity group-has-data-pending:opacity-50">
+            {shownRows.length === 0 ? (
+              // Not `PerSchoolTable`'s own empty state. That one says "No school has
+              // an entry yet", which is a claim this page must never make on behalf
+              // of a search that matched nothing while two dozen schools are on file.
+              // The shared component is left exactly as the dashboard uses it.
+              <div className="py-8 text-center">
+                <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
+                  {empty.message}
+                </p>
+                {empty.narrowed ? (
+                  // A way back, where the reader is looking. The Clear button in the
+                  // bar covers this too, but this one keeps the district when the
+                  // search is what went wrong — clearing the district would re-scope
+                  // every total on the page, which is more than was asked for.
+                  <Button asChild size="sm" variant="outline" className="mt-3">
+                    <Link href={overallDataResetHref(params)}>{empty.resetLabel}</Link>
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              // Rows filtered before they get here, never inside the component: the
+              // dashboard renders this same table with no search box, and a filter
+              // inside it would either change that page or need a flag to stop it.
+              <PerSchoolTable summary={shownPerSchool} />
+            )}
+          </div>
           {withoutData > 0 ? (
             <p className="text-xs text-muted-foreground">
               <Link
