@@ -61,7 +61,7 @@ export default async function AdminSchoolsPage({
         .select(
           "id, name, school_id_number, district_id, is_integrated, submission_locked_at, districts(name), participants(count), coaches(count), entries(count)"
         )
-        .order("name", { referencedTable: "districts" })
+        .order("districts(name)")
         .order("id")
         .range(from, to)
         .overrideTypes<RawRegistrySchool[]>()
