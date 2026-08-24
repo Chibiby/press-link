@@ -5,7 +5,7 @@ import { boardProgress } from "@/lib/judging/consolidate";
 import { eventIndexSummary, type EventIndexRow } from "@/lib/judging/event-index";
 import { EVENT_JUDGING_LABEL } from "@/lib/judging/sheet-state";
 
-import { addLetterhead, LETTERHEAD_ROWS } from "./letterhead";
+import { addExportFooter, addExportHeader } from "./letterhead";
 
 /**
  * The workbooks behind the export buttons on /admin/judges and /admin/tabulators.
@@ -281,25 +281,32 @@ export function toTabulationRows(rows: EventIndexRow[]): TabulationRow[] {
  * to a query, and what this sheet explains is the one thing the cells cannot say
  * about themselves: which blanks and which sentences mean what.
  */
-/** Writes an array-of-arrays block starting at the sheet's first content row. */
-function writeAoa(sheet: ExcelJS.Worksheet, aoa: (string | number)[][]): void {
-  const startRow = LETTERHEAD_ROWS + 1;
+/**
+ * Writes an array-of-arrays block starting at `startRow`. Returns the last row
+ * written, so a caller can hand it straight to `addExportFooter`.
+ */
+function writeAoa(sheet: ExcelJS.Worksheet, aoa: (string | number)[][], startRow: number): number {
   aoa.forEach((line, i) => {
     sheet.getRow(startRow + i).values = line;
   });
+  return startRow + aoa.length - 1;
 }
 
-/** Writes a header row plus one row per record, starting at the sheet's first content row. */
+/**
+ * Writes a header row at `headerRowIndex` plus one row per record. Returns the
+ * last row written, so a caller can hand it straight to `addExportFooter`.
+ */
 function writeTable<Header extends string>(
   sheet: ExcelJS.Worksheet,
   headers: readonly Header[],
-  records: Record<Header, string | number>[]
-): void {
-  const headerRowIndex = LETTERHEAD_ROWS + 1;
+  records: Record<Header, string | number>[],
+  headerRowIndex: number
+): number {
   sheet.getRow(headerRowIndex).values = [...headers];
   records.forEach((record, i) => {
     sheet.getRow(headerRowIndex + 1 + i).values = headers.map((h) => record[h]);
   });
+  return headerRowIndex + records.length;
 }
 
 function aboutSheet(
@@ -313,45 +320,53 @@ function aboutSheet(
       : "/admin/tabulators — Sheets by event";
 
   const sheet = workbook.addWorksheet("About this export");
-  addLetterhead(workbook, sheet);
+  sheet.pageSetup = { ...sheet.pageSetup, orientation: "landscape" };
+  const startRow = addExportHeader(workbook, sheet);
   sheet.columns = [{ width: 12 }, { width: 82 }];
 
-  writeAoa(sheet, [
-    ["Press Link — adjudication export"],
-    [],
-    ["Generated", generatedAt],
-    ["Source", source],
-    [],
-    ["How to read a number"],
-    ["", "Every number here is the answer to a query. A 0 was measured: no judge has"],
-    ["", "been assigned, no qualifier has been drawn, nobody has been placed yet."],
-    [],
-    ["How to read a sentence"],
-    ["", "A sentence where a number belongs is a reason, and it says the figure could"],
-    ["", "not be measured at all — never that it was measured and came out at nought."],
-    ["", "There are three: no panel is seated, the event has no entries, or no round-2"],
-    ["", "cut is on file."],
-    [],
-    ["The round-2 cut"],
-    ["", "Spelled out rather than shown as the division's usual default of 10. The"],
-    ["", "column is never empty in the database, so a cut that cannot be printed is a"],
-    ["", "value that could not be read — and 10 in its place would report a decision"],
-    ["", "nobody took for that event."],
-    [],
-    ["What this file does not cover"],
-    ["", "The writing half of adjudication — seating a panel, closing a round, drawing"],
-    ["", "the cut, publishing a sheet — has no functions behind it yet. So an event can"],
-    ["", "be read all the way through and still sit at Not started: that is a contest"],
-    ["", "nobody has begun judging, not a figure this export failed to fetch."],
-  ]);
+  const lastRow = writeAoa(
+    sheet,
+    [
+      ["Press Link — adjudication export"],
+      [],
+      ["Generated", generatedAt],
+      ["Source", source],
+      [],
+      ["How to read a number"],
+      ["", "Every number here is the answer to a query. A 0 was measured: no judge has"],
+      ["", "been assigned, no qualifier has been drawn, nobody has been placed yet."],
+      [],
+      ["How to read a sentence"],
+      ["", "A sentence where a number belongs is a reason, and it says the figure could"],
+      ["", "not be measured at all — never that it was measured and came out at nought."],
+      ["", "There are three: no panel is seated, the event has no entries, or no round-2"],
+      ["", "cut is on file."],
+      [],
+      ["The round-2 cut"],
+      ["", "Spelled out rather than shown as the division's usual default of 10. The"],
+      ["", "column is never empty in the database, so a cut that cannot be printed is a"],
+      ["", "value that could not be read — and 10 in its place would report a decision"],
+      ["", "nobody took for that event."],
+      [],
+      ["What this file does not cover"],
+      ["", "The writing half of adjudication — seating a panel, closing a round, drawing"],
+      ["", "the cut, publishing a sheet — has no functions behind it yet. So an event can"],
+      ["", "be read all the way through and still sit at Not started: that is a contest"],
+      ["", "nobody has begun judging, not a figure this export failed to fetch."],
+    ],
+    startRow
+  );
+  addExportFooter(workbook, sheet, lastRow);
   return sheet;
 }
 
 function panelSheet(workbook: ExcelJS.Workbook, rows: EventIndexRow[]): ExcelJS.Worksheet {
   const sheet = workbook.addWorksheet("Panels by event");
-  addLetterhead(workbook, sheet);
+  sheet.pageSetup = { ...sheet.pageSetup, orientation: "landscape" };
+  const startRow = addExportHeader(workbook, sheet);
   sheet.columns = [34, 24, 17, 12, 9, 44, 40, 40, 62, 20, 74].map((width) => ({ width }));
-  writeTable(sheet, PANEL_HEADER, toPanelRows(rows));
+  const lastRow = writeTable(sheet, PANEL_HEADER, toPanelRows(rows), startRow);
+  addExportFooter(workbook, sheet, lastRow);
   return sheet;
 }
 
@@ -367,24 +382,29 @@ function rosterSheet(
   judges: JudgeRosterExportRow[]
 ): ExcelJS.Worksheet {
   const sheet = workbook.addWorksheet("Judges on file");
-  addLetterhead(workbook, sheet);
+  sheet.pageSetup = { ...sheet.pageSetup, orientation: "landscape" };
+  const startRow = addExportHeader(workbook, sheet);
 
   if (judges.length === 0) {
     sheet.columns = [{ width: 110 }];
-    writeAoa(sheet, [["Judges on file"], [XL_NO_JUDGES]]);
+    const lastRow = writeAoa(sheet, [["Judges on file"], [XL_NO_JUDGES]], startRow);
+    addExportFooter(workbook, sheet, lastRow);
     return sheet;
   }
 
   sheet.columns = [34, 34, 34, 9, 10].map((width) => ({ width }));
-  writeTable(sheet, ROSTER_HEADER, toRosterRows(judges));
+  const lastRow = writeTable(sheet, ROSTER_HEADER, toRosterRows(judges), startRow);
+  addExportFooter(workbook, sheet, lastRow);
   return sheet;
 }
 
 function tabulationSheet(workbook: ExcelJS.Workbook, rows: EventIndexRow[]): ExcelJS.Worksheet {
   const sheet = workbook.addWorksheet("Sheets by event");
-  addLetterhead(workbook, sheet);
+  sheet.pageSetup = { ...sheet.pageSetup, orientation: "landscape" };
+  const startRow = addExportHeader(workbook, sheet);
   sheet.columns = [34, 24, 17, 12, 9, 40, 62, 24, 74].map((width) => ({ width }));
-  writeTable(sheet, TABULATION_HEADER, toTabulationRows(rows));
+  const lastRow = writeTable(sheet, TABULATION_HEADER, toTabulationRows(rows), startRow);
+  addExportFooter(workbook, sheet, lastRow);
   return sheet;
 }
 

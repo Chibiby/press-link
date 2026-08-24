@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type ExcelJS from "exceljs";
+import ExcelJS from "exceljs";
 import type { CellValue } from "exceljs";
 
 import {
@@ -25,9 +25,15 @@ import {
   XL_NO_PANEL,
   XL_NO_UNITS,
 } from "./judging-workbook";
-import { LETTERHEAD_ROWS } from "./letterhead";
+import { addExportHeader } from "./letterhead";
 
-const HEADER_ROW = LETTERHEAD_ROWS + 1;
+/** The row a builder's own header lands on, computed the same way the builder does. */
+function contentStartRow(): number {
+  const workbook = new ExcelJS.Workbook();
+  return addExportHeader(workbook, workbook.addWorksheet("throwaway"));
+}
+
+const HEADER_ROW = contentStartRow();
 
 function sheetText(sheet: ExcelJS.Worksheet): string {
   const lines: string[] = [];

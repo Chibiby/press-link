@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import type { CellValue, Worksheet } from "exceljs";
 
@@ -7,7 +8,13 @@ import {
   buildSchoolRegistryWorkbook,
   toSchoolRegistryExportRows,
 } from "./school-registry-workbook";
-import { LETTERHEAD_ROWS } from "./letterhead";
+import { addExportHeader } from "./letterhead";
+
+/** The row a builder's own header lands on, computed the same way the builder does. */
+function contentStartRow(): number {
+  const workbook = new ExcelJS.Workbook();
+  return addExportHeader(workbook, workbook.addWorksheet("throwaway"));
+}
 
 function rowValues(sheet: Worksheet, rowNumber: number): CellValue[] {
   return (sheet.getRow(rowNumber).values as CellValue[]).slice(1);
@@ -152,7 +159,7 @@ describe("toSchoolRegistryExportRows", () => {
 });
 
 describe("buildSchoolRegistryWorkbook", () => {
-  const headerRowIndex = LETTERHEAD_ROWS + 1;
+  const headerRowIndex = contentStartRow();
 
   it("produces a single Schools sheet with the header and data rows at the right offsets", () => {
     const book = buildSchoolRegistryWorkbook(summary());
