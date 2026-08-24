@@ -1,4 +1,3 @@
-import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import type { CellValue, Worksheet } from "exceljs";
 
@@ -8,17 +7,6 @@ import {
   buildSchoolRegistryWorkbook,
   toSchoolRegistryExportRows,
 } from "./school-registry-workbook";
-import { addExportHeader } from "./letterhead";
-
-const COLUMN_WIDTHS = [55, 16, 24, 16, 16, 16, 16];
-
-/** The row a builder's own header lands on, computed the same way the builder does. */
-function contentStartRow(): number {
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("throwaway");
-  sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
-  return addExportHeader(workbook, sheet);
-}
 
 function rowValues(sheet: Worksheet, rowNumber: number): CellValue[] {
   return (sheet.getRow(rowNumber).values as CellValue[]).slice(1);
@@ -87,7 +75,7 @@ const summary = (over: Partial<RegistrySummary> = {}): RegistrySummary => ({
 });
 
 describe("toSchoolRegistryExportRows", () => {
-  it("keeps one row per school, in the order given, mirroring the four visible columns", () => {
+  it("keeps one row per school, in the order given, combining learners and coaches into one cell per category", () => {
     const rows = toSchoolRegistryExportRows(summary());
 
     expect(rows.slice(0, 3)).toEqual([
@@ -95,28 +83,22 @@ describe("toSchoolRegistryExportRows", () => {
         School: "Alabel National High School",
         "School ID": "300001",
         District: "Alabel",
-        "Ind. Learners": 8,
-        "Ind. Coaches": 3,
-        "Grp. Learners": 7,
-        "Grp. Coaches": 2,
+        Individual: "Learners: 8\nCoaches: 3",
+        Group: "Learners: 7\nCoaches: 2",
       },
       {
         School: "Malapatan Central",
         "School ID": "300002",
         District: "Malapatan",
-        "Ind. Learners": 2,
-        "Ind. Coaches": 1,
-        "Grp. Learners": 0,
-        "Grp. Coaches": 0,
+        Individual: "Learners: 2\nCoaches: 1",
+        Group: "Learners: 0\nCoaches: 0",
       },
       {
         School: "Maasim Central ES",
         "School ID": "300003",
         District: "Maasim",
-        "Ind. Learners": 0,
-        "Ind. Coaches": 0,
-        "Grp. Learners": 4,
-        "Grp. Coaches": 1,
+        Individual: "Learners: 0\nCoaches: 0",
+        Group: "Learners: 4\nCoaches: 1",
       },
     ]);
   });
@@ -128,10 +110,8 @@ describe("toSchoolRegistryExportRows", () => {
       School: "DIVISION TOTAL",
       "School ID": "",
       District: "3 of 332 schools",
-      "Ind. Learners": 10,
-      "Ind. Coaches": 4,
-      "Grp. Learners": 11,
-      "Grp. Coaches": 3,
+      Individual: "Learners: 10\nCoaches: 4",
+      Group: "Learners: 11\nCoaches: 3",
     });
   });
 
@@ -154,16 +134,14 @@ describe("toSchoolRegistryExportRows", () => {
       "School",
       "School ID",
       "District",
-      "Ind. Learners",
-      "Ind. Coaches",
-      "Grp. Learners",
-      "Grp. Coaches",
+      "Individual",
+      "Group",
     ]);
   });
 });
 
 describe("buildSchoolRegistryWorkbook", () => {
-  const headerRowIndex = contentStartRow();
+  const headerRowIndex = 1;
 
   it("produces a single Schools sheet with the header and data rows at the right offsets", () => {
     const book = buildSchoolRegistryWorkbook(summary());
@@ -174,20 +152,16 @@ describe("buildSchoolRegistryWorkbook", () => {
       "School",
       "School ID",
       "District",
-      "Ind. Learners",
-      "Ind. Coaches",
-      "Grp. Learners",
-      "Grp. Coaches",
+      "Individual",
+      "Group",
     ]);
 
     expect(rowValues(sheet, headerRowIndex + 1)).toEqual([
       "Alabel National High School",
       "300001",
       "Alabel",
-      8,
-      3,
-      7,
-      2,
+      "Learners: 8\nCoaches: 3",
+      "Learners: 7\nCoaches: 2",
     ]);
 
     // Row 4 is DIVISION TOTAL, after the three schools.
@@ -195,10 +169,8 @@ describe("buildSchoolRegistryWorkbook", () => {
       "DIVISION TOTAL",
       "",
       "3 of 332 schools",
-      10,
-      4,
-      11,
-      3,
+      "Learners: 10\nCoaches: 4",
+      "Learners: 11\nCoaches: 3",
     ]);
   });
 
@@ -212,5 +184,15 @@ describe("buildSchoolRegistryWorkbook", () => {
     );
     const sheet = book.getWorksheet("Schools")!;
     expect(rowValues(sheet, headerRowIndex + 1)[0]).toBe("DIVISION TOTAL");
+  });
+
+  it("applies wrapText alignment to the Individual and Group cells but not the other columns", () => {
+    const book = buildSchoolRegistryWorkbook(summary());
+    const sheet = book.getWorksheet("Schools")!;
+    const dataRow = sheet.getRow(headerRowIndex + 1);
+
+    expect(dataRow.getCell(4).alignment).toEqual({ wrapText: true, vertical: "middle" });
+    expect(dataRow.getCell(5).alignment).toEqual({ wrapText: true, vertical: "middle" });
+    expect(dataRow.getCell(1).alignment).toBeUndefined();
   });
 });
