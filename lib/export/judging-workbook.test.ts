@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import * as XLSX from "xlsx";
+import type ExcelJS from "exceljs";
+import type { CellValue } from "exceljs";
 
 import {
   buildEventIndex,
@@ -24,6 +25,26 @@ import {
   XL_NO_PANEL,
   XL_NO_UNITS,
 } from "./judging-workbook";
+import { LETTERHEAD_ROWS } from "./letterhead";
+
+const HEADER_ROW = LETTERHEAD_ROWS + 1;
+
+function sheetText(sheet: ExcelJS.Worksheet): string {
+  const lines: string[] = [];
+  sheet.eachRow((row) => {
+    lines.push(
+      (row.values as CellValue[])
+        .slice(1)
+        .map((v) => (v ?? "").toString())
+        .join(",")
+    );
+  });
+  return lines.join("\n");
+}
+
+function rowValues(sheet: ExcelJS.Worksheet, rowNumber: number): CellValue[] {
+  return (sheet.getRow(rowNumber).values as CellValue[]).slice(1);
+}
 
 const AT = "2026-08-22";
 
@@ -315,7 +336,7 @@ describe("buildJudgesWorkbook", () => {
   const book = buildJudgesWorkbook({ rows: UNJUDGED, judges: ROSTER }, AT);
 
   it("leads with the reading guide, before any figure", () => {
-    expect(book.SheetNames).toEqual([
+    expect(book.worksheets.map((s) => s.name)).toEqual([
       "About this export",
       "Panels by event",
       "Judges on file",
@@ -323,7 +344,7 @@ describe("buildJudgesWorkbook", () => {
   });
 
   it("says on the About sheet how to tell a nought from an absence", () => {
-    const text = XLSX.utils.sheet_to_csv(book.Sheets["About this export"]);
+    const text = sheetText(book.getWorksheet("About this export")!);
     expect(text).toContain("A 0 was measured");
     expect(text).toContain(AT);
   });
@@ -331,38 +352,35 @@ describe("buildJudgesWorkbook", () => {
   it("no longer claims the judging tables are absent", () => {
     // They are in the database now. Saying otherwise would make every measured
     // figure in the file unreadable, which is the failure this sheet exists against.
-    const text = XLSX.utils.sheet_to_csv(book.Sheets["About this export"]);
+    const text = sheetText(book.getWorksheet("About this export")!);
     expect(text).not.toContain("Migration 0018");
     expect(text).not.toContain("layout preview");
   });
 
   it("heads the roster sheet with every column, in order", () => {
-    const grid = XLSX.utils.sheet_to_json<string[]>(book.Sheets["Judges on file"], {
-      header: 1,
-    });
-    expect(grid[0]).toEqual([...ROSTER_HEADER]);
-    expect(grid[1]?.[0]).toBe("Dela Cruz, Maria L.");
+    const sheet = book.getWorksheet("Judges on file")!;
+    expect(rowValues(sheet, HEADER_ROW)).toEqual([...ROSTER_HEADER]);
+    expect(rowValues(sheet, HEADER_ROW + 1)[0]).toBe("Dela Cruz, Maria L.");
   });
 
   it("keeps the roster sheet and explains an empty roster in it", () => {
     // Dropping the sheet would leave a reader to conclude the roster was never part
     // of this export, which is the opposite of the truth.
     const empty = buildJudgesWorkbook({ rows: UNJUDGED, judges: [] }, AT);
-    expect(empty.SheetNames).toContain("Judges on file");
-    expect(XLSX.utils.sheet_to_csv(empty.Sheets["Judges on file"])).toContain(XL_NO_JUDGES);
+    const sheet = empty.getWorksheet("Judges on file");
+    expect(sheet).toBeDefined();
+    expect(sheetText(sheet!)).toContain(XL_NO_JUDGES);
   });
 
   it("heads the panel sheet with every column, in order", () => {
-    const grid = XLSX.utils.sheet_to_json<string[]>(book.Sheets["Panels by event"], {
-      header: 1,
-    });
-    expect(grid[0]).toEqual([...PANEL_HEADER]);
+    const sheet = book.getWorksheet("Panels by event")!;
+    expect(rowValues(sheet, HEADER_ROW)).toEqual([...PANEL_HEADER]);
   });
 
-  it("writes a real xlsx file", () => {
+  it("writes a real xlsx file", async () => {
     // A workbook that cannot be serialised is not an export. PK is the zip magic
     // every .xlsx begins with.
-    const buffer: Buffer = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+    const buffer = Buffer.from(await book.xlsx.writeBuffer());
     expect(buffer.length).toBeGreaterThan(0);
     expect(buffer.subarray(0, 2).toString("latin1")).toBe("PK");
   });
@@ -372,26 +390,27 @@ describe("buildTabulatorsWorkbook", () => {
   const book = buildTabulatorsWorkbook({ rows: UNJUDGED, judges: ROSTER }, AT);
 
   it("leads with the same reading guide and names its own page", () => {
-    expect(book.SheetNames).toEqual(["About this export", "Sheets by event"]);
-    const text = XLSX.utils.sheet_to_csv(book.Sheets["About this export"]);
+    expect(book.worksheets.map((s) => s.name)).toEqual([
+      "About this export",
+      "Sheets by event",
+    ]);
+    const text = sheetText(book.getWorksheet("About this export")!);
     expect(text).toContain("/admin/tabulators");
   });
 
   it("leaves the roster out, because a tabulator's sheet never names a judge", () => {
     // Round-2 qualification and the standings are anonymous work. A roster in this
     // file would put judges and contest codes in one workbook for no reason.
-    expect(book.SheetNames).not.toContain("Judges on file");
+    expect(book.worksheets.map((s) => s.name)).not.toContain("Judges on file");
   });
 
   it("heads the tabulation sheet with every column, in order", () => {
-    const grid = XLSX.utils.sheet_to_json<string[]>(book.Sheets["Sheets by event"], {
-      header: 1,
-    });
-    expect(grid[0]).toEqual([...TABULATION_HEADER]);
+    const sheet = book.getWorksheet("Sheets by event")!;
+    expect(rowValues(sheet, HEADER_ROW)).toEqual([...TABULATION_HEADER]);
   });
 
-  it("writes a real xlsx file", () => {
-    const buffer: Buffer = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+  it("writes a real xlsx file", async () => {
+    const buffer = Buffer.from(await book.xlsx.writeBuffer());
     expect(buffer.subarray(0, 2).toString("latin1")).toBe("PK");
   });
 });

@@ -1,9 +1,11 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 import type { EventCategory } from "@/lib/events-catalog";
 import { boardProgress } from "@/lib/judging/consolidate";
 import { eventIndexSummary, type EventIndexRow } from "@/lib/judging/event-index";
 import { EVENT_JUDGING_LABEL } from "@/lib/judging/sheet-state";
+
+import { addLetterhead, LETTERHEAD_ROWS } from "./letterhead";
 
 /**
  * The workbooks behind the export buttons on /admin/judges and /admin/tabulators.
@@ -279,13 +281,42 @@ export function toTabulationRows(rows: EventIndexRow[]): TabulationRow[] {
  * to a query, and what this sheet explains is the one thing the cells cannot say
  * about themselves: which blanks and which sentences mean what.
  */
-function aboutSheet(kind: "judges" | "tabulators", generatedAt: string): XLSX.WorkSheet {
+/** Writes an array-of-arrays block starting at the sheet's first content row. */
+function writeAoa(sheet: ExcelJS.Worksheet, aoa: (string | number)[][]): void {
+  const startRow = LETTERHEAD_ROWS + 1;
+  aoa.forEach((line, i) => {
+    sheet.getRow(startRow + i).values = line;
+  });
+}
+
+/** Writes a header row plus one row per record, starting at the sheet's first content row. */
+function writeTable<Header extends string>(
+  sheet: ExcelJS.Worksheet,
+  headers: readonly Header[],
+  records: Record<Header, string | number>[]
+): void {
+  const headerRowIndex = LETTERHEAD_ROWS + 1;
+  sheet.getRow(headerRowIndex).values = [...headers];
+  records.forEach((record, i) => {
+    sheet.getRow(headerRowIndex + 1 + i).values = headers.map((h) => record[h]);
+  });
+}
+
+function aboutSheet(
+  workbook: ExcelJS.Workbook,
+  kind: "judges" | "tabulators",
+  generatedAt: string
+): ExcelJS.Worksheet {
   const source =
     kind === "judges"
       ? "/admin/judges — Panels by event"
       : "/admin/tabulators — Sheets by event";
 
-  const sheet = XLSX.utils.aoa_to_sheet([
+  const sheet = workbook.addWorksheet("About this export");
+  addLetterhead(workbook, sheet);
+  sheet.columns = [{ width: 12 }, { width: 82 }];
+
+  writeAoa(sheet, [
     ["Press Link — adjudication export"],
     [],
     ["Generated", generatedAt],
@@ -313,15 +344,14 @@ function aboutSheet(kind: "judges" | "tabulators", generatedAt: string): XLSX.Wo
     ["", "be read all the way through and still sit at Not started: that is a contest"],
     ["", "nobody has begun judging, not a figure this export failed to fetch."],
   ]);
-  sheet["!cols"] = [{ wch: 12 }, { wch: 82 }];
   return sheet;
 }
 
-function panelSheet(rows: EventIndexRow[]): XLSX.WorkSheet {
-  const sheet = XLSX.utils.json_to_sheet(toPanelRows(rows), {
-    header: [...PANEL_HEADER],
-  });
-  sheet["!cols"] = [34, 24, 17, 12, 9, 44, 40, 40, 62, 20, 74].map((wch) => ({ wch }));
+function panelSheet(workbook: ExcelJS.Workbook, rows: EventIndexRow[]): ExcelJS.Worksheet {
+  const sheet = workbook.addWorksheet("Panels by event");
+  addLetterhead(workbook, sheet);
+  sheet.columns = [34, 24, 17, 12, 9, 44, 40, 40, 62, 20, 74].map((width) => ({ width }));
+  writeTable(sheet, PANEL_HEADER, toPanelRows(rows));
   return sheet;
 }
 
@@ -332,25 +362,29 @@ function panelSheet(rows: EventIndexRow[]): XLSX.WorkSheet {
  * where the rows would go: dropping the sheet would leave a reader to conclude the
  * roster was never part of this export, which is the opposite of the truth.
  */
-function rosterSheet(judges: JudgeRosterExportRow[]): XLSX.WorkSheet {
+function rosterSheet(
+  workbook: ExcelJS.Workbook,
+  judges: JudgeRosterExportRow[]
+): ExcelJS.Worksheet {
+  const sheet = workbook.addWorksheet("Judges on file");
+  addLetterhead(workbook, sheet);
+
   if (judges.length === 0) {
-    const empty = XLSX.utils.aoa_to_sheet([["Judges on file"], [XL_NO_JUDGES]]);
-    empty["!cols"] = [{ wch: 110 }];
-    return empty;
+    sheet.columns = [{ width: 110 }];
+    writeAoa(sheet, [["Judges on file"], [XL_NO_JUDGES]]);
+    return sheet;
   }
 
-  const sheet = XLSX.utils.json_to_sheet(toRosterRows(judges), {
-    header: [...ROSTER_HEADER],
-  });
-  sheet["!cols"] = [34, 34, 34, 9, 10].map((wch) => ({ wch }));
+  sheet.columns = [34, 34, 34, 9, 10].map((width) => ({ width }));
+  writeTable(sheet, ROSTER_HEADER, toRosterRows(judges));
   return sheet;
 }
 
-function tabulationSheet(rows: EventIndexRow[]): XLSX.WorkSheet {
-  const sheet = XLSX.utils.json_to_sheet(toTabulationRows(rows), {
-    header: [...TABULATION_HEADER],
-  });
-  sheet["!cols"] = [34, 24, 17, 12, 9, 40, 62, 24, 74].map((wch) => ({ wch }));
+function tabulationSheet(workbook: ExcelJS.Workbook, rows: EventIndexRow[]): ExcelJS.Worksheet {
+  const sheet = workbook.addWorksheet("Sheets by event");
+  addLetterhead(workbook, sheet);
+  sheet.columns = [34, 24, 17, 12, 9, 40, 62, 24, 74].map((width) => ({ width }));
+  writeTable(sheet, TABULATION_HEADER, toTabulationRows(rows));
   return sheet;
 }
 
@@ -362,21 +396,21 @@ function tabulationSheet(rows: EventIndexRow[]): XLSX.WorkSheet {
 export function buildJudgesWorkbook(
   { rows, judges }: JudgingExportInput,
   generatedAt: string
-): XLSX.WorkBook {
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, aboutSheet("judges", generatedAt), "About this export");
-  XLSX.utils.book_append_sheet(book, panelSheet(rows), "Panels by event");
-  XLSX.utils.book_append_sheet(book, rosterSheet(judges), "Judges on file");
+): ExcelJS.Workbook {
+  const workbook = new ExcelJS.Workbook();
+  aboutSheet(workbook, "judges", generatedAt);
+  panelSheet(workbook, rows);
+  rosterSheet(workbook, judges);
 
-  return book;
+  return workbook;
 }
 
 export function buildTabulatorsWorkbook(
   { rows }: JudgingExportInput,
   generatedAt: string
-): XLSX.WorkBook {
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, aboutSheet("tabulators", generatedAt), "About this export");
-  XLSX.utils.book_append_sheet(book, tabulationSheet(rows), "Sheets by event");
-  return book;
+): ExcelJS.Workbook {
+  const workbook = new ExcelJS.Workbook();
+  aboutSheet(workbook, "tabulators", generatedAt);
+  tabulationSheet(workbook, rows);
+  return workbook;
 }

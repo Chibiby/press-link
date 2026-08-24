@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ANY, FilterSelect } from "@/components/admin/filter-select";
 import { FilterSearch } from "@/components/admin/filter-search";
 import { useFilterParams } from "@/hooks/use-filter-params";
+import { MUNICIPALITIES } from "@/lib/districts/municipality";
 import { ENTRY_FILTER_KEYS } from "@/lib/entries/admin-entry-filters";
 
 interface Option {
@@ -42,9 +43,9 @@ export function FilterBar({
     // it, a search 250ms plus a server round trip away looks like a page that
     // ignored the typing.
     <Card data-pending={isPending ? "" : undefined}>
-      {/* Seven controls in six columns, exactly as `CoachFilterBar` sits: the six
-          dropdowns keep the widths they had, and the new box takes the first cell
-          rather than every control shrinking to make room for it. */}
+      {/* Eight controls in six columns, exactly as `CoachFilterBar` sits: the
+          dropdowns keep the widths they had, and the search box takes the first
+          cell rather than every control shrinking to make room for it. */}
       <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <FilterSearch
           label="Search"
@@ -52,6 +53,13 @@ export function FilterBar({
           // a dropdown of their own in this same card.
           placeholder="Contestant, coach or school"
           {...search}
+        />
+        <FilterSelect
+          label="Municipality"
+          value={searchParams.get("municipality") ?? ANY}
+          onChange={(v) => setParam("municipality", v)}
+          placeholder="All municipalities"
+          options={MUNICIPALITIES.map((m) => ({ value: m, label: m }))}
         />
         <FilterSelect
           label="District"

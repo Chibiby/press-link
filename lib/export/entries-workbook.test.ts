@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import * as XLSX from "xlsx";
+import type { CellValue, Worksheet } from "exceljs";
 
 import { buildEntriesWorkbook, toExportRows, type ExportEntry } from "./entries-workbook";
+import { LETTERHEAD_ROWS } from "./letterhead";
+
+function rowValues(sheet: Worksheet, rowNumber: number): CellValue[] {
+  return (sheet.getRow(rowNumber).values as CellValue[]).slice(1);
+}
 
 const individual: ExportEntry = {
   schoolName: "A F. Dela Cruz ES",
@@ -75,13 +80,14 @@ describe("toExportRows", () => {
 });
 
 describe("buildEntriesWorkbook", () => {
+  const headerRowIndex = LETTERHEAD_ROWS + 1;
+
   it("produces a single Entries sheet that round-trips", () => {
     const book = buildEntriesWorkbook([individual, group]);
-    expect(book.SheetNames).toEqual(["Entries"]);
+    expect(book.worksheets.map((s) => s.name)).toEqual(["Entries"]);
 
-    const parsed = XLSX.utils.sheet_to_json<Record<string, string>>(book.Sheets.Entries);
-    expect(parsed).toHaveLength(4);
-    expect(Object.keys(parsed[0])).toEqual([
+    const sheet = book.getWorksheet("Entries")!;
+    expect(rowValues(sheet, headerRowIndex)).toEqual([
       "No.",
       "School",
       "District",
@@ -94,11 +100,28 @@ describe("buildEntriesWorkbook", () => {
       "Coaches",
       "Submitted",
     ]);
+
+    const firstDataRow = rowValues(sheet, headerRowIndex + 1);
+    expect(firstDataRow).toEqual([
+      "0001",
+      "A F. Dela Cruz ES",
+      "Alabel 1",
+      "News Writing",
+      "Individual",
+      "Elementary",
+      "English",
+      "Cruz, Ana Reyes",
+      "F",
+      "Mr. Santos (M)",
+      "2026-08-13 09:30",
+    ]);
+    expect(rowValues(sheet, headerRowIndex + 5)).toEqual([]);
   });
 
   it("produces an empty sheet for no entries", () => {
     const book = buildEntriesWorkbook([]);
-    expect(XLSX.utils.sheet_to_json(book.Sheets.Entries)).toEqual([]);
+    const sheet = book.getWorksheet("Entries")!;
+    expect(rowValues(sheet, headerRowIndex + 1)).toEqual([]);
   });
 });
 

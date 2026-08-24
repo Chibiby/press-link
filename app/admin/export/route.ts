@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import * as XLSX from "xlsx";
 
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -110,10 +109,10 @@ export async function GET(request: NextRequest) {
   }
 
   // The same post-fetch narrowing the admin page applies, because it is literally
-  // the same function: the search, the district, and the category, level and
-  // language that live on joined tables. Re-implementing the search here is how
-  // the two would drift — a typed `%` or an accent would mean one thing on screen
-  // and another in the file.
+  // the same function: the search, the municipality, the district, and the
+  // category, level and language that live on joined tables. Re-implementing the
+  // search here is how the two would drift — a typed `%` or an accent would mean
+  // one thing on screen and another in the file.
   const filtered = filterEntryRows(rawEntries, filters);
 
   const exportEntries: ExportEntry[] = filtered.map((entry) => ({
@@ -141,7 +140,7 @@ export async function GET(request: NextRequest) {
   }));
 
   const book = buildEntriesWorkbook(exportEntries);
-  const buffer: Buffer = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+  const buffer = await book.xlsx.writeBuffer();
   const date = new Date().toISOString().slice(0, 10);
   // "press-link-entries-filtered-2026-08-23.xlsx" whenever a control narrowed the
   // rows, computed from the same filters that narrowed them. The file outlives the

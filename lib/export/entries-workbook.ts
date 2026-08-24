@@ -1,8 +1,10 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { formatParticipantNumber } from "@/lib/roster/limits";
 import { surnameFirstCamel } from "@/lib/roster/names";
+
+import { addLetterhead, LETTERHEAD_ROWS } from "./letterhead";
 
 export interface ExportEntry {
   schoolName: string;
@@ -35,6 +37,22 @@ export interface ExportRow {
   Coaches: string;
   Submitted: string;
 }
+
+const HEADERS = [
+  "No.",
+  "School",
+  "District",
+  "Event",
+  "Category",
+  "Level",
+  "Language",
+  "Participant",
+  "Gender",
+  "Coaches",
+  "Submitted",
+] as const;
+
+const COLUMN_WIDTHS = [8, 32, 22, 34, 12, 12, 10, 30, 8, 34, 20];
 
 const titleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
@@ -77,26 +95,20 @@ export function toExportRows(entries: ExportEntry[]): ExportRow[] {
   return rows;
 }
 
-export function buildEntriesWorkbook(entries: ExportEntry[]): XLSX.WorkBook {
+export function buildEntriesWorkbook(entries: ExportEntry[]): ExcelJS.Workbook {
   const rows = toExportRows(entries);
-  const sheet = XLSX.utils.json_to_sheet(rows, {
-    header: [
-      "No.",
-      "School",
-      "District",
-      "Event",
-      "Category",
-      "Level",
-      "Language",
-      "Participant",
-      "Gender",
-      "Coaches",
-      "Submitted",
-    ],
-  });
-  sheet["!cols"] = [8, 32, 22, 34, 12, 12, 10, 30, 8, 34, 20].map((wch) => ({ wch }));
 
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, "Entries");
-  return book;
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Entries");
+  addLetterhead(workbook, sheet);
+  sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
+
+  const headerRowIndex = LETTERHEAD_ROWS + 1;
+  sheet.getRow(headerRowIndex).values = [...HEADERS];
+
+  rows.forEach((row, i) => {
+    sheet.getRow(headerRowIndex + 1 + i).values = HEADERS.map((header) => row[header]);
+  });
+
+  return workbook;
 }

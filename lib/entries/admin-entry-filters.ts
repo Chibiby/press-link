@@ -1,3 +1,4 @@
+import { municipalityOf, MUNICIPALITIES, type Municipality } from "@/lib/districts/municipality";
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { distinctCoaches } from "@/lib/roster/entry-coaches";
 import { surnameFirst } from "@/lib/roster/names";
@@ -32,7 +33,9 @@ import { matchesQuery } from "@/lib/search/matches-query";
  * silently narrowing to nothing.
  */
 export interface AdminEntryRow {
-  schools: { name: string; district_id: string } | null;
+  // `districts` is optional: only the municipality filter needs it, and it is
+  // read through `municipalityOf`, which already handles an absent join.
+  schools: { name: string; district_id: string; districts?: { name: string } | null } | null;
   events: {
     category: EventCategory;
     level: EventLevel;
@@ -61,6 +64,7 @@ export interface AdminEntryRow {
  */
 export const ENTRY_FILTER_KEYS = [
   SEARCH_PARAM,
+  "municipality",
   "district",
   "school",
   "event",
@@ -86,6 +90,7 @@ export const ENTRY_FILTER_KEYS = [
  */
 export interface EntryFilters {
   [SEARCH_PARAM]?: string | string[];
+  municipality?: string;
   district?: string;
   school?: string;
   event?: string;
@@ -114,6 +119,7 @@ export function entryFiltersFromParams(params: {
 
   return {
     [SEARCH_PARAM]: value(SEARCH_PARAM),
+    municipality: value("municipality"),
     district: value("district"),
     school: value("school"),
     event: value("event"),
@@ -180,19 +186,22 @@ export function entryCoachNames(entry: AdminEntryRow): string[] {
  * One place, read by the row filter, the empty state and the export filename, so
  * none of the three can disagree about whether the view is narrowed.
  *
- * Category, level and language are closed sets, so an unrecognised value is *no*
- * filter rather than a filter nothing matches — the rule `lib/paper/admin-papers.ts`
- * and `lib/roster/admin-coach-rows.ts` already follow, and worth more here than on
- * a page: `?level=elem` would otherwise hand an administrator an empty table, and
- * an empty workbook, that read as a division with no entries. District, school and
- * event are ids and cannot be checked that way; an id nothing matches is an empty
- * table, exactly as on /admin/participants.
+ * Municipality, category, level and language are closed sets, so an unrecognised
+ * value is *no* filter rather than a filter nothing matches — the rule
+ * `lib/paper/admin-papers.ts` and `lib/roster/admin-coach-rows.ts` already follow,
+ * and worth more here than on a page: `?level=elem` would otherwise hand an
+ * administrator an empty table, and an empty workbook, that read as a division
+ * with no entries. District, school and event are ids and cannot be checked that
+ * way; an id nothing matches is an empty table, exactly as on /admin/participants.
  *
  * Search is the exception to all of it and is handled above: a typed query cannot
  * be unrecognised, so its empty result is the true answer.
  */
 function activeRowFilters(filters: EntryFilters) {
   return {
+    municipality: (MUNICIPALITIES as readonly string[]).includes(filters.municipality ?? "")
+      ? (filters.municipality as Municipality)
+      : null,
     district: filters.district || null,
     school: filters.school || null,
     event: filters.event || null,
@@ -227,7 +236,7 @@ export function filterEntryRows<T extends AdminEntryRow>(
   filters: EntryFilters
 ): T[] {
   const query = entrySearchQuery(filters) ?? "";
-  const { district, category, level, language } = activeRowFilters(filters);
+  const { municipality, district, category, level, language } = activeRowFilters(filters);
 
   return rows.filter((entry) => {
     // The contestants, the coaches and the school, each in the form the table
@@ -275,8 +284,12 @@ export function filterEntryRows<T extends AdminEntryRow>(
     ];
     if (!matchesQuery(haystack, query)) return false;
 
-    // District, category, level and language live on joined tables, so they are
-    // narrowed here rather than in the query.
+    // Municipality, district, category, level and language live on joined tables,
+    // so they are narrowed here rather than in the query. There is no municipality
+    // column — `districts.name` is "<Municipality> <N>" — so it is derived from
+    // the same district join the District dropdown filters on.
+    if (municipality && municipalityOf(entry.schools?.districts?.name) !== municipality)
+      return false;
     if (district && entry.schools?.district_id !== district) return false;
     if (category && entry.events?.category !== category) return false;
     if (level && entry.events?.level !== level) return false;

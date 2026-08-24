@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import * as XLSX from "xlsx";
+import type ExcelJS from "exceljs";
 
 import { checkAdmin } from "@/app/admin/guard";
 import type { JudgingExportInput } from "@/lib/export/judging-workbook";
@@ -19,7 +19,7 @@ export async function judgingWorkbookResponse({
   build,
   slug,
 }: {
-  build: (input: JudgingExportInput, generatedAt: string) => XLSX.WorkBook;
+  build: (input: JudgingExportInput, generatedAt: string) => ExcelJS.Workbook;
   slug: string;
 }): Promise<NextResponse> {
   // checkAdmin() rather than requireAdmin(): a route handler that redirects answers
@@ -50,10 +50,7 @@ export async function judgingWorkbookResponse({
   }
 
   const generatedAt = new Date().toISOString().slice(0, 10);
-  const buffer: Buffer = XLSX.write(build({ rows, judges }, generatedAt), {
-    type: "buffer",
-    bookType: "xlsx",
-  });
+  const buffer = await build({ rows, judges }, generatedAt).xlsx.writeBuffer();
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

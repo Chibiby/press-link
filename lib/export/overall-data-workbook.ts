@@ -1,6 +1,8 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 import type { PerSchoolSummary } from "@/lib/dashboard/per-school";
+
+import { addLetterhead, LETTERHEAD_ROWS } from "./letterhead";
 
 export interface OverallDataRow {
   School: string;
@@ -9,6 +11,9 @@ export interface OverallDataRow {
   Coaches: number | string;
   Entries: number | string;
 }
+
+const HEADERS = ["School", "District", "Learners", "Coaches", "Entries"] as const;
+const COLUMN_WIDTHS = [40, 24, 12, 12, 12];
 
 /**
  * One row per school, then the division total — the same two-part shape as the
@@ -38,13 +43,20 @@ export function toOverallDataRows(summary: PerSchoolSummary): OverallDataRow[] {
   return rows;
 }
 
-export function buildOverallDataWorkbook(summary: PerSchoolSummary): XLSX.WorkBook {
-  const sheet = XLSX.utils.json_to_sheet(toOverallDataRows(summary), {
-    header: ["School", "District", "Learners", "Coaches", "Entries"],
-  });
-  sheet["!cols"] = [40, 24, 12, 12, 12].map((wch) => ({ wch }));
+export function buildOverallDataWorkbook(summary: PerSchoolSummary): ExcelJS.Workbook {
+  const rows = toOverallDataRows(summary);
 
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, "Overall Data");
-  return book;
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Overall Data");
+  addLetterhead(workbook, sheet);
+  sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
+
+  const headerRowIndex = LETTERHEAD_ROWS + 1;
+  sheet.getRow(headerRowIndex).values = [...HEADERS];
+
+  rows.forEach((row, i) => {
+    sheet.getRow(headerRowIndex + 1 + i).values = HEADERS.map((header) => row[header]);
+  });
+
+  return workbook;
 }

@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import * as XLSX from "xlsx";
 
 import {
   filterOverallDataRows,
@@ -91,7 +90,7 @@ export async function GET(request: NextRequest) {
     ...summary,
     rows: filterOverallDataRows(summary.rows, filters),
   });
-  const buffer: Buffer = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+  const buffer = await book.xlsx.writeBuffer();
   const date = new Date().toISOString().slice(0, 10);
 
   return new NextResponse(new Uint8Array(buffer), {
