@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CellValue, Worksheet } from "exceljs";
 
 import { buildEntriesWorkbook, toExportRows, type ExportEntry } from "./entries-workbook";
-import { addExportLetterhead } from "./letterhead";
+import { addExportHeader } from "./letterhead";
 
 const COLUMN_WIDTHS = [8, 32, 22, 34, 12, 12, 10, 30, 8, 34, 20];
 
@@ -12,7 +12,7 @@ function contentStartRow(): number {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("throwaway");
   sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
-  return addExportLetterhead(workbook, sheet);
+  return addExportHeader(workbook, sheet);
 }
 
 function rowValues(sheet: Worksheet, rowNumber: number): CellValue[] {
@@ -133,6 +133,22 @@ describe("buildEntriesWorkbook", () => {
     const book = buildEntriesWorkbook([]);
     const sheet = book.getWorksheet("Entries")!;
     expect(rowValues(sheet, headerRowIndex + 1)).toEqual([]);
+  });
+
+  it("borders all four sides of every column-header and data cell", () => {
+    const book = buildEntriesWorkbook([individual]);
+    const sheet = book.getWorksheet("Entries")!;
+
+    for (const rowNumber of [headerRowIndex, headerRowIndex + 1]) {
+      const row = sheet.getRow(rowNumber);
+      for (let col = 1; col <= 11; col += 1) {
+        const border = row.getCell(col).border;
+        expect(border?.top?.style).toBe("thin");
+        expect(border?.left?.style).toBe("thin");
+        expect(border?.bottom?.style).toBe("thin");
+        expect(border?.right?.style).toBe("thin");
+      }
+    }
   });
 });
 

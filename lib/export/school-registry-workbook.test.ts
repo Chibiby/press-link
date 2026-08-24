@@ -8,7 +8,7 @@ import {
   buildSchoolRegistryWorkbook,
   toSchoolRegistryExportRows,
 } from "./school-registry-workbook";
-import { addExportLetterhead } from "./letterhead";
+import { addExportHeader } from "./letterhead";
 
 const COLUMN_WIDTHS = [40, 16, 24, 16, 16, 16, 16];
 
@@ -17,7 +17,7 @@ function contentStartRow(): number {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("throwaway");
   sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
-  return addExportLetterhead(workbook, sheet);
+  return addExportHeader(workbook, sheet);
 }
 
 function rowValues(sheet: Worksheet, rowNumber: number): CellValue[] {

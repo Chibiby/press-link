@@ -1,37 +1,94 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 
-import { addExportLetterhead } from "./letterhead";
+import { addExportFooter, addExportHeader } from "./letterhead";
 
 /** A throwaway sheet with `.columns` set, since centering depends on it. */
-function letterheadSheet(widths: number[] = [34, 24, 17, 12, 9, 44, 40, 40, 62, 20, 74]) {
+function headerSheet(widths: number[] = [34, 24, 17, 12, 9, 44, 40, 40, 62, 20, 74]) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Sheet");
   sheet.columns = widths.map((width) => ({ width }));
   return { workbook, sheet };
 }
 
-describe("addExportLetterhead", () => {
-  it("returns a row a caller's own content can start writing at, past the block", () => {
-    const { workbook, sheet } = letterheadSheet();
+describe("addExportHeader", () => {
+  it("returns a row a caller's own content can start writing at, past the lockup image", () => {
+    const { workbook, sheet } = headerSheet();
 
-    const startRow = addExportLetterhead(workbook, sheet);
+    const startRow = addExportHeader(workbook, sheet);
 
     expect(startRow).toBeGreaterThan(1);
     expect(Number.isInteger(startRow)).toBe(true);
   });
 
-  it("adds exactly five images in one call — the lockup plus the four footer logos", () => {
-    const { workbook, sheet } = letterheadSheet();
+  it("adds exactly one image — the seal-and-titles lockup", () => {
+    const { workbook, sheet } = headerSheet();
 
-    addExportLetterhead(workbook, sheet);
+    addExportHeader(workbook, sheet);
 
-    expect(sheet.getImages()).toHaveLength(5);
+    expect(sheet.getImages()).toHaveLength(1);
+  });
+
+  it("does not mark anything as a repeating print title", () => {
+    // The reversal this task exists for: the header is literal rows 1-2, not a
+    // repeating band, so it shows only on the sheet's first printed page.
+    const { workbook, sheet } = headerSheet();
+
+    addExportHeader(workbook, sheet);
+
+    expect(sheet.pageSetup.printTitlesRow).toBeUndefined();
+  });
+
+  it("produces a non-negative centering offset for a narrow sheet", () => {
+    // overall-data-workbook.ts's shape: 5 narrow columns.
+    const { workbook, sheet } = headerSheet([40, 24, 12, 12, 12]);
+
+    expect(() => addExportHeader(workbook, sheet)).not.toThrow();
+    const [lockup] = sheet.getImages();
+    expect(lockup.range.tl.col).toBeGreaterThanOrEqual(0);
+  });
+
+  it("produces a non-negative centering offset for a wide sheet", () => {
+    // entries-workbook.ts's shape: 11 wide columns.
+    const { workbook, sheet } = headerSheet([8, 32, 22, 34, 12, 12, 10, 30, 8, 34, 20]);
+
+    expect(() => addExportHeader(workbook, sheet)).not.toThrow();
+    const [lockup] = sheet.getImages();
+    expect(lockup.range.tl.col).toBeGreaterThanOrEqual(0);
+  });
+
+  it("centers the lockup against the sheet's actual total column width, not a fixed offset", () => {
+    // A sheet twice as wide should push the lockup's left edge out roughly twice as
+    // far from the origin — proving the offset tracks the sheet's own width rather
+    // than a constant like the pre-centering version's `col: 0.3`.
+    const narrow = headerSheet([40, 24, 12, 12, 12]);
+    addExportHeader(narrow.workbook, narrow.sheet);
+    const [narrowLockup] = narrow.sheet.getImages();
+
+    const wide = headerSheet([80, 48, 24, 24, 24]);
+    addExportHeader(wide.workbook, wide.sheet);
+    const [wideLockup] = wide.sheet.getImages();
+
+    expect(wideLockup.range.tl.col).toBeGreaterThan(narrowLockup.range.tl.col);
+  });
+});
+
+describe("addExportFooter", () => {
+  function footerSheet() {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    sheet.getRow(1).values = ["a header row a caller already wrote"];
+    addExportFooter(workbook, sheet, 1);
+    return sheet;
+  }
+
+  it("adds all four logos — the three division logos plus Press Link's own mark", () => {
+    const sheet = footerSheet();
+    expect(sheet.getImages()).toHaveLength(4);
   });
 
   it("writes the four contact lines with the label bold and the value regular", () => {
-    const { workbook, sheet } = letterheadSheet();
-    addExportLetterhead(workbook, sheet);
+    const sheet = footerSheet();
 
     const lines: { label: string; value: string }[] = [];
     sheet.eachRow((row) => {
@@ -56,8 +113,7 @@ describe("addExportLetterhead", () => {
   });
 
   it("bolds only the label cell, never the value", () => {
-    const { workbook, sheet } = letterheadSheet();
-    addExportLetterhead(workbook, sheet);
+    const sheet = footerSheet();
 
     let checked = 0;
     sheet.eachRow((row) => {
@@ -74,29 +130,18 @@ describe("addExportLetterhead", () => {
     expect(checked).toBe(4);
   });
 
-  it("marks the whole block, and only the block, as a repeating print title", () => {
-    const { workbook, sheet } = letterheadSheet();
+  it("starts at afterRow + 1, not a fixed row", () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet");
+    sheet.getRow(1).values = ["row 1"];
+    sheet.getRow(2).values = ["row 2"];
+    sheet.getRow(3).values = ["row 3"];
 
-    const startRow = addExportLetterhead(workbook, sheet);
+    addExportFooter(workbook, sheet, 3);
 
-    expect(sheet.pageSetup.printTitlesRow).toBe(`1:${startRow - 1}`);
-  });
-
-  it("produces a non-negative centering offset for a narrow sheet", () => {
-    // overall-data-workbook.ts's shape: 5 narrow columns.
-    const { workbook, sheet } = letterheadSheet([40, 24, 12, 12, 12]);
-
-    expect(() => addExportLetterhead(workbook, sheet)).not.toThrow();
     const [lockup] = sheet.getImages();
-    expect(lockup.range.tl.col).toBeGreaterThanOrEqual(0);
-  });
-
-  it("produces a non-negative centering offset for a wide sheet", () => {
-    // entries-workbook.ts's shape: 11 wide columns.
-    const { workbook, sheet } = letterheadSheet([8, 32, 22, 34, 12, 12, 10, 30, 8, 34, 20]);
-
-    expect(() => addExportLetterhead(workbook, sheet)).not.toThrow();
-    const [lockup] = sheet.getImages();
-    expect(lockup.range.tl.col).toBeGreaterThanOrEqual(0);
+    // The rule row is row 4 (afterRow + 1); the logo row, which the image anchors
+    // to, is the row after that.
+    expect(lockup.range.tl.row).toBeCloseTo(4, 0);
   });
 });

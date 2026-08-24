@@ -4,7 +4,8 @@ import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { formatParticipantNumber } from "@/lib/roster/limits";
 import { surnameFirstCamel } from "@/lib/roster/names";
 
-import { addExportLetterhead } from "./letterhead";
+import { borderRow } from "./borders";
+import { addExportFooter, addExportHeader } from "./letterhead";
 
 export interface ExportEntry {
   schoolName: string;
@@ -102,13 +103,18 @@ export function buildEntriesWorkbook(entries: ExportEntry[]): ExcelJS.Workbook {
   const sheet = workbook.addWorksheet("Entries");
   sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
   sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
-  const headerRowIndex = addExportLetterhead(workbook, sheet);
+  const headerRowIndex = addExportHeader(workbook, sheet);
 
   sheet.getRow(headerRowIndex).values = [...HEADERS];
+  borderRow(sheet, headerRowIndex, HEADERS.length);
 
   rows.forEach((row, i) => {
-    sheet.getRow(headerRowIndex + 1 + i).values = HEADERS.map((header) => row[header]);
+    const rowIndex = headerRowIndex + 1 + i;
+    sheet.getRow(rowIndex).values = HEADERS.map((header) => row[header]);
+    borderRow(sheet, rowIndex, HEADERS.length);
   });
+
+  addExportFooter(workbook, sheet, headerRowIndex + rows.length);
 
   return workbook;
 }

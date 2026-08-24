@@ -2,7 +2,8 @@ import ExcelJS from "exceljs";
 
 import type { PerSchoolSummary } from "@/lib/dashboard/per-school";
 
-import { addExportLetterhead } from "./letterhead";
+import { borderRow } from "./borders";
+import { addExportFooter, addExportHeader } from "./letterhead";
 
 export interface OverallDataRow {
   School: string;
@@ -50,13 +51,18 @@ export function buildOverallDataWorkbook(summary: PerSchoolSummary): ExcelJS.Wor
   const sheet = workbook.addWorksheet("Overall Data");
   sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
   sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
-  const headerRowIndex = addExportLetterhead(workbook, sheet);
+  const headerRowIndex = addExportHeader(workbook, sheet);
 
   sheet.getRow(headerRowIndex).values = [...HEADERS];
+  borderRow(sheet, headerRowIndex, HEADERS.length);
 
   rows.forEach((row, i) => {
-    sheet.getRow(headerRowIndex + 1 + i).values = HEADERS.map((header) => row[header]);
+    const rowIndex = headerRowIndex + 1 + i;
+    sheet.getRow(rowIndex).values = HEADERS.map((header) => row[header]);
+    borderRow(sheet, rowIndex, HEADERS.length);
   });
+
+  addExportFooter(workbook, sheet, headerRowIndex + rows.length);
 
   return workbook;
 }
