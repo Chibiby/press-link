@@ -16,6 +16,13 @@ function school(over: Partial<RegistryRow> = {}): RegistryRow {
     learners: 0,
     coaches: 0,
     entries: 0,
+    // Not read by summarisePerDistrict; RegistryRow requires them, so the fixture
+    // supplies them rather than casting the shape and hiding the day the rollup
+    // starts caring.
+    individualLearners: 0,
+    individualCoaches: 0,
+    groupLearners: 0,
+    groupCoaches: 0,
     lockedAt: null,
     ...over,
   };

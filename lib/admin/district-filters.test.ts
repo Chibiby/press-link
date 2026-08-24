@@ -33,6 +33,13 @@ const school = (overrides: Partial<RegistryRow> = {}): RegistryRow => ({
   learners: 10,
   coaches: 2,
   entries: 3,
+  // Not read by summarisePerDistrict; RegistryRow requires them, so the fixture
+  // supplies them rather than casting the shape and hiding the day the rollup
+  // starts caring.
+  individualLearners: 4,
+  individualCoaches: 1,
+  groupLearners: 6,
+  groupCoaches: 1,
   lockedAt: null,
   ...overrides,
 });

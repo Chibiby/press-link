@@ -13,6 +13,10 @@ function row(over: Partial<RegistryRow> = {}): RegistryRow {
     learners: 12,
     coaches: 3,
     entries: 9,
+    individualLearners: 5,
+    individualCoaches: 2,
+    groupLearners: 7,
+    groupCoaches: 3,
     lockedAt: null,
     ...over,
   };
@@ -61,7 +65,14 @@ describe("summariseRegistry", () => {
   it("totals the rows it shows, not the rows it hides", () => {
     const summary = summariseRegistry(ALL, { status: "entered", districtId: null });
     expect(summary.rows.map((r) => r.schoolId)).toEqual(["entered", "locked"]);
-    expect(summary.totals).toEqual({ learners: 24, coaches: 6, entries: 13 });
+    // Neither "entered" nor "locked" overrides the category fields, so each
+    // fixture row contributes the row() defaults once.
+    expect(summary.totals).toEqual({
+      individualLearners: 10,
+      individualCoaches: 4,
+      groupLearners: 14,
+      groupCoaches: 6,
+    });
   });
 
   it("keeps registered as the district's total, so the footer reads N of M", () => {
@@ -119,8 +130,14 @@ describe("summariseRegistry", () => {
   it("totals the integrated rows it shows", () => {
     const summary = summariseRegistry(MIXED, { status: "integrated", districtId: null });
     expect(summary.shown).toBe(2);
-    // Only the two integrated rows: 10 + 0 learners, 3 + 3 coaches, 5 + 0 entries.
-    expect(summary.totals).toEqual({ learners: 10, coaches: 3, entries: 5 });
+    // Only the two integrated rows, neither of which overrides the category
+    // fields: each row() default counted once.
+    expect(summary.totals).toEqual({
+      individualLearners: 10,
+      individualCoaches: 4,
+      groupLearners: 14,
+      groupCoaches: 6,
+    });
   });
 
   it("narrows integrated by district without moving the denominator", () => {

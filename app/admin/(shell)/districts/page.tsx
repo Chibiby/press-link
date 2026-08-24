@@ -77,6 +77,13 @@ export default async function AdminDistrictsPage({
     learners: row.participants?.[0]?.count ?? 0,
     coaches: row.coaches?.[0]?.count ?? 0,
     entries: row.entries?.[0]?.count ?? 0,
+    // This page's select carries no per-category figures — summarisePerDistrict
+    // never reads these — so they are filled rather than computed, same as
+    // schoolIdNumber and districtName above.
+    individualLearners: 0,
+    individualCoaches: 0,
+    groupLearners: 0,
+    groupCoaches: 0,
     lockedAt: null,
   }));
 

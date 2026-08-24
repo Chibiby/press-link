@@ -58,9 +58,17 @@ export interface RegistryRow {
    * exists to catch.
    */
   isIntegrated: boolean;
+  // Whole-roster / whole-entries totals, unrelated to event category — unchanged
+  // from before. Kept for `matches()` (status filtering) and the dashboard's
+  // learners-no-entry link; no longer rendered as table columns.
   learners: number;
   coaches: number;
   entries: number;
+  // Distinct participants/coaches with at least one entry in that category.
+  individualLearners: number;
+  individualCoaches: number;
+  groupLearners: number;
+  groupCoaches: number;
   lockedAt: string | null;
 }
 
@@ -70,8 +78,13 @@ export interface RegistrySummary {
   shown: number;
   /** Rows after the district filter only — the honest denominator for "N of M". */
   registered: number;
-  /** Column sums over the shown rows. */
-  totals: { learners: number; coaches: number; entries: number };
+  // Column sums over the shown rows — the four visible category columns.
+  totals: {
+    individualLearners: number;
+    individualCoaches: number;
+    groupLearners: number;
+    groupCoaches: number;
+  };
 }
 
 function matches(row: RegistryRow, status: SchoolStatus): boolean {
@@ -123,9 +136,10 @@ export function summariseRegistry(
     shown: shown.length,
     registered: inDistrict.length,
     totals: {
-      learners: shown.reduce((sum, row) => sum + row.learners, 0),
-      coaches: shown.reduce((sum, row) => sum + row.coaches, 0),
-      entries: shown.reduce((sum, row) => sum + row.entries, 0),
+      individualLearners: shown.reduce((sum, row) => sum + row.individualLearners, 0),
+      individualCoaches: shown.reduce((sum, row) => sum + row.individualCoaches, 0),
+      groupLearners: shown.reduce((sum, row) => sum + row.groupLearners, 0),
+      groupCoaches: shown.reduce((sum, row) => sum + row.groupCoaches, 0),
     },
   };
 }
