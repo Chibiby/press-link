@@ -3,29 +3,29 @@ import ExcelJS from "exceljs";
 import type { RegistrySummary } from "@/lib/dashboard/school-registry";
 
 import { borderRow } from "./borders";
-import { addExportFooter, addExportHeader } from "./letterhead";
+import { addExportHeader } from "./letterhead";
 
 export interface SchoolRegistryExportRow {
   School: string;
   "School ID": string;
   District: string;
-  "Individual Learners": number | string;
-  "Individual Coaches": number | string;
-  "Group Learners": number | string;
-  "Group Coaches": number | string;
+  "Ind. Learners": number | string;
+  "Ind. Coaches": number | string;
+  "Grp. Learners": number | string;
+  "Grp. Coaches": number | string;
 }
 
 const HEADERS = [
   "School",
   "School ID",
   "District",
-  "Individual Learners",
-  "Individual Coaches",
-  "Group Learners",
-  "Group Coaches",
+  "Ind. Learners",
+  "Ind. Coaches",
+  "Grp. Learners",
+  "Grp. Coaches",
 ] as const;
 
-const COLUMN_WIDTHS = [40, 16, 24, 16, 16, 16, 16];
+const COLUMN_WIDTHS = [55, 16, 24, 16, 16, 16, 16];
 
 /**
  * One row per school, then DIVISION TOTAL — same two-part shape as
@@ -42,20 +42,20 @@ export function toSchoolRegistryExportRows(
     School: row.schoolName,
     "School ID": row.schoolIdNumber,
     District: row.districtName,
-    "Individual Learners": row.individualLearners,
-    "Individual Coaches": row.individualCoaches,
-    "Group Learners": row.groupLearners,
-    "Group Coaches": row.groupCoaches,
+    "Ind. Learners": row.individualLearners,
+    "Ind. Coaches": row.individualCoaches,
+    "Grp. Learners": row.groupLearners,
+    "Grp. Coaches": row.groupCoaches,
   }));
 
   rows.push({
     School: "DIVISION TOTAL",
     "School ID": "",
     District: `${summary.shown} of ${summary.registered} schools`,
-    "Individual Learners": summary.totals.individualLearners,
-    "Individual Coaches": summary.totals.individualCoaches,
-    "Group Learners": summary.totals.groupLearners,
-    "Group Coaches": summary.totals.groupCoaches,
+    "Ind. Learners": summary.totals.individualLearners,
+    "Ind. Coaches": summary.totals.individualCoaches,
+    "Grp. Learners": summary.totals.groupLearners,
+    "Grp. Coaches": summary.totals.groupCoaches,
   });
 
   return rows;
@@ -66,7 +66,7 @@ export function buildSchoolRegistryWorkbook(summary: RegistrySummary): ExcelJS.W
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Schools");
-  sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
+  sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait", scale: 60 };
   sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
   const headerRowIndex = addExportHeader(workbook, sheet);
 
@@ -78,8 +78,6 @@ export function buildSchoolRegistryWorkbook(summary: RegistrySummary): ExcelJS.W
     sheet.getRow(rowIndex).values = HEADERS.map((header) => row[header]);
     borderRow(sheet, rowIndex, HEADERS.length);
   });
-
-  addExportFooter(workbook, sheet, headerRowIndex + rows.length);
 
   return workbook;
 }

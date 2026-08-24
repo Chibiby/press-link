@@ -10,7 +10,7 @@ import {
 } from "./school-registry-workbook";
 import { addExportHeader } from "./letterhead";
 
-const COLUMN_WIDTHS = [40, 16, 24, 16, 16, 16, 16];
+const COLUMN_WIDTHS = [55, 16, 24, 16, 16, 16, 16];
 
 /** The row a builder's own header lands on, computed the same way the builder does. */
 function contentStartRow(): number {
@@ -95,28 +95,28 @@ describe("toSchoolRegistryExportRows", () => {
         School: "Alabel National High School",
         "School ID": "300001",
         District: "Alabel",
-        "Individual Learners": 8,
-        "Individual Coaches": 3,
-        "Group Learners": 7,
-        "Group Coaches": 2,
+        "Ind. Learners": 8,
+        "Ind. Coaches": 3,
+        "Grp. Learners": 7,
+        "Grp. Coaches": 2,
       },
       {
         School: "Malapatan Central",
         "School ID": "300002",
         District: "Malapatan",
-        "Individual Learners": 2,
-        "Individual Coaches": 1,
-        "Group Learners": 0,
-        "Group Coaches": 0,
+        "Ind. Learners": 2,
+        "Ind. Coaches": 1,
+        "Grp. Learners": 0,
+        "Grp. Coaches": 0,
       },
       {
         School: "Maasim Central ES",
         "School ID": "300003",
         District: "Maasim",
-        "Individual Learners": 0,
-        "Individual Coaches": 0,
-        "Group Learners": 4,
-        "Group Coaches": 1,
+        "Ind. Learners": 0,
+        "Ind. Coaches": 0,
+        "Grp. Learners": 4,
+        "Grp. Coaches": 1,
       },
     ]);
   });
@@ -128,10 +128,10 @@ describe("toSchoolRegistryExportRows", () => {
       School: "DIVISION TOTAL",
       "School ID": "",
       District: "3 of 332 schools",
-      "Individual Learners": 10,
-      "Individual Coaches": 4,
-      "Group Learners": 11,
-      "Group Coaches": 3,
+      "Ind. Learners": 10,
+      "Ind. Coaches": 4,
+      "Grp. Learners": 11,
+      "Grp. Coaches": 3,
     });
   });
 
@@ -154,10 +154,10 @@ describe("toSchoolRegistryExportRows", () => {
       "School",
       "School ID",
       "District",
-      "Individual Learners",
-      "Individual Coaches",
-      "Group Learners",
-      "Group Coaches",
+      "Ind. Learners",
+      "Ind. Coaches",
+      "Grp. Learners",
+      "Grp. Coaches",
     ]);
   });
 });
@@ -174,10 +174,10 @@ describe("buildSchoolRegistryWorkbook", () => {
       "School",
       "School ID",
       "District",
-      "Individual Learners",
-      "Individual Coaches",
-      "Group Learners",
-      "Group Coaches",
+      "Ind. Learners",
+      "Ind. Coaches",
+      "Grp. Learners",
+      "Grp. Coaches",
     ]);
 
     expect(rowValues(sheet, headerRowIndex + 1)).toEqual([
