@@ -16,23 +16,18 @@ import {
 } from "@/components/ui/table";
 import { SCHOOL_STATUS_LABEL } from "@/lib/dashboard/school-registry";
 import {
+  categoryCountsBySchool,
   schoolRegistryEmptyState,
   schoolRegistryStatus,
   summariseSchoolRegistry,
   toRegistryRows,
+  type RawRegistryEntry,
   type RawRegistrySchool,
   type SchoolRegistryFilters,
 } from "@/lib/schools/school-registry-filters";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 
 import { SchoolRegistryFilter } from "./SchoolRegistryFilter";
-
-const DATE = new Intl.DateTimeFormat("en-PH", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  timeZone: "Asia/Manila",
-});
 
 interface DistrictRow {
   id: string;
@@ -53,7 +48,7 @@ export default async function AdminSchoolsPage({
   const { supabase } = await requireAdmin();
   const params = await searchParams;
 
-  const [schoolRows, districtResult] = await Promise.all([
+  const [schoolRows, districtResult, entryRows] = await Promise.all([
     // Paged, not one select: PostgREST caps a response at `db-max-rows` and says
     // nothing, so an unbounded read would quietly shorten the division roll — and this
     // table's footer sums the rows it got, so the learner, coach and entry totals
@@ -72,6 +67,16 @@ export default async function AdminSchoolsPage({
         .overrideTypes<RawRegistrySchool[]>()
     ),
     supabase.from("districts").select("id, name").order("name").overrideTypes<DistrictRow[]>(),
+    fetchAll<RawRegistryEntry>("Entries", (from, to) =>
+      supabase
+        .from("entries")
+        .select(
+          "school_id, events(category), entry_participants(participants(id)), entry_coaches(coaches(id))"
+        )
+        .order("id")
+        .range(from, to)
+        .overrideTypes<RawRegistryEntry[]>()
+    ),
   ]);
 
   const districts = districtResult.data ?? [];
@@ -79,7 +84,7 @@ export default async function AdminSchoolsPage({
   // Every part of this now lives in `lib/schools/school-registry-filters.ts`, tested
   // there: the row mapper, the district and status filters plus the search box, and
   // the sentence to print when nothing survives.
-  const rows = toRegistryRows(schoolRows);
+  const rows = toRegistryRows(schoolRows, categoryCountsBySchool(entryRows));
   const status = schoolRegistryStatus(params);
   const districtId = params.district ?? null;
   const summary = summariseSchoolRegistry(rows, params);
@@ -115,11 +120,10 @@ export default async function AdminSchoolsPage({
               <TableRow>
                 <TableHead>School</TableHead>
                 <TableHead>District</TableHead>
-                <TableHead className="text-right">Learners</TableHead>
-                <TableHead className="text-right">Coaches</TableHead>
-                <TableHead className="text-right">Entries</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead />
+                <TableHead className="text-right">Ind. Learners</TableHead>
+                <TableHead className="text-right">Ind. Coaches</TableHead>
+                <TableHead className="text-right">Grp. Learners</TableHead>
+                <TableHead className="text-right">Grp. Coaches</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -129,7 +133,7 @@ export default async function AdminSchoolsPage({
                       in its base and this cell quotes back whatever was typed — a
                       pasted line would otherwise stretch the table into a sideways
                       scroll instead of wrapping. */}
-                  <TableCell colSpan={7} className="py-8 text-center whitespace-normal">
+                  <TableCell colSpan={6} className="py-8 text-center whitespace-normal">
                     <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
                       {empty.message}
                     </p>
@@ -140,8 +144,12 @@ export default async function AdminSchoolsPage({
                       // looking, and a link is the honest control for it in a server
                       // component. Navigating here empties the search box too: the
                       // box follows the URL, so it clears when the param goes.
+                      //
+                      // `?status=all`, not a bare path: the default filter is now
+                      // "has entries", so a bare `/admin/schools` would not actually
+                      // show every school — the promise this link makes.
                       <Button asChild size="sm" variant="outline" className="mt-3">
-                        <Link href="/admin/schools">Show all schools</Link>
+                        <Link href="/admin/schools?status=all">Show all schools</Link>
                       </Button>
                     ) : null}
                   </TableCell>
@@ -171,26 +179,17 @@ export default async function AdminSchoolsPage({
                     <TableCell className="text-muted-foreground">
                       {row.districtName || "—"}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{row.learners}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.coaches}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.entries}</TableCell>
-                    <TableCell>
-                      {/* Three states, in the order an officer cares about them: nothing
-                          started, submission closed, still open. */}
-                      {row.learners === 0 && row.coaches === 0 && row.entries === 0 ? (
-                        <Badge variant="outline">Nothing on record</Badge>
-                      ) : row.lockedAt ? (
-                        <Badge variant="secondary">
-                          Locked {DATE.format(new Date(row.lockedAt))}
-                        </Badge>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Open</span>
-                      )}
+                    <TableCell className="text-right tabular-nums">
+                      {row.individualLearners}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild size="sm" variant="ghost">
-                        <Link href={`/admin/summary?school=${row.schoolId}`}>Summary</Link>
-                      </Button>
+                    <TableCell className="text-right tabular-nums">
+                      {row.individualCoaches}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.groupLearners}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.groupCoaches}
                     </TableCell>
                   </TableRow>
                 ))
@@ -203,15 +202,17 @@ export default async function AdminSchoolsPage({
                     {summary.shown} {summary.shown === 1 ? "school" : "schools"} shown
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {summary.totals.learners}
+                    {summary.totals.individualLearners}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {summary.totals.coaches}
+                    {summary.totals.individualCoaches}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {summary.totals.entries}
+                    {summary.totals.groupLearners}
                   </TableCell>
-                  <TableCell colSpan={2} />
+                  <TableCell className="text-right tabular-nums">
+                    {summary.totals.groupCoaches}
+                  </TableCell>
                 </TableRow>
               </TableFooter>
             ) : null}

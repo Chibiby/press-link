@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
 
 import { ANY, FilterSelect } from "@/components/admin/filter-select";
 import { FilterSearch } from "@/components/admin/filter-search";
@@ -10,11 +10,16 @@ import { useFilterParams } from "@/hooks/use-filter-params";
 import { SEARCH_PARAM } from "@/lib/search/filter-params";
 import { SCHOOL_STATUS_LABEL, type SchoolStatus } from "@/lib/dashboard/school-registry";
 
-/** "all" is the placeholder, so it is not offered again as an item. */
+/**
+ * "entered" ("Has entries") is the placeholder now — an unset `?status=` falls
+ * back to it, per `schoolRegistryStatus()` — so it is not offered again as an
+ * item. "all" is back in the list, explicit and selectable, because the whole
+ * roll is no longer what a reader gets by leaving the dropdown alone.
+ */
 const STATUS_OPTIONS: SchoolStatus[] = [
+  "all",
   "learners-no-entry",
   "no-data",
-  "entered",
   "locked",
   "integrated",
 ];
@@ -70,7 +75,7 @@ export function SchoolRegistryFilter({
             label="Status"
             value={searchParams.get("status") ?? ANY}
             onChange={(value) => setParam("status", value)}
-            placeholder={SCHOOL_STATUS_LABEL.all}
+            placeholder={SCHOOL_STATUS_LABEL.entered}
             options={STATUS_OPTIONS.map((value) => ({
               value,
               label: SCHOOL_STATUS_LABEL[value],
@@ -78,15 +83,28 @@ export function SchoolRegistryFilter({
           />
         </div>
 
-        {activeCount > 0 ? (
-          // `clearAll`, not a bare push to the path: it also cancels a search write
-          // that was still waiting and empties the box, which a push cannot do — the
-          // URL would come back 250ms later carrying the query.
-          <Button variant="ghost" size="sm" onClick={clearAll}>
-            <X className="size-4" />
-            Clear {activeCount} filter{activeCount === 1 ? "" : "s"}
+        <div className="ml-auto flex items-end gap-2">
+          {activeCount > 0 ? (
+            // `clearAll`, not a bare push to the path: it also cancels a search write
+            // that was still waiting and empties the box, which a push cannot do —
+            // the URL would come back 250ms later carrying the query.
+            <Button variant="ghost" size="sm" onClick={clearAll}>
+              <X className="size-4" />
+              Clear {activeCount} filter{activeCount === 1 ? "" : "s"}
+            </Button>
+          ) : null}
+          <Button asChild variant="outline" size="sm">
+            {/* Carries the whole query string, so the file matches the screen — the
+                search included, now that `q` is one of these params. The route reads
+                them through the same module this table is filtered by, and names the
+                workbook "…-filtered-…" whenever any of them is set. A plain `<a>` and
+                not a `Link`: this is a file download, not a client navigation. */}
+            <a href={`/admin/schools/export?${searchParams.toString()}`}>
+              <Download className="size-4" />
+              Export to Excel
+            </a>
           </Button>
-        ) : null}
+        </div>
       </CardContent>
     </Card>
   );
