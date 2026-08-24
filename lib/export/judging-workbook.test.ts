@@ -25,12 +25,14 @@ import {
   XL_NO_PANEL,
   XL_NO_UNITS,
 } from "./judging-workbook";
-import { addExportHeader } from "./letterhead";
+import { addExportLetterhead } from "./letterhead";
 
 /** The row a builder's own header lands on, computed the same way the builder does. */
 function contentStartRow(): number {
   const workbook = new ExcelJS.Workbook();
-  return addExportHeader(workbook, workbook.addWorksheet("throwaway"));
+  const sheet = workbook.addWorksheet("throwaway");
+  sheet.columns = [34, 24, 17, 12, 9, 44, 40, 40, 62, 20, 74].map((width) => ({ width }));
+  return addExportLetterhead(workbook, sheet);
 }
 
 const HEADER_ROW = contentStartRow();

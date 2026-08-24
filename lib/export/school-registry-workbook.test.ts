@@ -8,12 +8,16 @@ import {
   buildSchoolRegistryWorkbook,
   toSchoolRegistryExportRows,
 } from "./school-registry-workbook";
-import { addExportHeader } from "./letterhead";
+import { addExportLetterhead } from "./letterhead";
+
+const COLUMN_WIDTHS = [40, 16, 24, 16, 16, 16, 16];
 
 /** The row a builder's own header lands on, computed the same way the builder does. */
 function contentStartRow(): number {
   const workbook = new ExcelJS.Workbook();
-  return addExportHeader(workbook, workbook.addWorksheet("throwaway"));
+  const sheet = workbook.addWorksheet("throwaway");
+  sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
+  return addExportLetterhead(workbook, sheet);
 }
 
 function rowValues(sheet: Worksheet, rowNumber: number): CellValue[] {

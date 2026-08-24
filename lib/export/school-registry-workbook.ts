@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 
 import type { RegistrySummary } from "@/lib/dashboard/school-registry";
 
-import { addExportFooter, addExportHeader } from "./letterhead";
+import { addExportLetterhead } from "./letterhead";
 
 export interface SchoolRegistryExportRow {
   School: string;
@@ -65,17 +65,15 @@ export function buildSchoolRegistryWorkbook(summary: RegistrySummary): ExcelJS.W
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Schools");
-  sheet.pageSetup = { ...sheet.pageSetup, orientation: "landscape" };
-  const headerRowIndex = addExportHeader(workbook, sheet);
+  sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
   sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
+  const headerRowIndex = addExportLetterhead(workbook, sheet);
 
   sheet.getRow(headerRowIndex).values = [...HEADERS];
 
   rows.forEach((row, i) => {
     sheet.getRow(headerRowIndex + 1 + i).values = HEADERS.map((header) => row[header]);
   });
-
-  addExportFooter(workbook, sheet, headerRowIndex + rows.length);
 
   return workbook;
 }

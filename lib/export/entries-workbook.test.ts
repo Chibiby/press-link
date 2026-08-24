@@ -3,12 +3,16 @@ import { describe, expect, it } from "vitest";
 import type { CellValue, Worksheet } from "exceljs";
 
 import { buildEntriesWorkbook, toExportRows, type ExportEntry } from "./entries-workbook";
-import { addExportHeader } from "./letterhead";
+import { addExportLetterhead } from "./letterhead";
+
+const COLUMN_WIDTHS = [8, 32, 22, 34, 12, 12, 10, 30, 8, 34, 20];
 
 /** The row a builder's own header lands on, computed the same way the builder does. */
 function contentStartRow(): number {
   const workbook = new ExcelJS.Workbook();
-  return addExportHeader(workbook, workbook.addWorksheet("throwaway"));
+  const sheet = workbook.addWorksheet("throwaway");
+  sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
+  return addExportLetterhead(workbook, sheet);
 }
 
 function rowValues(sheet: Worksheet, rowNumber: number): CellValue[] {

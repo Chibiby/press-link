@@ -3,22 +3,23 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 
 /**
- * Why the header and footer are plain sheet content, not `worksheet.headerFooter`.
+ * Why the header and footer are ONE block, stamped at the top of the sheet and
+ * marked a repeating print title, rather than a true top header and bottom footer.
  *
  * `exceljs` cannot embed images in Excel's native print header/footer — its own
- * README says so ("Images are not currently supported" for `headerFooter`). And a
- * floating image can only be made to repeat on every printed page via a TOP-anchored
- * "print title row"; there is no bottom equivalent. So there is no way to have a
- * native-header-style image band that repeats on the last page the way it does on
- * the first.
+ * README says so ("Images are not currently supported" for `headerFooter`) — so
+ * both pieces have to be plain worksheet content. And Excel's only mechanism for
+ * making plain content repeat on every printed page, "Print Titles"
+ * (`pageSetup.printTitlesRow`), only ever repeats rows anchored at the TOP of the
+ * sheet — there is no bottom equivalent, in Excel itself, not just this library.
+ * So a footer that repeats at the true bottom margin of every page is not
+ * achievable by any automated means here.
  *
  * The division's letterhead has a header (seal, titles) and a footer (logos,
- * contact info), and the user's explicit call was: show the header only on the
- * sheet's first printed page and the footer only on its last — never attempt to
- * repeat either on every page. That is exactly what plain content does for free:
- * the header is the sheet's first rows, the footer is appended after the last row
- * a builder writes, and Excel paginates them wherever the content happens to land.
- * If a sheet fits on one page, both appear together on it.
+ * contact info), and every printed page must show both. The only way to make that
+ * true is to merge them into one block, place it at the top of the sheet, and mark
+ * the whole block a print title — Excel then reprints the whole thing, header and
+ * footer content together, at the top of every page.
  */
 
 /**
@@ -57,6 +58,14 @@ const FOOTER_CONTACT_LINES: readonly [label: string, value: string][] = [
   ["Email Address:", "sarangani@deped.gov.ph"],
 ];
 
+/**
+ * Excel's own default column width, in character-width units — the fallback for a
+ * `sheet.columns` entry with no explicit `.width`. Every builder in this codebase
+ * sets one, but the centering math below has to stay defined even if a future
+ * caller doesn't.
+ */
+const DEFAULT_COLUMN_WIDTH_CHARS = 8.43;
+
 let cachedHeaderLockupDataUri: string | null = null;
 let cachedLogoDataUris: string[] | null = null;
 
@@ -85,56 +94,89 @@ function logoDataUris(): string[] {
 }
 
 /**
- * Stamps the header block — the national-seal-and-titles lockup — at the very
- * top of a worksheet, as literal rows 1-2 (not a native print header, so it
- * naturally appears only on the sheet's first printed page — see the module
- * doc comment for why).
- *
- * Returns the first row number a caller's own content (its header row, or
- * data) may start writing at.
+ * Converts an Excel character-width column width to pixels, using Microsoft's own
+ * documented approximation for the default Calibri-11 font (MDW = 7):
+ * `pixels ≈ round(charWidth * 7 + 5)`.
  */
-export function addExportHeader(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet): number {
-  const imageId = workbook.addImage({ base64: headerLockupDataUri(), extension: "png" });
-
-  // Row 1 holds the lockup; its height (in points, so *0.75 from the image's
-  // pixel height) must clear the image or a builder's own header row would
-  // overlap it. Row 2 is a blank spacer, matching the old letterhead's shape.
-  sheet.getRow(1).height = 100;
-  sheet.getRow(2).height = 10;
-
-  sheet.addImage(imageId, {
-    tl: { col: 0.3, row: 0.05 },
-    ext: { width: HEADER_LOCKUP_WIDTH, height: HEADER_LOCKUP_HEIGHT },
-  });
-
-  return 3;
+function columnWidthToPixels(charWidth: number): number {
+  return Math.round(charWidth * 7 + 5);
 }
 
 /**
- * Stamps the footer block — the DepEd MATATAG / Bagong Pilipinas / Division of
- * Sarangani / Press Link four-logo row plus the division's contact info — as
- * literal rows appended immediately after a caller's last content row. Because
- * this is plain sheet content and not a native print footer, it naturally
- * lands on whichever page ends up being the sheet's LAST printed page (the
- * same page as the header, if everything fits on one page).
+ * Where the header lockup's left edge must anchor, as a fractional column offset,
+ * for the image to land centered against the sheet's actual total column width.
  *
- * `afterRow` is the last row the caller has already written (its last data
- * row, or a totals row) — the footer starts at `afterRow + 1`.
+ * Column widths are in character-width units, not pixels, so this walks
+ * `sheet.columns` (set by the caller before this runs — see the export's doc
+ * comment) converting each to pixels and summing them for the sheet's total
+ * content width, then walks again accumulating until the centered left-edge pixel
+ * offset falls inside a column; the remainder becomes the fractional part of that
+ * column's index — the same fractional-column-anchor approach the four footer
+ * logos below use via `LOGO_COLUMN_STRIDE`.
+ *
+ * A sheet narrower than the image (a very narrow sheet) clamps to `0` — the
+ * image's left edge at the sheet's own left edge — rather than a negative offset.
  */
-export function addExportFooter(
-  workbook: ExcelJS.Workbook,
-  sheet: ExcelJS.Worksheet,
-  afterRow: number
-): void {
-  const ruleRow = afterRow + 1;
+function headerLockupColumnOffset(sheet: ExcelJS.Worksheet): number {
+  const widthsPx = (sheet.columns ?? []).map((column) =>
+    columnWidthToPixels(column.width ?? DEFAULT_COLUMN_WIDTH_CHARS)
+  );
+  const totalWidthPx = widthsPx.reduce((sum, width) => sum + width, 0);
+  const leftEdgePx = Math.max(0, (totalWidthPx - HEADER_LOCKUP_WIDTH) / 2);
+
+  let accumulatedPx = 0;
+  for (let i = 0; i < widthsPx.length; i += 1) {
+    const columnWidthPx = widthsPx[i];
+    if (accumulatedPx + columnWidthPx > leftEdgePx) {
+      return i + (leftEdgePx - accumulatedPx) / columnWidthPx;
+    }
+    accumulatedPx += columnWidthPx;
+  }
+
+  // leftEdgePx falls at or beyond the last column (e.g. no columns set, or a sheet
+  // exactly as wide as the image) — anchor at the sheet's start rather than off
+  // the edge of its content.
+  return 0;
+}
+
+/**
+ * Stamps the combined header+footer letterhead block at the top of a worksheet
+ * and marks it as a repeating print title, so it appears at the top of EVERY
+ * printed page — see the module doc comment for why this is one merged block
+ * instead of a true top header / bottom footer: Excel has no mechanism to repeat
+ * content at the bottom of every page, only the top.
+ *
+ * MUST be called after `sheet.columns` has been set (it centers the header image
+ * against the sheet's actual total column width) — callers need to order their
+ * `sheet.columns = ...` assignment before this call.
+ *
+ * Returns the first row number a caller's own content (its header row, or data)
+ * may start writing at.
+ */
+export function addExportLetterhead(workbook: ExcelJS.Workbook, sheet: ExcelJS.Worksheet): number {
+  const imageRow = 1;
+  const spacerRow = 2;
+  const ruleRow = 3;
+  const logoRow = 4;
+
+  // The image row's height (in points) must clear the lockup image or a builder's
+  // own header row would overlap it; the spacer row matches the old letterhead's
+  // shape between the seal and the rule below it.
+  sheet.getRow(imageRow).height = 100;
+  sheet.getRow(spacerRow).height = 10;
+
+  const lockupImageId = workbook.addImage({ base64: headerLockupDataUri(), extension: "png" });
+  sheet.addImage(lockupImageId, {
+    tl: { col: headerLockupColumnOffset(sheet), row: imageRow - 1 + 0.05 },
+    ext: { width: HEADER_LOCKUP_WIDTH, height: HEADER_LOCKUP_HEIGHT },
+  });
+
   const ruleWidth = Math.max(sheet.columnCount, 10);
   for (let col = 1; col <= ruleWidth; col += 1) {
     sheet.getCell(ruleRow, col).border = { top: { style: "thin" } };
   }
 
-  const logoRow = ruleRow + 1;
   sheet.getRow(logoRow).height = 46;
-
   logoDataUris().forEach((base64, i) => {
     const imageId = workbook.addImage({ base64, extension: "png" });
     sheet.addImage(imageId, {
@@ -150,4 +192,14 @@ export function addExportFooter(
     labelCell.font = { bold: true };
     row.getCell(FOOTER_TEXT_COLUMN + 1).value = value;
   });
+
+  const lastBlockRow = logoRow + FOOTER_CONTACT_LINES.length - 1;
+
+  // The whole block, top to bottom (image, rule, logos + contact lines), repeats
+  // at the top of every printed page — the only way Excel can be made to show
+  // both the header and the footer content on every page, not just the first
+  // or the last. See the module doc comment.
+  sheet.pageSetup.printTitlesRow = `1:${lastBlockRow}`;
+
+  return lastBlockRow + 1;
 }
