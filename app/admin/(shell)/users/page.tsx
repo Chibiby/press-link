@@ -7,6 +7,13 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Card,
+  CardAction,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   Table,
   TableBody,
   TableCell,
@@ -14,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatLockedAt } from "@/lib/submissions/lock-state";
+import { describeLockStamp, formatLockedAt } from "@/lib/submissions/lock-state";
 import {
   filterUserAccountRows,
   summariseUserAccounts,
@@ -25,6 +32,8 @@ import {
 } from "@/lib/schools/user-accounts-filters";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 
+import { loadSubmissionsLock } from "../dashboard-data";
+import { SubmissionsLockDialog } from "../SubmissionsLockDialog";
 import { ProvisionLoginButton, UnlockAccountButton } from "./AccountRowActions";
 import { AddSchoolDialog } from "./AddSchoolDialog";
 import { UserAccountsFilterBar } from "./UserAccountsFilterBar";
@@ -45,7 +54,7 @@ export default async function UsersPage({
   const { supabase } = await requireAdmin();
   const params = await searchParams;
 
-  const [schoolRows, districtResult] = await Promise.all([
+  const [schoolRows, districtResult, submissionsLock] = await Promise.all([
     // Paged, not one select: PostgREST caps a response at `db-max-rows` and
     // says nothing, so an unbounded read would quietly shorten the roll — see
     // `fetchAll`'s doc. 336 schools today. `.order("id")` last because
@@ -64,6 +73,12 @@ export default async function UsersPage({
         .overrideTypes<RawUserAccountSchool[]>()
     ),
     supabase.from("districts").select("id, name").order("name").overrideTypes<DistrictRow[]>(),
+    // `cache()`-memoized per request (React's cache does not share across
+    // separate page loads, so this is still its own round-trip against
+    // `/admin` — see `dashboard-data.ts`'s doc on `loadSubmissionsLock`), so
+    // calling it again here costs nothing if anything else on this page ever
+    // needs the lock state too.
+    loadSubmissionsLock(),
   ]);
 
   const districts = districtResult.data ?? [];
@@ -73,6 +88,11 @@ export default async function UsersPage({
   const summary = summariseUserAccounts(allRows);
   const empty = userAccountsEmptyState(params);
   const withoutLogin = summary.totalSchools - summary.schoolsWithLogin;
+  // See `app/admin/(shell)/page.tsx` for why this is formatted once, on the
+  // server, and handed to the dialog as a plain string rather than derived
+  // inside it: Node's ICU and the browser's disagree about the space before
+  // "PM", which is a hydration mismatch nobody can see.
+  const lockStamp = describeLockStamp(submissionsLock);
 
   return (
     <div className="group flex flex-col gap-6">
@@ -87,6 +107,27 @@ export default async function UsersPage({
         }
         actions={<AddSchoolDialog districts={districts} />}
       />
+
+      {/* A page-level control, not a per-school one — it freezes every row in
+          the table below at once, independent of any school's own lock — so
+          it gets its own card above the roll rather than a slot among the
+          per-row actions the table already owns. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Division Wide Lock</CardTitle>
+          <CardDescription>
+            Freezes every school in the division at once, independent of any
+            school&apos;s own lock.
+            {lockStamp ? (
+              // Not colour alone: the sentence says it.
+              <span className="text-destructive"> {lockStamp}</span>
+            ) : null}
+          </CardDescription>
+          <CardAction>
+            <SubmissionsLockDialog lock={submissionsLock} stamp={lockStamp} />
+          </CardAction>
+        </CardHeader>
+      </Card>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard

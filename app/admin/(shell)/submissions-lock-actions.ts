@@ -72,8 +72,11 @@ export async function setSubmissionsLockAction(
   // The dashboard reads the flag and derives its status pill from it. /entry
   // renders per-school, not from this flag, but its writes are now refused
   // division-wide, so its cached view of what a school may edit is stale too.
+  // /admin/users renders the control itself and its own stamp, so it needs the
+  // same refresh.
   revalidatePath("/admin");
   revalidatePath("/entry");
+  revalidatePath("/admin/users");
 
   return { success: true as const, locked: data.submissions_locked };
 }
