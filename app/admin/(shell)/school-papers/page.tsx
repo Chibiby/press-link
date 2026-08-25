@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+import { CheckCircle2, Circle, Download, Lock, Save } from "lucide-react";
 import Link from "next/link";
 
 import { requireAdmin } from "@/app/admin/guard";
@@ -6,6 +6,7 @@ import { SchoolPaperFilterBar } from "./SchoolPaperFilterBar";
 import { SectionHeadsDialog } from "./SectionHeadsDialog";
 import { SchoolPaperActionsMenu } from "./SchoolPaperActionsMenu";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
+import { StatCard } from "@/components/dashboard/StatCard";
 import { fetchAdminSchoolPaperRows } from "@/lib/paper/fetch-admin-school-papers";
 import {
   eligibleSchoolPaperRows,
@@ -96,6 +97,33 @@ export default async function AdminSchoolPapersPage({
         }
       />
 
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={CheckCircle2}
+          label={PAPER_STATUS_LABEL.submitted}
+          value={eligibleRows.filter((row) => row.status === "submitted").length}
+          subtitle={`Out of ${eligibleRows.length} schools with a paper on file. These have said yes to the contest.`}
+        />
+        <StatCard
+          icon={Save}
+          label={PAPER_STATUS_LABEL.saved}
+          value={eligibleRows.filter((row) => row.status === "saved").length}
+          subtitle="The school answered no to the contest, but its paper details are still on file."
+        />
+        <StatCard
+          icon={Circle}
+          label={PAPER_STATUS_LABEL.incomplete}
+          value={eligibleRows.filter((row) => row.status === "incomplete").length}
+          subtitle="A paper is on file, but the school has not yet answered whether it is joining the contest."
+        />
+        <StatCard
+          icon={Lock}
+          label="Locked"
+          value={eligibleRows.filter((row) => row.locked).length}
+          subtitle="Submission closed for the school; only an admin unlock can reopen it."
+        />
+      </section>
+
       <SchoolPaperFilterBar districts={districts ?? []} schools={schools ?? []} />
 
       {/* Dimmed while the filter bar's navigation is still rendering on the server,
@@ -103,8 +131,14 @@ export default async function AdminSchoolPapersPage({
           Driven by `data-pending` on the bar above. */}
       <div className="overflow-x-auto rounded-xl border transition-opacity group-has-data-pending:opacity-50">
         <Table>
+          {/* `bg-muted/50` on both rows, not once on `TableHeader` itself: the
+              two-row grouped header would otherwise show a hairline of the
+              body's background between them, reading as two separate bands
+              instead of the one shaded header the reference calls for. Same
+              token `TableFooter` already uses for its own "chrome, not data"
+              row, so this page invents no new color. */}
           <TableHeader>
-            <TableRow>
+            <TableRow className="bg-muted/50">
               <TableHead rowSpan={2}>District</TableHead>
               <TableHead rowSpan={2}>School Name</TableHead>
               {/* The two grade groups each own two of the four columns below them;
@@ -125,7 +159,7 @@ export default async function AdminSchoolPapersPage({
               <TableHead rowSpan={2}>Status</TableHead>
               <TableHead rowSpan={2}>Action</TableHead>
             </TableRow>
-            <TableRow>
+            <TableRow className="bg-muted/50">
               <TableHead className="text-center">English</TableHead>
               <TableHead className="text-center">Filipino</TableHead>
               <TableHead className="text-center">English</TableHead>
@@ -135,8 +169,8 @@ export default async function AdminSchoolPapersPage({
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.id}>
-                <TableCell className="text-muted-foreground">{row.districtName}</TableCell>
-                <TableCell className="font-medium">
+                <TableCell className="py-3 text-muted-foreground">{row.districtName}</TableCell>
+                <TableCell className="py-3 font-medium">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{row.schoolName}</span>
                     {row.isIntegrated && (
@@ -149,15 +183,15 @@ export default async function AdminSchoolPapersPage({
                 {row.gradeSlots.map((slot) => (
                   <TableCell
                     key={`${slot.level}:${slot.language}`}
-                    className="text-center"
+                    className="py-3 text-center"
                   >
                     {slot.title || "—"}
                   </TableCell>
                 ))}
-                <TableCell>{row.adviser || "—"}</TableCell>
-                <TableCell>{row.gender || "—"}</TableCell>
-                <TableCell>{row.principal || "—"}</TableCell>
-                <TableCell>
+                <TableCell className="py-3">{row.adviser || "—"}</TableCell>
+                <TableCell className="py-3">{row.gender || "—"}</TableCell>
+                <TableCell className="py-3">{row.principal || "—"}</TableCell>
+                <TableCell className="py-3">
                   {row.sectionHead.length === 0 ? (
                     "—"
                   ) : (
@@ -179,8 +213,8 @@ export default async function AdminSchoolPapersPage({
                     </div>
                   )}
                 </TableCell>
-                <TableCell>{row.assistantHead || "—"}</TableCell>
-                <TableCell>
+                <TableCell className="py-3">{row.assistantHead || "—"}</TableCell>
+                <TableCell className="py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
                       variant={row.status === "submitted" ? "default" : "secondary"}
@@ -195,7 +229,7 @@ export default async function AdminSchoolPapersPage({
                     )}
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="py-3">
                   {row.locked && (
                     <SchoolPaperActionsMenu schoolId={row.id} schoolName={row.schoolName} />
                   )}
