@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   combinedPaperInfo,
   dedupedJoin,
+  dedupedList,
   filterSchoolPaperRows,
   gradeLanguageSlots,
   toAdminSchoolPaperRows,
@@ -221,6 +222,23 @@ describe("toAdminSchoolPaperRows - levels", () => {
   });
 });
 
+describe("dedupedList", () => {
+  it("returns an empty array for an empty array", () => {
+    expect(dedupedList([])).toEqual([]);
+  });
+
+  it("drops blanks and whitespace-only values", () => {
+    expect(dedupedList([null, undefined, "", "   "])).toEqual([]);
+  });
+
+  it("keeps the first occurrence of a real duplicate and drops the rest, preserving order", () => {
+    expect(dedupedList(["Juan Dela Cruz", "Maria Reyes", "Juan Dela Cruz"])).toEqual([
+      "Juan Dela Cruz",
+      "Maria Reyes",
+    ]);
+  });
+});
+
 describe("dedupedJoin", () => {
   it("returns an empty string for an empty array", () => {
     expect(dedupedJoin([])).toBe("");
@@ -282,9 +300,41 @@ describe("combinedPaperInfo", () => {
       ],
       false
     );
-    expect(info.sectionHead).toBe("");
+    expect(info.sectionHead).toEqual([]);
     expect(info.assistantHead).toBe("Ana Lim");
     expect(info.principal).toBe("Dr. Santos");
+  });
+
+  it("keeps section head as a deduped array, in filing-priority order, for a school with more than 3", () => {
+    const info = combinedPaperInfo(
+      [
+        paperFile({
+          language: "english",
+          level: "elementary",
+          paper_staff: [
+            { id: "1", full_name: "Ana Lim", title: "section_head" },
+            { id: "2", full_name: "Ben Cruz", title: "section_head" },
+          ],
+        }),
+        paperFile({
+          language: "filipino",
+          level: "elementary",
+          paper_staff: [
+            // A repeat of "Ana Lim" from the elementary-english paper above —
+            // one person named on two papers, not a second entry.
+            { id: "3", full_name: "Ana Lim", title: "section_head" },
+            { id: "4", full_name: "Cel Reyes", title: "section_head" },
+          ],
+        }),
+        paperFile({
+          language: "english",
+          level: "secondary",
+          paper_staff: [{ id: "5", full_name: "Dodong Santos", title: "section_head" }],
+        }),
+      ],
+      true
+    );
+    expect(info.sectionHead).toEqual(["Ana Lim", "Ben Cruz", "Cel Reyes", "Dodong Santos"]);
   });
 
   it("lists all four advisers of an integrated school in priority order, deduped only where names repeat", () => {

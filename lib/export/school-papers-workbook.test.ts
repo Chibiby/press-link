@@ -26,7 +26,7 @@ const adminSchoolPaperRow = (
   adviser: "Juana Cruz",
   gender: "F",
   principal: "Pedro Reyes",
-  sectionHead: "Maria Santos",
+  sectionHead: ["Maria Santos"],
   assistantHead: "Jose Rizal",
   ...overrides,
 });
@@ -42,6 +42,16 @@ describe("toSchoolPapersExportRows", () => {
     expect(rows[0].Principal).toBe("Pedro Reyes");
     expect(rows[0]["Section Head"]).toBe("Maria Santos");
     expect(rows[0]["Assistant Head"]).toBe("Jose Rizal");
+  });
+
+  it("joins every section head with a comma, unlike the on-screen cell it never truncates", () => {
+    const rows = toSchoolPapersExportRows([
+      adminSchoolPaperRow({
+        sectionHead: ["Ana Lim", "Ben Cruz", "Cel Reyes", "Dodong Santos"],
+      }),
+    ]);
+
+    expect(rows[0]["Section Head"]).toBe("Ana Lim, Ben Cruz, Cel Reyes, Dodong Santos");
   });
 
   it("matches each grade-slot column by level and language, not by array position", () => {
@@ -100,7 +110,7 @@ describe("toSchoolPapersExportRows", () => {
         adviser: "",
         gender: "",
         principal: "",
-        sectionHead: "",
+        sectionHead: [],
         assistantHead: "",
       }),
     ]);
