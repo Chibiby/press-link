@@ -6,7 +6,6 @@ import { eventIndexSummary, type EventIndexRow } from "@/lib/judging/event-index
 import { EVENT_JUDGING_LABEL } from "@/lib/judging/sheet-state";
 
 import { borderRow } from "./borders";
-import { addExportFooter, addExportHeader } from "./letterhead";
 
 /**
  * The workbooks behind the export buttons on /admin/judges and /admin/tabulators.
@@ -284,7 +283,7 @@ export function toTabulationRows(rows: EventIndexRow[]): TabulationRow[] {
  */
 /**
  * Writes an array-of-arrays block starting at `startRow`. Returns the last row
- * written, so a caller can hand it straight to `addExportFooter`.
+ * written.
  */
 function writeAoa(sheet: ExcelJS.Worksheet, aoa: (string | number)[][], startRow: number): number {
   aoa.forEach((line, i) => {
@@ -296,8 +295,7 @@ function writeAoa(sheet: ExcelJS.Worksheet, aoa: (string | number)[][], startRow
 /**
  * Writes a header row at `headerRowIndex` plus one row per record, bordering
  * both the header and every data row (totals included, since they arrive as
- * ordinary records in `records`). Returns the last row written, so a caller
- * can hand it straight to `addExportFooter`.
+ * ordinary records in `records`). Returns the last row written.
  */
 function writeTable<Header extends string>(
   sheet: ExcelJS.Worksheet,
@@ -328,9 +326,9 @@ function aboutSheet(
   const sheet = workbook.addWorksheet("About this export");
   sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
   sheet.columns = [{ width: 12 }, { width: 82 }];
-  const startRow = addExportHeader(workbook, sheet);
+  const startRow = 1;
 
-  const lastRow = writeAoa(
+  writeAoa(
     sheet,
     [
       ["Press Link — adjudication export"],
@@ -362,7 +360,6 @@ function aboutSheet(
     ],
     startRow
   );
-  addExportFooter(workbook, sheet, lastRow);
   return sheet;
 }
 
@@ -370,9 +367,8 @@ function panelSheet(workbook: ExcelJS.Workbook, rows: EventIndexRow[]): ExcelJS.
   const sheet = workbook.addWorksheet("Panels by event");
   sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
   sheet.columns = [34, 24, 17, 12, 9, 44, 40, 40, 62, 20, 74].map((width) => ({ width }));
-  const startRow = addExportHeader(workbook, sheet);
-  const lastRow = writeTable(sheet, PANEL_HEADER, toPanelRows(rows), startRow);
-  addExportFooter(workbook, sheet, lastRow);
+  const startRow = 1;
+  writeTable(sheet, PANEL_HEADER, toPanelRows(rows), startRow);
   return sheet;
 }
 
@@ -392,18 +388,16 @@ function rosterSheet(
 
   if (judges.length === 0) {
     sheet.columns = [{ width: 110 }];
-    const startRow = addExportHeader(workbook, sheet);
-    const lastRow = writeAoa(sheet, [["Judges on file"], [XL_NO_JUDGES]], startRow);
+    const startRow = 1;
+    writeAoa(sheet, [["Judges on file"], [XL_NO_JUDGES]], startRow);
     borderRow(sheet, startRow, 1);
     borderRow(sheet, startRow + 1, 1);
-    addExportFooter(workbook, sheet, lastRow);
     return sheet;
   }
 
   sheet.columns = [34, 34, 34, 9, 10].map((width) => ({ width }));
-  const startRow = addExportHeader(workbook, sheet);
-  const lastRow = writeTable(sheet, ROSTER_HEADER, toRosterRows(judges), startRow);
-  addExportFooter(workbook, sheet, lastRow);
+  const startRow = 1;
+  writeTable(sheet, ROSTER_HEADER, toRosterRows(judges), startRow);
   return sheet;
 }
 
@@ -411,9 +405,8 @@ function tabulationSheet(workbook: ExcelJS.Workbook, rows: EventIndexRow[]): Exc
   const sheet = workbook.addWorksheet("Sheets by event");
   sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
   sheet.columns = [34, 24, 17, 12, 9, 40, 62, 24, 74].map((width) => ({ width }));
-  const startRow = addExportHeader(workbook, sheet);
-  const lastRow = writeTable(sheet, TABULATION_HEADER, toTabulationRows(rows), startRow);
-  addExportFooter(workbook, sheet, lastRow);
+  const startRow = 1;
+  writeTable(sheet, TABULATION_HEADER, toTabulationRows(rows), startRow);
   return sheet;
 }
 
