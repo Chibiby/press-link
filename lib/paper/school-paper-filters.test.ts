@@ -10,6 +10,7 @@ import {
   filterSchoolPaperListRows,
   schoolPaperEmptyState,
   schoolPaperSearchQuery,
+  schoolPapersExportFilename,
 } from "./school-paper-filters";
 
 /**
@@ -23,6 +24,7 @@ const paperFile = (
 ): RawAdminSchoolPaperFile => ({
   language: "english",
   level: "whole",
+  paper_name: "Sample Paper",
   adviser_name: "Adviser",
   adviser_gender: "F",
   principal_name: "Principal",
@@ -220,5 +222,46 @@ describe("schoolPaperEmptyState", () => {
       expect(ids(filterSchoolPaperListRows(rows, filters))).toEqual(ALL);
       expect(schoolPaperEmptyState(filters).narrowed).toBe(false);
     }
+  });
+});
+
+describe("schoolPapersExportFilename", () => {
+  const date = "2026-08-23";
+
+  it("keeps the unfiltered name when nothing is searched", () => {
+    expect(schoolPapersExportFilename({}, date)).toBe(
+      "press-link-school-papers-2026-08-23.xlsx"
+    );
+  });
+
+  it("marks a searched workbook with the slugged query", () => {
+    expect(schoolPapersExportFilename({ q: "Bagumbayan ES" }, date)).toBe(
+      "press-link-school-papers-filtered-bagumbayan-es-2026-08-23.xlsx"
+    );
+  });
+
+  it("truncates a pasted query and never ends the slug on a dash", () => {
+    expect(
+      schoolPapersExportFilename({ q: "abcdefghijklmnopqrstuvw x" }, date)
+    ).toBe("press-link-school-papers-filtered-abcdefghijklmnopqrstuvw-2026-08-23.xlsx");
+  });
+
+  it("still says filtered when the query slugs away to nothing", () => {
+    expect(schoolPapersExportFilename({ q: "!!!" }, date)).toBe(
+      "press-link-school-papers-filtered-search-2026-08-23.xlsx"
+    );
+    // Non-ASCII names are ordinary here, and none of it survives the slug.
+    expect(schoolPapersExportFilename({ q: "ñ" }, date)).toBe(
+      "press-link-school-papers-filtered-search-2026-08-23.xlsx"
+    );
+  });
+
+  it("reflects only the search box, never the dropdown filters", () => {
+    // Deliberate, documented inconsistency (see the source doc comment): a
+    // district-only filter narrows the table but must not mark the filename,
+    // so a future change to this has to break this named test on purpose.
+    expect(schoolPapersExportFilename({ district: "d1" }, date)).toBe(
+      "press-link-school-papers-2026-08-23.xlsx"
+    );
   });
 });
