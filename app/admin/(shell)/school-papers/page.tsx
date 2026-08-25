@@ -146,15 +146,13 @@ export default async function AdminSchoolPapersPage({
                     )}
                   </div>
                 </TableCell>
-                {/*
-                  A slot the school hasn't filed is left genuinely blank rather
-                  than marked "missing" — the header above it already names what
-                  is on file here, and a page of dashes for the ~300 schools that
-                  only owe one or two of the four would read as a page of
-                  problems instead of a page of facts.
-                */}
                 {row.gradeSlots.map((slot) => (
-                  <TableCell key={`${slot.level}:${slot.language}`}>{slot.title}</TableCell>
+                  <TableCell
+                    key={`${slot.level}:${slot.language}`}
+                    className="text-center"
+                  >
+                    {slot.title || "—"}
+                  </TableCell>
                 ))}
                 <TableCell>{row.adviser || "—"}</TableCell>
                 <TableCell>{row.gender || "—"}</TableCell>
