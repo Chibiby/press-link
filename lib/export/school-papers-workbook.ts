@@ -64,11 +64,11 @@ function gradeSlotTitle(
  * that could drift from it.
  *
  * Every text field is left as an empty string rather than a dash when there
- * is nothing to show. This is the on-screen "genuinely blank, not a dash"
- * rule for the grade slots (see page.tsx's comment on that grid), extended
- * here to the name columns too: unlike a screen, which prints "—" for a
- * human to read, a spreadsheet cell is better left blank so a filter or a
- * formula run over the column doesn't have to special-case the string "—".
+ * is nothing to show — true of the grade slots and of the name columns
+ * (Adviser, Principal, ...) alike, even though the screen prints "—" for a
+ * human to read in both. A spreadsheet cell is better left blank so a filter
+ * or a formula run over the column doesn't have to special-case the string
+ * "—".
  */
 export function toSchoolPapersExportRows(
   rows: AdminSchoolPaperRow[]
