@@ -67,6 +67,24 @@ describe("ADMIN_NAV", () => {
   });
 });
 
+describe("Reports group", () => {
+  // School Summary was removed from the rail without deleting its route, so this
+  // pins the group to what should remain rather than just asserting an absence.
+  const reports = ADMIN_NAV.find((group) => group.label === "Reports");
+
+  it("no longer lists School Summary", () => {
+    expect(reports?.items.some((item) => item.href === "/admin/summary")).toBe(false);
+  });
+
+  it("keeps the other three items in order", () => {
+    expect(reports?.items.map((item) => item.href)).toEqual([
+      "/admin/overall-data",
+      "/admin/activity",
+      "/admin/masterlist",
+    ]);
+  });
+});
+
 describe("stub and soon flags", () => {
   const items = ADMIN_NAV.flatMap((group) => group.items);
 

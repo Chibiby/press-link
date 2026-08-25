@@ -74,7 +74,8 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     label: "Reports",
     items: [
-      { label: "School Summary", href: "/admin/summary", icon: "summary" },
+      // School Summary was pulled from the rail; the route and page stay live for
+      // anyone with the direct URL, so this drops the link and nothing else.
       { label: "Overall Data", href: "/admin/overall-data", icon: "overall" },
       { label: "Activity Log", href: "/admin/activity", icon: "activity" },
       // `stub`, like the System three: /admin/masterlist exists and renders a SoonPage,
