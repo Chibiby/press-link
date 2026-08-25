@@ -75,30 +75,36 @@ const summary = (over: Partial<RegistrySummary> = {}): RegistrySummary => ({
 });
 
 describe("toSchoolRegistryExportRows", () => {
-  it("keeps one row per school, in the order given, combining learners and coaches into one cell per category", () => {
+  it("keeps one row per school, in the order given, with Individual and Group each split into Learners/Coaches columns", () => {
     const rows = toSchoolRegistryExportRows(summary());
 
     expect(rows.slice(0, 3)).toEqual([
       {
-        School: "Alabel National High School",
+        "School Name": "Alabel National High School",
         "School ID": "300001",
         District: "Alabel",
-        Individual: "Learners: 8\nCoaches: 3",
-        Group: "Learners: 7\nCoaches: 2",
+        "Ind. Learners": 8,
+        "Ind. Coaches": 3,
+        "Grp. Learners": 7,
+        "Grp. Coaches": 2,
       },
       {
-        School: "Malapatan Central",
+        "School Name": "Malapatan Central",
         "School ID": "300002",
         District: "Malapatan",
-        Individual: "Learners: 2\nCoaches: 1",
-        Group: "Learners: 0\nCoaches: 0",
+        "Ind. Learners": 2,
+        "Ind. Coaches": 1,
+        "Grp. Learners": 0,
+        "Grp. Coaches": 0,
       },
       {
-        School: "Maasim Central ES",
+        "School Name": "Maasim Central ES",
         "School ID": "300003",
         District: "Maasim",
-        Individual: "Learners: 0\nCoaches: 0",
-        Group: "Learners: 4\nCoaches: 1",
+        "Ind. Learners": 0,
+        "Ind. Coaches": 0,
+        "Grp. Learners": 4,
+        "Grp. Coaches": 1,
       },
     ]);
   });
@@ -107,11 +113,13 @@ describe("toSchoolRegistryExportRows", () => {
     const rows = toSchoolRegistryExportRows(summary());
 
     expect(rows.at(-1)).toEqual({
-      School: "DIVISION TOTAL",
+      "School Name": "DIVISION TOTAL",
       "School ID": "",
       District: "3 of 332 schools",
-      Individual: "Learners: 10\nCoaches: 4",
-      Group: "Learners: 11\nCoaches: 3",
+      "Ind. Learners": 10,
+      "Ind. Coaches": 4,
+      "Grp. Learners": 11,
+      "Grp. Coaches": 3,
     });
   });
 
@@ -125,52 +133,83 @@ describe("toSchoolRegistryExportRows", () => {
     );
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].School).toBe("DIVISION TOTAL");
+    expect(rows[0]["School Name"]).toBe("DIVISION TOTAL");
   });
 
   it("does not add an Integrated column, even for an integrated school", () => {
     const rows = toSchoolRegistryExportRows(summary());
     expect(Object.keys(rows[1])).toEqual([
-      "School",
+      "School Name",
       "School ID",
       "District",
-      "Individual",
-      "Group",
+      "Ind. Learners",
+      "Ind. Coaches",
+      "Grp. Learners",
+      "Grp. Coaches",
     ]);
   });
 });
 
 describe("buildSchoolRegistryWorkbook", () => {
-  const headerRowIndex = 1;
-
-  it("produces a single Schools sheet with the header and data rows at the right offsets", () => {
+  it("produces a single Schools sheet with a two-row header and data rows at the right offsets", () => {
     const book = buildSchoolRegistryWorkbook(summary());
     expect(book.worksheets.map((s) => s.name)).toEqual(["Schools"]);
 
     const sheet = book.getWorksheet("Schools")!;
-    expect(rowValues(sheet, headerRowIndex)).toEqual([
-      "School",
+
+    // Rows 1-2 are the letterhead's image/spacer rows (see addExportHeader),
+    // so the table's group-label header row starts at row 3.
+    const groupRow = 3;
+    const labelRow = 4;
+    const dataStartRow = 5;
+
+    // Regression guard: `mergeCells()` must run after the header rows'
+    // values/styles are set, or exceljs silently drops the merges from the
+    // serialized workbook (see the comment in buildSchoolRegistryWorkbook).
+    expect(sheet.model.merges.sort()).toEqual(
+      ["A3:A4", "B3:B4", "C3:C4", "D3:E3", "F3:G3"].sort()
+    );
+
+    // Merged cells: exceljs reports the master's value on every cell in the
+    // merged range (not blank), matching how the example file reads too.
+    expect(rowValues(sheet, groupRow)).toEqual([
+      "School Name",
       "School ID",
       "District",
       "Individual",
+      "Individual",
+      "Group",
       "Group",
     ]);
+    expect(rowValues(sheet, labelRow)).toEqual([
+      "School Name",
+      "School ID",
+      "District",
+      "Learners",
+      "Coaches",
+      "Learners",
+      "Coaches",
+    ]);
 
-    expect(rowValues(sheet, headerRowIndex + 1)).toEqual([
+    expect(rowValues(sheet, dataStartRow)).toEqual([
       "Alabel National High School",
       "300001",
       "Alabel",
-      "Learners: 8\nCoaches: 3",
-      "Learners: 7\nCoaches: 2",
+      8,
+      3,
+      7,
+      2,
     ]);
 
-    // Row 4 is DIVISION TOTAL, after the three schools.
-    expect(rowValues(sheet, headerRowIndex + 4)).toEqual([
+    // Row dataStartRow + 3 is DIVISION TOTAL, after the three schools.
+    expect(rowValues(sheet, dataStartRow + 3)).toEqual([
       "DIVISION TOTAL",
       "",
       "3 of 332 schools",
-      "Learners: 10\nCoaches: 4",
-      "Learners: 11\nCoaches: 3",
+      10,
+      4,
+      11,
+      3,
     ]);
   });
 
@@ -183,16 +222,6 @@ describe("buildSchoolRegistryWorkbook", () => {
       })
     );
     const sheet = book.getWorksheet("Schools")!;
-    expect(rowValues(sheet, headerRowIndex + 1)[0]).toBe("DIVISION TOTAL");
-  });
-
-  it("applies wrapText alignment to the Individual and Group cells but not the other columns", () => {
-    const book = buildSchoolRegistryWorkbook(summary());
-    const sheet = book.getWorksheet("Schools")!;
-    const dataRow = sheet.getRow(headerRowIndex + 1);
-
-    expect(dataRow.getCell(4).alignment).toEqual({ wrapText: true, vertical: "middle" });
-    expect(dataRow.getCell(5).alignment).toEqual({ wrapText: true, vertical: "middle" });
-    expect(dataRow.getCell(1).alignment).toBeUndefined();
+    expect(rowValues(sheet, 5)[0]).toBe("DIVISION TOTAL");
   });
 });
