@@ -3,7 +3,6 @@ import ExcelJS from "exceljs";
 import type { RegistrySummary } from "@/lib/dashboard/school-registry";
 
 import { borderRow } from "./borders";
-import { addExportHeader } from "./letterhead";
 
 export interface SchoolRegistryExportRow {
   "School Name": string;
@@ -79,7 +78,7 @@ export function buildSchoolRegistryWorkbook(summary: RegistrySummary): ExcelJS.W
   // row recreates that row's cells from scratch and silently drops the
   // merge (it never throws — the workbook just serializes with no
   // `<mergeCell>` elements at all).
-  const groupRow = addExportHeader(workbook, sheet);
+  const groupRow = 1;
   const labelRow = groupRow + 1;
 
   sheet.getRow(groupRow).values = [

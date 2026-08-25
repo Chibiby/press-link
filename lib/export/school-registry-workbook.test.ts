@@ -157,17 +157,17 @@ describe("buildSchoolRegistryWorkbook", () => {
 
     const sheet = book.getWorksheet("Schools")!;
 
-    // Rows 1-2 are the letterhead's image/spacer rows (see addExportHeader),
-    // so the table's group-label header row starts at row 3.
-    const groupRow = 3;
-    const labelRow = 4;
-    const dataStartRow = 5;
+    // No letterhead header on this export — the group-label header row is
+    // the sheet's first row.
+    const groupRow = 1;
+    const labelRow = 2;
+    const dataStartRow = 3;
 
     // Regression guard: `mergeCells()` must run after the header rows'
     // values/styles are set, or exceljs silently drops the merges from the
     // serialized workbook (see the comment in buildSchoolRegistryWorkbook).
     expect(sheet.model.merges.sort()).toEqual(
-      ["A3:A4", "B3:B4", "C3:C4", "D3:E3", "F3:G3"].sort()
+      ["A1:A2", "B1:B2", "C1:C2", "D1:E1", "F1:G1"].sort()
     );
 
     // Merged cells: exceljs reports the master's value on every cell in the
@@ -222,6 +222,6 @@ describe("buildSchoolRegistryWorkbook", () => {
       })
     );
     const sheet = book.getWorksheet("Schools")!;
-    expect(rowValues(sheet, 5)[0]).toBe("DIVISION TOTAL");
+    expect(rowValues(sheet, 3)[0]).toBe("DIVISION TOTAL");
   });
 });
