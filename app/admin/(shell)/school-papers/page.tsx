@@ -4,7 +4,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/app/admin/guard";
 import { SchoolPaperFilterBar } from "./SchoolPaperFilterBar";
 import { SectionHeadsDialog } from "./SectionHeadsDialog";
-import { UnlockSubmissionButton } from "./UnlockSubmissionButton";
+import { SchoolPaperActionsMenu } from "./SchoolPaperActionsMenu";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { fetchAdminSchoolPaperRows } from "@/lib/paper/fetch-admin-school-papers";
 import {
@@ -199,7 +199,7 @@ export default async function AdminSchoolPapersPage({
                 </TableCell>
                 <TableCell>
                   {row.locked && (
-                    <UnlockSubmissionButton schoolId={row.id} schoolName={row.schoolName} />
+                    <SchoolPaperActionsMenu schoolId={row.id} schoolName={row.schoolName} />
                   )}
                 </TableCell>
               </TableRow>

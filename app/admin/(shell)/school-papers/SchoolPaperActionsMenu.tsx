@@ -3,12 +3,18 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, LockOpen } from "lucide-react";
+import { LockOpen, MoreHorizontal } from "lucide-react";
 
 import { unlockSubmissionAction } from "./actions";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-export function UnlockSubmissionButton({
+export function SchoolPaperActionsMenu({
   schoolId,
   schoolName,
 }: {
@@ -31,9 +37,18 @@ export function UnlockSubmissionButton({
   }
 
   return (
-    <Button type="button" variant="outline" size="sm" disabled={isPending} onClick={handleUnlock}>
-      {isPending ? <Loader2 className="size-4 animate-spin" /> : <LockOpen className="size-4" />}
-      Unlock
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="School paper actions">
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem disabled={isPending} onClick={handleUnlock}>
+          <LockOpen className="size-4" />
+          Unlock
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
