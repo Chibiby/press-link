@@ -4,7 +4,6 @@ import { requireAdmin } from "@/app/admin/guard";
 import { EventSearch } from "./EventSearch";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -59,9 +58,9 @@ function MatrixTable({ rows, empty }: { rows: EventMatrixRow[]; empty: EventEmpt
     // Dimmed while the search box's navigation is still rendering on the server,
     // so the tables read as catching up rather than as ignoring what was typed;
     // driven by `data-pending` on the box above. `overflow-x-auto` because this is
-    // seven columns and `Card` is `overflow-hidden` — on a phone the Entries column
-    // was clipped with no way to reach it. The scroll stays inside this wrapper, so
-    // the page body never moves sideways.
+    // six columns and `Card` is `overflow-hidden` — on a phone the slot columns
+    // were clipped with no way to reach them. The scroll stays inside this
+    // wrapper, so the page body never moves sideways.
     <div className="overflow-x-auto transition-opacity group-has-data-pending:opacity-50">
       <Table>
         <TableHeader>
@@ -73,7 +72,6 @@ function MatrixTable({ rows, empty }: { rows: EventMatrixRow[]; empty: EventEmpt
                 {slot.label}
               </TableHead>
             ))}
-            <TableHead className="text-right">Entries</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -110,13 +108,6 @@ function MatrixTable({ rows, empty }: { rows: EventMatrixRow[]; empty: EventEmpt
                   </TableCell>
                 );
               })}
-              <TableCell className="text-right font-medium tabular-nums">
-                {row.entries === 0 ? (
-                  <Badge variant="outline">None yet</Badge>
-                ) : (
-                  row.entries
-                )}
-              </TableCell>
             </TableRow>
           ))}
           {rows.length === 0 && (
@@ -125,10 +116,10 @@ function MatrixTable({ rows, empty }: { rows: EventMatrixRow[]; empty: EventEmpt
                   in its base and this cell quotes back whatever was typed — a
                   pasted line would otherwise stretch the table sideways instead of
                   wrapping. The span is derived from `EVENT_SLOTS` for the same
-                  reason the header row is: the four slot columns plus type, team
-                  size and Entries. */}
+                  reason the header row is: the four slot columns plus type and
+                  team size. */}
               <TableCell
-                colSpan={EVENT_SLOTS.length + 3}
+                colSpan={EVENT_SLOTS.length + 2}
                 className="py-10 text-center whitespace-normal"
               >
                 <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
