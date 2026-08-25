@@ -18,6 +18,7 @@ describe("transformSchoolRows", () => {
       schoolName: "Alabel Integrated SPED Center",
       districtName: "Alabel 1",
       isIntegrated: true,
+      level: null,
     });
   });
 
@@ -113,5 +114,28 @@ describe("transformSchoolRows", () => {
     expect(result.schools[0].isIntegrated).toBe(false);
     // Case-insensitive, so the roll's shouty spellings are caught too.
     expect(result.schools[1].isIntegrated).toBe(true);
+  });
+
+  // A fresh environment has to end up with the same `level` values that migration
+  // 0026 backfills into an existing one, or the two diverge on day one — same
+  // reasoning as the `isIntegrated` tests above.
+  it("infers a level from the name for non-integrated schools only", () => {
+    const rows: RawSchoolRow[] = [
+      { schoolId: "130425", schoolName: "Malapatan Central Elementary School", district: "Alabel 1" },
+      { schoolId: "130551", schoolName: "Alabel National High School", district: "Alabel 1" },
+      { schoolId: "130552", schoolName: "Famorcan ES", district: "Alabel 1" },
+      { schoolId: "500289", schoolName: "Banlibato Integrated School", district: "Alabel 1" },
+    ];
+
+    const result = transformSchoolRows(rows);
+
+    expect(result.schools.map((s) => [s.schoolName, s.isIntegrated, s.level])).toEqual([
+      ["Malapatan Central Elementary School", false, "elementary"],
+      ["Alabel National High School", false, "secondary"],
+      // "ES" is not the word "elementary", so this stays unclassified rather than guessed.
+      ["Famorcan ES", false, null],
+      // Integrated: never classified into a level, no matter what the name says.
+      ["Banlibato Integrated School", true, null],
+    ]);
   });
 });
