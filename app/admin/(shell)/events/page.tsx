@@ -41,20 +41,32 @@ import type { EventCategory } from "@/lib/events-catalog";
  * written here: a query for "news" fills Individual and empties Group, and the
  * two have to say different things about the same query.
  */
-function MatrixTable({ rows, empty }: { rows: EventMatrixRow[]; empty: EventEmptyState }) {
+function MatrixTable({
+  rows,
+  empty,
+  showTeamSize = true,
+}: {
+  rows: EventMatrixRow[];
+  empty: EventEmptyState;
+  // Individual contests all say "1–3" here — a column that never varies is
+  // dead weight, so the Individual table opts out and Group, where team size
+  // actually differs contest to contest, keeps the default.
+  showTeamSize?: boolean;
+}) {
   return (
     // Dimmed while the search box's navigation is still rendering on the server,
     // so the tables read as catching up rather than as ignoring what was typed;
-    // driven by `data-pending` on the box above. `overflow-x-auto` because this is
-    // six columns and `Card` is `overflow-hidden` — on a phone the slot columns
-    // were clipped with no way to reach them. The scroll stays inside this
-    // wrapper, so the page body never moves sideways.
+    // driven by `data-pending` on the box above. `overflow-x-auto` because the
+    // slot columns plus type (and, for Group, team size) outrun a phone's width
+    // and `Card` is `overflow-hidden` — without this they were clipped with no
+    // way to reach them. The scroll stays inside this wrapper, so the page body
+    // never moves sideways.
     <div className="overflow-x-auto transition-opacity group-has-data-pending:opacity-50">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Event type</TableHead>
-            <TableHead className="whitespace-nowrap">Team size</TableHead>
+            {showTeamSize && <TableHead className="whitespace-nowrap">Team size</TableHead>}
             {EVENT_SLOTS.map((slot) => (
               <TableHead key={slot.key} className="whitespace-nowrap text-right">
                 {slot.label}
@@ -73,9 +85,11 @@ function MatrixTable({ rows, empty }: { rows: EventMatrixRow[]; empty: EventEmpt
                   <p className="text-xs text-muted-foreground">{row.typeNameFil}</p>
                 )}
               </TableCell>
-              <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
-                {teamSize(row)}
-              </TableCell>
+              {showTeamSize && (
+                <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
+                  {teamSize(row)}
+                </TableCell>
+              )}
               {EVENT_SLOTS.map((slot) => {
                 const cell = row.slots[slot.key];
                 return (
@@ -104,10 +118,10 @@ function MatrixTable({ rows, empty }: { rows: EventMatrixRow[]; empty: EventEmpt
                   in its base and this cell quotes back whatever was typed — a
                   pasted line would otherwise stretch the table sideways instead of
                   wrapping. The span is derived from `EVENT_SLOTS` for the same
-                  reason the header row is: the four slot columns plus type and
-                  team size. */}
+                  reason the header row is: the four slot columns plus type, and
+                  team size when this table shows it. */}
               <TableCell
-                colSpan={EVENT_SLOTS.length + 2}
+                colSpan={EVENT_SLOTS.length + (showTeamSize ? 2 : 1)}
                 className="py-10 text-center whitespace-normal"
               >
                 <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
@@ -228,7 +242,11 @@ export default async function AdminEventsPage({
           </CardAction>
         </CardHeader>
         <CardContent>
-          <MatrixTable rows={individual} empty={eventEmptyState(params, "individual")} />
+          <MatrixTable
+            rows={individual}
+            empty={eventEmptyState(params, "individual")}
+            showTeamSize={false}
+          />
         </CardContent>
       </Card>
 
