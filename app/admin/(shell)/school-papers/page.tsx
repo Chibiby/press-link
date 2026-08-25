@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import Link from "next/link";
 
 import { requireAdmin } from "@/app/admin/guard";
@@ -9,13 +10,12 @@ import {
   type RawAdminSchoolPaper,
 } from "@/lib/paper/admin-papers";
 import {
+  eligibleSchoolPaperRows,
   filterSchoolPaperListRows,
   schoolPaperEmptyState,
   type SchoolPaperListFilters,
 } from "@/lib/paper/school-paper-filters";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
-import { PAPER_LEVEL_LABEL, type PaperSlot } from "@/lib/paper/level";
-import { LANGUAGE_LABEL } from "@/lib/events-catalog";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,26 +27,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const DATE_FORMAT = new Intl.DateTimeFormat("en-PH", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-/**
- * A `whole` paper is named by its language alone, the way it always has been —
- * a non-integrated row must read exactly as it did before levels existed. Only
- * an integrated school's papers carry the level, because only there does the
- * language on its own fail to identify which paper is meant.
- */
-function slotLabel(slot: PaperSlot): string {
-  return slot.level === "whole"
-    ? LANGUAGE_LABEL[slot.language]
-    : `${LANGUAGE_LABEL[slot.language]} · ${PAPER_LEVEL_LABEL[slot.level]}`;
-}
 
 export default async function AdminSchoolPapersPage({
   searchParams,
@@ -71,7 +51,7 @@ export default async function AdminSchoolPapersPage({
       supabase
         .from("schools")
         .select(
-          "id, name, district_id, is_integrated, paper_participation, paper_answered_at, submission_locked_at, districts(name), school_papers(language, level)"
+          "id, name, district_id, is_integrated, level, paper_participation, submission_locked_at, districts(name), school_papers(language, level, adviser_name, adviser_gender, principal_name, paper_staff(id, full_name, title))"
         )
         .order("name")
         .order("id")
@@ -81,10 +61,16 @@ export default async function AdminSchoolPapersPage({
   ]);
 
   const allRows = toAdminSchoolPaperRows(raw);
+  // A school with nothing filed has no adviser, gender, principal or grade cell to
+  // show, so it drops out before either the dropdowns or the search box run — see
+  // `eligibleSchoolPaperRows`. The badge's denominator follows it too, or "12 of
+  // 332" would read as 320 schools hidden by a filter when they were never eligible
+  // to appear here at all.
+  const eligibleRows = eligibleSchoolPaperRows(allRows);
   // Both halves live in `lib/paper/school-paper-filters.ts`, tested there: the row
   // predicate — the dropdowns' own, plus the search box — and the sentence to print
   // when it keeps nothing.
-  const rows = filterSchoolPaperListRows(allRows, params);
+  const rows = filterSchoolPaperListRows(eligibleRows, params);
   const empty = schoolPaperEmptyState(params);
 
   return (
@@ -92,7 +78,7 @@ export default async function AdminSchoolPapersPage({
       <PageHeading
         title="School Papers"
         subtitle="Every school's submission on record"
-        badge={`${rows.length} of ${allRows.length}`}
+        badge={`${rows.length} of ${eligibleRows.length}`}
       />
 
       <SchoolPaperFilterBar districts={districts ?? []} schools={schools ?? []} />
@@ -104,17 +90,37 @@ export default async function AdminSchoolPapersPage({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>School</TableHead>
-              <TableHead>District</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Papers on file</TableHead>
-              <TableHead>Answered</TableHead>
-              <TableHead>Action</TableHead>
+              <TableHead rowSpan={2}>District</TableHead>
+              <TableHead rowSpan={2}>School Name</TableHead>
+              {/* The two grade groups each own two of the four columns below them;
+                  the browser lines row 2's cells up under these on its own once
+                  every other row-1 cell has claimed its rows with `rowSpan`, so
+                  row 2 needs no offset math of its own. */}
+              <TableHead colSpan={2} className="text-center">
+                Elementary School Paper
+              </TableHead>
+              <TableHead colSpan={2} className="text-center">
+                Secondary School Paper
+              </TableHead>
+              <TableHead rowSpan={2}>School Paper Adviser</TableHead>
+              <TableHead rowSpan={2}>Gender</TableHead>
+              <TableHead rowSpan={2}>
+                School Principal / Section or Assistant Heads
+              </TableHead>
+              <TableHead rowSpan={2}>Status</TableHead>
+              <TableHead rowSpan={2}>Action</TableHead>
+            </TableRow>
+            <TableRow>
+              <TableHead className="text-center">English</TableHead>
+              <TableHead className="text-center">Filipino</TableHead>
+              <TableHead className="text-center">English</TableHead>
+              <TableHead className="text-center">Filipino</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.id}>
+                <TableCell className="text-muted-foreground">{row.districtName}</TableCell>
                 <TableCell className="font-medium">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{row.schoolName}</span>
@@ -125,7 +131,60 @@ export default async function AdminSchoolPapersPage({
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{row.districtName}</TableCell>
+                {/*
+                  A slot the school hasn't filed is left genuinely blank rather
+                  than marked "missing" — the header above it already names what
+                  is on file here, and a page of dashes for the ~300 schools that
+                  only owe one or two of the four would read as a page of
+                  problems instead of a page of facts.
+                */}
+                {row.gradeSlots.map((slot) => (
+                  <TableCell key={`${slot.level}:${slot.language}`} className="text-center">
+                    {slot.filled && (
+                      <>
+                        <Check className="mx-auto size-4" aria-hidden="true" />
+                        <span className="sr-only">Filed</span>
+                      </>
+                    )}
+                  </TableCell>
+                ))}
+                <TableCell>{row.adviser || "—"}</TableCell>
+                <TableCell>{row.gender || "—"}</TableCell>
+                <TableCell>
+                  {/*
+                    Three distinct roles, not alternatives to one another, so each
+                    name keeps its own small caption above it rather than sharing
+                    one label or being told apart by position alone — the same
+                    "caption over value" idiom the Integrated/Locked badges use
+                    for "small fact attached to a bigger one", just spelled out as
+                    text instead of a pill because three of these can appear on
+                    one row at once.
+                  */}
+                  {row.principal || row.sectionHead || row.assistantHead ? (
+                    <div className="flex flex-col gap-1.5">
+                      {row.principal && (
+                        <div>
+                          <div className="text-[10px] text-muted-foreground">Principal</div>
+                          <div>{row.principal}</div>
+                        </div>
+                      )}
+                      {row.sectionHead && (
+                        <div>
+                          <div className="text-[10px] text-muted-foreground">Section Head</div>
+                          <div>{row.sectionHead}</div>
+                        </div>
+                      )}
+                      {row.assistantHead && (
+                        <div>
+                          <div className="text-[10px] text-muted-foreground">Assistant Head</div>
+                          <div>{row.assistantHead}</div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
+                </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
@@ -142,44 +201,6 @@ export default async function AdminSchoolPapersPage({
                   </div>
                 </TableCell>
                 <TableCell>
-                  {/*
-                    An integrated school owes four papers and the useful question
-                    about it is which of the four are missing, so all four slots
-                    are drawn and the empty ones are outlined. Every other school
-                    keeps the old cell exactly: the languages on file, or a dash.
-                  */}
-                  {row.isIntegrated ? (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {row.slots.map((slot) => (
-                        <Badge
-                          key={`${slot.language}:${slot.level}`}
-                          variant="outline"
-                          className={
-                            slot.filled
-                              ? "text-[10px]"
-                              : "border-dashed text-[10px] text-muted-foreground/60"
-                          }
-                        >
-                          {slotLabel(slot)}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : row.languages.length === 0 ? (
-                    "—"
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {row.languages.map((lang) => (
-                        <Badge key={lang} variant="outline" className="text-[10px]">
-                          {LANGUAGE_LABEL[lang]}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {row.answeredAt ? DATE_FORMAT.format(new Date(row.answeredAt)) : "—"}
-                </TableCell>
-                <TableCell>
                   {row.locked && (
                     <UnlockSubmissionButton schoolId={row.id} schoolName={row.schoolName} />
                   )}
@@ -192,7 +213,7 @@ export default async function AdminSchoolPapersPage({
                     in its base and this cell quotes back whatever was typed — a
                     pasted line would otherwise stretch the table into a sideways
                     scroll instead of wrapping. */}
-                <TableCell colSpan={6} className="py-10 text-center whitespace-normal">
+                <TableCell colSpan={11} className="py-10 text-center whitespace-normal">
                   <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
                     {empty.message}
                   </p>
