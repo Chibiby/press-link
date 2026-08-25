@@ -5,7 +5,6 @@ import { formatParticipantNumber } from "@/lib/roster/limits";
 import { surnameFirstCamel } from "@/lib/roster/names";
 
 import { borderRow } from "./borders";
-import { addExportFooter, addExportHeader } from "./letterhead";
 
 export interface ExportEntry {
   schoolName: string;
@@ -103,7 +102,7 @@ export function buildEntriesWorkbook(entries: ExportEntry[]): ExcelJS.Workbook {
   const sheet = workbook.addWorksheet("Entries");
   sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
   sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
-  const headerRowIndex = addExportHeader(workbook, sheet);
+  const headerRowIndex = 1;
 
   sheet.getRow(headerRowIndex).values = [...HEADERS];
   borderRow(sheet, headerRowIndex, HEADERS.length);
@@ -113,8 +112,6 @@ export function buildEntriesWorkbook(entries: ExportEntry[]): ExcelJS.Workbook {
     sheet.getRow(rowIndex).values = HEADERS.map((header) => row[header]);
     borderRow(sheet, rowIndex, HEADERS.length);
   });
-
-  addExportFooter(workbook, sheet, headerRowIndex + rows.length);
 
   return workbook;
 }

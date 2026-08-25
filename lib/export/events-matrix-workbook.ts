@@ -3,7 +3,6 @@ import ExcelJS from "exceljs";
 import { teamSize, type EventMatrixRow, type EventSlotKey } from "@/lib/dashboard/event-matrix";
 
 import { borderRow } from "./borders";
-import { addExportFooter, addExportHeader } from "./letterhead";
 
 export interface EventsMatrixRow {
   "Event Type (English)": string;
@@ -67,7 +66,7 @@ export function buildEventsMatrixWorkbook(
   const sheet = workbook.addWorksheet(sheetTitle);
   sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
   sheet.columns = COLUMN_WIDTHS.map((width) => ({ width }));
-  const headerRowIndex = addExportHeader(workbook, sheet);
+  const headerRowIndex = 1;
 
   sheet.getRow(headerRowIndex).values = [...HEADERS];
   borderRow(sheet, headerRowIndex, HEADERS.length);
@@ -77,8 +76,6 @@ export function buildEventsMatrixWorkbook(
     sheet.getRow(rowIndex).values = HEADERS.map((header) => row[header]);
     borderRow(sheet, rowIndex, HEADERS.length);
   });
-
-  addExportFooter(workbook, sheet, headerRowIndex + tableRows.length);
 
   return workbook;
 }
