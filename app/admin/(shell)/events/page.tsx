@@ -44,7 +44,7 @@ interface CatalogEventRow {
     max_participants: number | null;
     sort_order: number;
   } | null;
-  entries: { count: number }[];
+  entries: { id: string; entry_participants: { count: number }[] }[];
 }
 
 /**
@@ -158,7 +158,7 @@ export default async function AdminEventsPage({
   const { data, error } = await supabase
     .from("events")
     .select(
-      "id, level, language, event_types(id, name_en, name_fil, category, min_participants, max_participants, sort_order), entries(count)"
+      "id, level, language, event_types(id, name_en, name_fil, category, min_participants, max_participants, sort_order), entries(id, entry_participants(count))"
     )
     .overrideTypes<CatalogEventRow[]>();
 
@@ -181,27 +181,38 @@ export default async function AdminEventsPage({
     );
   }
 
-  const rows: EventMatrixInput[] = (data ?? []).flatMap((row) =>
+  const rows: EventMatrixInput[] = (data ?? []).flatMap((row) => {
     // events.event_type_id is NOT NULL since migration 0003, so a null type here is a
     // broken key rather than an unclassified event — dropped, not printed unlabelled.
-    row.event_types
-      ? [
-          {
-            eventId: row.id,
-            typeId: row.event_types.id,
-            typeNameEn: row.event_types.name_en,
-            typeNameFil: row.event_types.name_fil,
-            category: row.event_types.category,
-            minParticipants: row.event_types.min_participants,
-            maxParticipants: row.event_types.max_participants,
-            sortOrder: row.event_types.sort_order,
-            level: row.level,
-            language: row.language,
-            entries: row.entries?.[0]?.count ?? 0,
-          },
-        ]
-      : []
-  );
+    if (!row.event_types) return [];
+
+    // A submission is one row in `entries` regardless of how many named participants it
+    // carries; a participant is one row in `entry_participants` under it. Individual
+    // contests want the second count (three named entrants on one entry is three, not
+    // one) and group contests want the first (a 7-member team is one entry, not seven) —
+    // so both are computed here and `event_types.category` below picks between them.
+    const submissionCount = row.entries?.length ?? 0;
+    const participantCount = (row.entries ?? []).reduce(
+      (sum, entry) => sum + (entry.entry_participants?.[0]?.count ?? 0),
+      0
+    );
+
+    return [
+      {
+        eventId: row.id,
+        typeId: row.event_types.id,
+        typeNameEn: row.event_types.name_en,
+        typeNameFil: row.event_types.name_fil,
+        category: row.event_types.category,
+        minParticipants: row.event_types.min_participants,
+        maxParticipants: row.event_types.max_participants,
+        sortOrder: row.event_types.sort_order,
+        level: row.level,
+        language: row.language,
+        entries: row.event_types.category === "individual" ? participantCount : submissionCount,
+      },
+    ];
+  });
 
   const matrix = buildEventMatrix(rows);
 
