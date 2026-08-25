@@ -1,4 +1,5 @@
 import { isIntegratedName } from "../../lib/schools/integrated";
+import { inferSchoolLevel, type SchoolLevel } from "../../lib/schools/level";
 
 export interface RawSchoolRow {
   schoolId: string | number | undefined;
@@ -16,6 +17,12 @@ export interface NormalizedSchool {
    * what makes a fresh environment agree with what migration 0016 backfills in an existing
    * one; after that the column is the truth and the office may correct it by hand. */
   isIntegrated: boolean;
+  /** Elementary or secondary, for a non-integrated school only — see `lib/schools/level.ts`.
+   * An integrated school teaches both, so no single level describes it and this is always
+   * `null` for one regardless of what its name says; that mirrors how the migration's own
+   * backfill (0026) excludes integrated schools rather than guessing at them. Seeding it here
+   * is what makes a fresh environment agree with what 0026 backfills in an existing one. */
+  level: SchoolLevel | null;
 }
 
 export interface SkippedRow {
@@ -66,11 +73,13 @@ export function transformSchoolRows(rows: RawSchoolRow[]): TransformResult {
     seenSchoolIds.add(schoolIdNumber);
 
     districtSet.add(districtName);
+    const integrated = isIntegratedName(schoolName);
     schools.push({
       schoolIdNumber,
       schoolName,
       districtName,
-      isIntegrated: isIntegratedName(schoolName),
+      isIntegrated: integrated,
+      level: integrated ? null : inferSchoolLevel(schoolName),
     });
   }
 

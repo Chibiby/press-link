@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { toAdminSchoolPaperRows, type RawAdminSchoolPaper } from "./admin-papers";
 import {
+  toAdminSchoolPaperRows,
+  type RawAdminSchoolPaper,
+  type RawAdminSchoolPaperFile,
+} from "./admin-papers";
+import {
+  eligibleSchoolPaperRows,
   filterSchoolPaperListRows,
   schoolPaperEmptyState,
   schoolPaperSearchQuery,
@@ -13,16 +18,28 @@ import {
  * the languages and the slots are all derived there, and the filters this file tests
  * run on top of them.
  */
+const paperFile = (
+  overrides: Partial<RawAdminSchoolPaperFile> = {}
+): RawAdminSchoolPaperFile => ({
+  language: "english",
+  level: "whole",
+  adviser_name: "Adviser",
+  adviser_gender: "F",
+  principal_name: "Principal",
+  paper_staff: [],
+  ...overrides,
+});
+
 const raw = (overrides: Partial<RawAdminSchoolPaper> = {}): RawAdminSchoolPaper => ({
   id: "s1",
   name: "Bagumbayan ES",
   district_id: "d1",
   is_integrated: false,
+  level: null,
   paper_participation: "yes",
-  paper_answered_at: "2026-08-14T02:00:00.000Z",
   submission_locked_at: null,
   districts: { name: "District I" },
-  school_papers: [{ language: "english", level: "whole" }],
+  school_papers: [paperFile()],
   ...overrides,
 });
 
@@ -34,20 +51,20 @@ const rows = toAdminSchoolPaperRows([
     district_id: "d2",
     districts: { name: "District II" },
     submission_locked_at: "2026-08-14T03:00:00.000Z",
-    school_papers: [{ language: "filipino", level: "whole" }],
+    school_papers: [paperFile({ language: "filipino" })],
   }),
   raw({
     id: "s3",
     name: "Malandag Integrated School",
     is_integrated: true,
     paper_participation: "no",
-    paper_answered_at: null,
     school_papers: [],
   }),
 ]);
 
 const ids = (filtered: { id: string }[]) => filtered.map((row) => row.id);
-// The mapper sorts by school name: Bagumbayan, Malandag, Zamora.
+// The mapper sorts by district then school name. s1 and s3 are both District
+// I, where Bagumbayan sorts before Malandag; s2 is the lone District II row.
 const ALL = ["s1", "s3", "s2"];
 
 describe("schoolPaperSearchQuery", () => {
@@ -69,6 +86,17 @@ describe("schoolPaperSearchQuery", () => {
 
   it("survives an empty repeated param rather than throwing", () => {
     expect(schoolPaperSearchQuery({ q: [] })).toBeNull();
+  });
+});
+
+describe("eligibleSchoolPaperRows", () => {
+  it("drops a school with zero papers on file", () => {
+    // s3 (Malandag) is the one row here with no school_papers at all.
+    expect(ids(eligibleSchoolPaperRows(rows))).not.toContain("s3");
+  });
+
+  it("keeps a school with exactly one paper, any language or level", () => {
+    expect(ids(eligibleSchoolPaperRows(rows))).toEqual(["s1", "s2"]);
   });
 });
 
@@ -131,9 +159,11 @@ describe("filterSchoolPaperListRows", () => {
 });
 
 describe("schoolPaperEmptyState", () => {
-  it("says the roll is empty only when no control is set", () => {
+  it("says no school has a paper on file when no control is set", () => {
+    // Not "the roll is empty" — the roll is ~332 schools whether or not any of
+    // them has filed a paper, and `eligibleSchoolPaperRows` runs before this.
     expect(schoolPaperEmptyState({})).toEqual({
-      message: "No schools are on the division roll yet.",
+      message: "No schools have a school paper on file yet.",
       narrowed: false,
     });
   });

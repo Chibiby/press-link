@@ -1,21 +1,37 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  combinedPaperInfo,
+  dedupedJoin,
   filterSchoolPaperRows,
+  gradeLanguageSlots,
   toAdminSchoolPaperRows,
   type RawAdminSchoolPaper,
+  type RawAdminSchoolPaperFile,
 } from "./admin-papers";
+
+const paperFile = (
+  overrides: Partial<RawAdminSchoolPaperFile> = {}
+): RawAdminSchoolPaperFile => ({
+  language: "english",
+  level: "whole",
+  adviser_name: "Adviser",
+  adviser_gender: "F",
+  principal_name: "Principal",
+  paper_staff: [],
+  ...overrides,
+});
 
 const raw = (overrides: Partial<RawAdminSchoolPaper> = {}): RawAdminSchoolPaper => ({
   id: "s1",
   name: "Bagumbayan ES",
   district_id: "d1",
   is_integrated: false,
+  level: null,
   paper_participation: "yes",
-  paper_answered_at: "2026-08-14T02:00:00.000Z",
   submission_locked_at: null,
   districts: { name: "District I" },
-  school_papers: [{ language: "english", level: "whole" }],
+  school_papers: [paperFile()],
   ...overrides,
 });
 
@@ -41,8 +57,8 @@ describe("toAdminSchoolPaperRows", () => {
     const [row] = toAdminSchoolPaperRows([
       raw({
         school_papers: [
-          { language: "filipino", level: "whole" },
-          { language: "english", level: "whole" },
+          paperFile({ language: "filipino" }),
+          paperFile({ language: "english" }),
         ],
       }),
     ]);
@@ -58,7 +74,7 @@ describe("toAdminSchoolPaperRows", () => {
 
   it("calls a school with no papers and no answer not started", () => {
     const [row] = toAdminSchoolPaperRows([
-      raw({ paper_participation: "undecided", paper_answered_at: null, school_papers: [] }),
+      raw({ paper_participation: "undecided", school_papers: [] }),
     ]);
     expect(row.status).toBe("incomplete");
     expect(row.languages).toEqual([]);
@@ -68,8 +84,20 @@ describe("toAdminSchoolPaperRows", () => {
     const [row] = toAdminSchoolPaperRows([raw({ paper_participation: "no" })]);
     expect(row.status).toBe("saved");
   });
+});
 
-  it("sorts by school name", () => {
+describe("toAdminSchoolPaperRows - sorting", () => {
+  it("sorts by district first, even when school names would sort the other way", () => {
+    const rows = toAdminSchoolPaperRows([
+      raw({ id: "b", name: "Aguinaldo ES", district_id: "d2", districts: { name: "District II" } }),
+      raw({ id: "a", name: "Zamora ES", district_id: "d1", districts: { name: "District I" } }),
+    ]);
+    // "Aguinaldo" sorts before "Zamora" by name alone, but District I comes
+    // first, so its school — Zamora — leads regardless of the two names.
+    expect(rows.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("sorts by school name within a district", () => {
     const rows = toAdminSchoolPaperRows([
       raw({ id: "b", name: "Zamora ES" }),
       raw({ id: "a", name: "Aguinaldo ES" }),
@@ -82,10 +110,7 @@ describe("toAdminSchoolPaperRows - levels", () => {
   it("gives a non-integrated school two whole slots and nothing else", () => {
     const [row] = toAdminSchoolPaperRows([
       raw({
-        school_papers: [
-          { language: "english", level: "whole" },
-          { language: "filipino", level: "whole" },
-        ],
+        school_papers: [paperFile({ language: "english" }), paperFile({ language: "filipino" })],
       }),
     ]);
     expect(row.isIntegrated).toBe(false);
@@ -111,10 +136,10 @@ describe("toAdminSchoolPaperRows - levels", () => {
         is_integrated: true,
         name: "San Isidro Integrated School",
         school_papers: [
-          { language: "english", level: "elementary" },
-          { language: "english", level: "secondary" },
-          { language: "filipino", level: "elementary" },
-          { language: "filipino", level: "secondary" },
+          paperFile({ language: "english", level: "elementary" }),
+          paperFile({ language: "english", level: "secondary" }),
+          paperFile({ language: "filipino", level: "elementary" }),
+          paperFile({ language: "filipino", level: "secondary" }),
         ],
       }),
     ]);
@@ -136,8 +161,8 @@ describe("toAdminSchoolPaperRows - levels", () => {
       raw({
         is_integrated: true,
         school_papers: [
-          { language: "english", level: "elementary" },
-          { language: "filipino", level: "secondary" },
+          paperFile({ language: "english", level: "elementary" }),
+          paperFile({ language: "filipino", level: "secondary" }),
         ],
       }),
     ]);
@@ -152,9 +177,9 @@ describe("toAdminSchoolPaperRows - levels", () => {
       raw({
         is_integrated: true,
         school_papers: [
-          { language: "english", level: "elementary" },
-          { language: "english", level: "secondary" },
-          { language: "filipino", level: "elementary" },
+          paperFile({ language: "english", level: "elementary" }),
+          paperFile({ language: "english", level: "secondary" }),
+          paperFile({ language: "filipino", level: "elementary" }),
         ],
       }),
     ]);
@@ -166,8 +191,7 @@ describe("toAdminSchoolPaperRows - levels", () => {
     const [row] = toAdminSchoolPaperRows([
       raw({
         paper_participation: "undecided",
-        paper_answered_at: null,
-        school_papers: [{ language: "english", level: "elementary" }],
+        school_papers: [paperFile({ language: "english", level: "elementary" })],
       }),
     ]);
     expect(filled(row.slots)).toEqual([]);
@@ -183,10 +207,9 @@ describe("toAdminSchoolPaperRows - levels", () => {
       raw({
         is_integrated: true,
         paper_participation: "undecided",
-        paper_answered_at: null,
         school_papers: [
-          { language: "english", level: "whole" },
-          { language: "filipino", level: "elementary" },
+          paperFile({ language: "english", level: "whole" }),
+          paperFile({ language: "filipino", level: "elementary" }),
         ],
       }),
     ]);
@@ -197,6 +220,166 @@ describe("toAdminSchoolPaperRows - levels", () => {
   });
 });
 
+describe("dedupedJoin", () => {
+  it("returns an empty string for an empty array", () => {
+    expect(dedupedJoin([])).toBe("");
+  });
+
+  it("returns an empty string when every value is blank or whitespace-only", () => {
+    expect(dedupedJoin([null, undefined, "", "   "])).toBe("");
+  });
+
+  it("keeps the first occurrence of a real duplicate and drops the rest", () => {
+    expect(dedupedJoin(["Juan Dela Cruz", "Maria Reyes", "Juan Dela Cruz"])).toBe(
+      "Juan Dela Cruz, Maria Reyes"
+    );
+  });
+});
+
+describe("combinedPaperInfo", () => {
+  it("lists the same adviser once when two papers share one", () => {
+    const info = combinedPaperInfo(
+      [
+        paperFile({ language: "english", level: "elementary", adviser_name: "Juan Dela Cruz" }),
+        paperFile({ language: "english", level: "secondary", adviser_name: "Juan Dela Cruz" }),
+      ],
+      true
+    );
+    expect(info.adviser).toBe("Juan Dela Cruz");
+  });
+
+  it("dedupes gender independently of adviser identity", () => {
+    const info = combinedPaperInfo(
+      [
+        paperFile({
+          language: "english",
+          level: "elementary",
+          adviser_name: "Juan Dela Cruz",
+          adviser_gender: "M",
+        }),
+        paperFile({
+          language: "english",
+          level: "secondary",
+          adviser_name: "Maria Reyes",
+          adviser_gender: "F",
+        }),
+      ],
+      true
+    );
+    // Two different advisers, two different genders — both survive even
+    // though they are not read positionally against which adviser gave them.
+    expect(info.gender).toBe("M, F");
+  });
+
+  it("leaves an empty section head from blocking assistant head or principal", () => {
+    const info = combinedPaperInfo(
+      [
+        paperFile({
+          principal_name: "Dr. Santos",
+          paper_staff: [{ id: "1", full_name: "Ana Lim", title: "assistant_head" }],
+        }),
+      ],
+      false
+    );
+    expect(info.sectionHead).toBe("");
+    expect(info.assistantHead).toBe("Ana Lim");
+    expect(info.principal).toBe("Dr. Santos");
+  });
+
+  it("lists all four advisers of an integrated school in priority order, deduped only where names repeat", () => {
+    const info = combinedPaperInfo(
+      [
+        paperFile({ language: "filipino", level: "secondary", adviser_name: "D" }),
+        paperFile({ language: "english", level: "elementary", adviser_name: "A" }),
+        paperFile({ language: "english", level: "secondary", adviser_name: "C" }),
+        paperFile({ language: "filipino", level: "elementary", adviser_name: "B" }),
+      ],
+      true
+    );
+    expect(info.adviser).toBe("A, B, C, D");
+  });
+
+  it("still produces real adviser, gender and principal data for a school with no grade classification", () => {
+    // gradeLanguageSlots blanks the grid for a null schoolLevel, but the
+    // combined names are a different question — the school did file papers.
+    const info = combinedPaperInfo(
+      [paperFile({ adviser_name: "Juan Dela Cruz", principal_name: "Dr. Santos" })],
+      false
+    );
+    expect(info.adviser).toBe("Juan Dela Cruz");
+    expect(info.principal).toBe("Dr. Santos");
+  });
+
+  it("drops a stale row whose level contradicts its school from every field", () => {
+    const info = combinedPaperInfo(
+      [paperFile({ language: "english", level: "elementary", adviser_name: "Stale Adviser" })],
+      false
+    );
+    expect(info.adviser).toBe("");
+  });
+});
+
+describe("gradeLanguageSlots", () => {
+  it("returns the four cells in elementary-english, elementary-filipino, secondary-english, secondary-filipino order", () => {
+    const slots = gradeLanguageSlots({
+      isIntegrated: true,
+      schoolLevel: null,
+      savedPapers: [],
+    });
+    expect(slots.map((s) => `${s.level}:${s.language}`)).toEqual([
+      "elementary:english",
+      "elementary:filipino",
+      "secondary:english",
+      "secondary:filipino",
+    ]);
+  });
+
+  it("fills an integrated school's slot only where a belonging paper matches level and language exactly", () => {
+    const slots = gradeLanguageSlots({
+      isIntegrated: true,
+      schoolLevel: null,
+      savedPapers: [{ language: "english", level: "elementary" }],
+    });
+    expect(slots.filter((s) => s.filled)).toEqual([
+      { level: "elementary", language: "english", filled: true },
+    ]);
+  });
+
+  it("leaves every slot unfilled for a non-integrated school with no grade classification, whatever it has on file", () => {
+    const slots = gradeLanguageSlots({
+      isIntegrated: false,
+      schoolLevel: null,
+      savedPapers: [
+        { language: "english", level: "whole" },
+        { language: "filipino", level: "whole" },
+      ],
+    });
+    expect(slots.every((s) => !s.filled)).toBe(true);
+  });
+
+  it("fills a non-integrated school's slot for its classified level when a whole paper covers that language", () => {
+    const slots = gradeLanguageSlots({
+      isIntegrated: false,
+      schoolLevel: "elementary",
+      savedPapers: [{ language: "english", level: "whole" }],
+    });
+    expect(slots.filter((s) => s.filled)).toEqual([
+      { level: "elementary", language: "english", filled: true },
+    ]);
+  });
+
+  it("never fills the other level for a non-integrated school, even with a matching whole paper", () => {
+    const slots = gradeLanguageSlots({
+      isIntegrated: false,
+      schoolLevel: "elementary",
+      savedPapers: [{ language: "english", level: "whole" }],
+    });
+    expect(slots.find((s) => s.level === "secondary" && s.language === "english")?.filled).toBe(
+      false
+    );
+  });
+});
+
 describe("filterSchoolPaperRows", () => {
   const rows = toAdminSchoolPaperRows([
     raw({ id: "sub", name: "A", paper_participation: "yes" }),
@@ -204,7 +387,7 @@ describe("filterSchoolPaperRows", () => {
       id: "saved",
       name: "B",
       paper_participation: "no",
-      school_papers: [{ language: "filipino", level: "whole" }],
+      school_papers: [paperFile({ language: "filipino" })],
     }),
     raw({
       id: "locked",
@@ -212,16 +395,12 @@ describe("filterSchoolPaperRows", () => {
       paper_participation: "yes",
       submission_locked_at: "2026-08-14T03:00:00.000Z",
       district_id: "d2",
-      school_papers: [
-        { language: "english", level: "whole" },
-        { language: "filipino", level: "whole" },
-      ],
+      school_papers: [paperFile({ language: "english" }), paperFile({ language: "filipino" })],
     }),
     raw({
       id: "none",
       name: "D",
       paper_participation: "undecided",
-      paper_answered_at: null,
       school_papers: [],
     }),
   ]);
@@ -283,24 +462,28 @@ describe("filterSchoolPaperRows - language means any level", () => {
       id: "half",
       name: "A Integrated School",
       is_integrated: true,
-      school_papers: [{ language: "english", level: "elementary" }],
+      school_papers: [paperFile({ language: "english", level: "elementary" })],
     }),
     raw({
       id: "both",
       name: "B Integrated School",
       is_integrated: true,
       school_papers: [
-        { language: "english", level: "elementary" },
-        { language: "english", level: "secondary" },
+        paperFile({ language: "english", level: "elementary" }),
+        paperFile({ language: "english", level: "secondary" }),
       ],
     }),
     raw({
       id: "stale",
       name: "C Integrated School",
       is_integrated: true,
-      school_papers: [{ language: "english", level: "whole" }],
+      school_papers: [paperFile({ language: "english", level: "whole" })],
     }),
-    raw({ id: "plain", name: "D ES", school_papers: [{ language: "english", level: "whole" }] }),
+    raw({
+      id: "plain",
+      name: "D ES",
+      school_papers: [paperFile({ language: "english", level: "whole" })],
+    }),
   ]);
 
   it("matches an integrated school holding only one of its two English papers", () => {
