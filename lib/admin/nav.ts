@@ -96,7 +96,7 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     label: "System",
     items: [
-      { label: "Users & Access", href: "/admin/users", icon: "users", stub: true },
+      { label: "Users & Access", href: "/admin/users", icon: "users" },
       { label: "Settings", href: "/admin/settings", icon: "settings", stub: true },
       { label: "Audit Logs", href: "/admin/audit-logs", icon: "audit" },
     ],

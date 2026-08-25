@@ -4,7 +4,6 @@ import Link from "next/link";
 import { requireAdmin } from "@/app/admin/guard";
 import { SchoolPaperFilterBar } from "./SchoolPaperFilterBar";
 import { SectionHeadsDialog } from "./SectionHeadsDialog";
-import { SchoolPaperActionsMenu } from "./SchoolPaperActionsMenu";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { fetchAdminSchoolPaperRows } from "@/lib/paper/fetch-admin-school-papers";
@@ -157,7 +156,6 @@ export default async function AdminSchoolPapersPage({
               <TableHead rowSpan={2}>Section Head</TableHead>
               <TableHead rowSpan={2}>Assistant Head</TableHead>
               <TableHead rowSpan={2}>Status</TableHead>
-              <TableHead rowSpan={2}>Action</TableHead>
             </TableRow>
             <TableRow className="bg-muted/50">
               <TableHead className="text-center">English</TableHead>
@@ -229,11 +227,6 @@ export default async function AdminSchoolPapersPage({
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="py-3">
-                  {row.locked && (
-                    <SchoolPaperActionsMenu schoolId={row.id} schoolName={row.schoolName} />
-                  )}
-                </TableCell>
               </TableRow>
             ))}
             {rows.length === 0 && (
@@ -242,7 +235,7 @@ export default async function AdminSchoolPapersPage({
                     in its base and this cell quotes back whatever was typed — a
                     pasted line would otherwise stretch the table into a sideways
                     scroll instead of wrapping. */}
-                <TableCell colSpan={13} className="py-10 text-center whitespace-normal">
+                <TableCell colSpan={12} className="py-10 text-center whitespace-normal">
                   <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
                     {empty.message}
                   </p>

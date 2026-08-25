@@ -110,7 +110,6 @@ describe("stub and soon flags", () => {
     // pinned to the rail's reading order, not to a set.
     expect(items.filter((item) => item.stub).map((item) => item.href)).toEqual([
       "/admin/masterlist",
-      "/admin/users",
       "/admin/settings",
     ]);
   });
