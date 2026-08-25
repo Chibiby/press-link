@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { classifyAdminProfileLookup, classifyAuthCheck } from "@/lib/auth/session-check";
 import { createClient, type SupabaseServerClient } from "@/lib/supabase/server";
 
 type AdminCheck =
@@ -16,15 +17,25 @@ export async function checkAdmin(): Promise<AdminCheck> {
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
-  if (!user) return { supabase, isAdmin: false, reason: "unauthenticated" };
+  if (classifyAuthCheck(user, userError) !== "authenticated" || !user) {
+    return { supabase, isAdmin: false, reason: "unauthenticated" };
+  }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("admin_profiles")
     .select("user_id")
     .eq("user_id", user.id)
     .single();
-  if (!profile) return { supabase, isAdmin: false, reason: "not-admin" };
+
+  const lookup = classifyAdminProfileLookup(profile, profileError);
+  if (lookup === "not-admin") return { supabase, isAdmin: false, reason: "not-admin" };
+  // "check-failed": the query itself didn't complete (a network blip, a
+  // transient PostgREST/RLS hiccup) — that is not evidence this signed-in
+  // account isn't an admin, so it must not take the "not-admin" branch,
+  // which is the one requireAdmin() destroys the session for.
+  if (lookup === "check-failed") return { supabase, isAdmin: false, reason: "unauthenticated" };
 
   return { supabase, isAdmin: true };
 }
