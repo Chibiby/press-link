@@ -15,6 +15,7 @@ const paperFile = (
 ): RawAdminSchoolPaperFile => ({
   language: "english",
   level: "whole",
+  paper_name: "Sample Paper",
   adviser_name: "Adviser",
   adviser_gender: "F",
   principal_name: "Principal",
@@ -334,49 +335,68 @@ describe("gradeLanguageSlots", () => {
     ]);
   });
 
-  it("fills an integrated school's slot only where a belonging paper matches level and language exactly", () => {
+  it("titles an integrated school's slot only where a belonging paper matches level and language exactly, picking the right paper's name among several on file", () => {
     const slots = gradeLanguageSlots({
       isIntegrated: true,
       schoolLevel: null,
-      savedPapers: [{ language: "english", level: "elementary" }],
+      savedPapers: [
+        { language: "english", level: "elementary", paper_name: "The Elementary Voice" },
+        { language: "english", level: "secondary", paper_name: "The Secondary Voice" },
+      ],
     });
-    expect(slots.filter((s) => s.filled)).toEqual([
-      { level: "elementary", language: "english", filled: true },
+    expect(slots.filter((s) => s.title !== null)).toEqual([
+      { level: "elementary", language: "english", title: "The Elementary Voice" },
+      { level: "secondary", language: "english", title: "The Secondary Voice" },
     ]);
   });
 
-  it("leaves every slot unfilled for a non-integrated school with no grade classification, whatever it has on file", () => {
+  it("leaves every slot's title null for a non-integrated school with no grade classification, whatever it has on file", () => {
     const slots = gradeLanguageSlots({
       isIntegrated: false,
       schoolLevel: null,
       savedPapers: [
-        { language: "english", level: "whole" },
-        { language: "filipino", level: "whole" },
+        { language: "english", level: "whole", paper_name: "The Whole Paper" },
+        { language: "filipino", level: "whole", paper_name: "Ang Pahayagan" },
       ],
     });
-    expect(slots.every((s) => !s.filled)).toBe(true);
+    expect(slots.every((s) => s.title === null)).toBe(true);
   });
 
-  it("fills a non-integrated school's slot for its classified level when a whole paper covers that language", () => {
+  it("titles a non-integrated school's slot for its classified level with the whole paper's name that covers that language", () => {
     const slots = gradeLanguageSlots({
       isIntegrated: false,
       schoolLevel: "elementary",
-      savedPapers: [{ language: "english", level: "whole" }],
+      savedPapers: [{ language: "english", level: "whole", paper_name: "The Whole Paper" }],
     });
-    expect(slots.filter((s) => s.filled)).toEqual([
-      { level: "elementary", language: "english", filled: true },
+    expect(slots.filter((s) => s.title !== null)).toEqual([
+      { level: "elementary", language: "english", title: "The Whole Paper" },
     ]);
   });
 
-  it("never fills the other level for a non-integrated school, even with a matching whole paper", () => {
+  it("never titles the other level for a non-integrated school, even with a matching whole paper", () => {
     const slots = gradeLanguageSlots({
       isIntegrated: false,
       schoolLevel: "elementary",
-      savedPapers: [{ language: "english", level: "whole" }],
+      savedPapers: [{ language: "english", level: "whole", paper_name: "The Whole Paper" }],
     });
-    expect(slots.find((s) => s.level === "secondary" && s.language === "english")?.filled).toBe(
-      false
-    );
+    expect(
+      slots.find((s) => s.level === "secondary" && s.language === "english")?.title
+    ).toBeNull();
+  });
+
+  it("leaves a slot's title null for a stale row that does not belong to its school per levelBelongsTo", () => {
+    // A levelled row held by a non-integrated school: levelBelongsTo drops it, so
+    // it cannot surface a title even though its language and level otherwise line
+    // up with the grid — the same invariant paperSlots already enforces for
+    // whether the paper counts as filed at all.
+    const slots = gradeLanguageSlots({
+      isIntegrated: false,
+      schoolLevel: "elementary",
+      savedPapers: [
+        { language: "english", level: "elementary", paper_name: "Stale Elementary Paper" },
+      ],
+    });
+    expect(slots.every((s) => s.title === null)).toBe(true);
   });
 });
 

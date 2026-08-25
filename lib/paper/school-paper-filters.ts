@@ -133,6 +133,43 @@ export function filterSchoolPaperListRows(
   );
 }
 
+/** Longest slug the filename carries, so a pasted paragraph cannot become the name. */
+const FILENAME_QUERY_MAX = 24;
+
+/**
+ * The export's filename, marked when the workbook is a filtered view.
+ *
+ * Mirrors `overallDataExportFilename` exactly, including which filter it
+ * reflects: only the search box, never the dropdowns. That means a
+ * district-only or status-only filtered export keeps the unfiltered name —
+ * the same inconsistency `overallDataExportFilename` already accepts for its
+ * own district dropdown — and this function is not the place to fix it.
+ *
+ * The query is slugged down to `[a-z0-9-]` rather than escaped, and that is a
+ * safety boundary, not tidiness: this string goes into a `Content-Disposition`
+ * header, where a quote or a CRLF out of a hand-edited URL would end the
+ * filename and start something else. Anything that slugs away to nothing — a
+ * query of punctuation, or of characters outside ASCII — still gets the word
+ * "filtered", because the fact that matters is that the sheet is narrowed,
+ * not what was typed.
+ */
+export function schoolPapersExportFilename(
+  filters: SchoolPaperListFilters,
+  date: string
+): string {
+  const query = schoolPaperSearchQuery(filters);
+  if (!query) return `press-link-school-papers-${date}.xlsx`;
+
+  const slug = query
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, FILENAME_QUERY_MAX)
+    .replace(/-+$/, "");
+
+  return `press-link-school-papers-filtered-${slug || "search"}-${date}.xlsx`;
+}
+
 export interface SchoolPaperEmptyState {
   /** What the table says in place of rows. Names the cause, never just "none". */
   message: string;
