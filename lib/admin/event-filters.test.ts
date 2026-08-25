@@ -4,6 +4,7 @@ import { buildEventMatrix, type EventMatrixInput } from "@/lib/dashboard/event-m
 import {
   eventEmptyState,
   eventSearchQuery,
+  eventsExportFilename,
   eventTypeCountLabel,
   filterEventRows,
 } from "./event-filters";
@@ -206,5 +207,52 @@ describe("eventTypeCountLabel", () => {
     expect(eventTypeCountLabel(0)).toBe("0 types");
     expect(eventTypeCountLabel(1)).toBe("1 type");
     expect(eventTypeCountLabel(10)).toBe("10 types");
+  });
+});
+
+describe("eventsExportFilename", () => {
+  const date = "2026-08-23";
+
+  it("names each card's download by its own category when nothing is searched", () => {
+    expect(eventsExportFilename("individual", {}, date)).toBe(
+      "press-link-events-individual-2026-08-23.xlsx"
+    );
+    expect(eventsExportFilename("group", {}, date)).toBe(
+      "press-link-events-group-2026-08-23.xlsx"
+    );
+    // A blank query is no search, the same rule the URL and the box apply.
+    expect(eventsExportFilename("individual", { q: "  " }, date)).toBe(
+      "press-link-events-individual-2026-08-23.xlsx"
+    );
+  });
+
+  it("marks a searched workbook, so it is not forwarded as the whole category", () => {
+    expect(eventsExportFilename("individual", { q: "Feature Writing" }, date)).toBe(
+      "press-link-events-individual-filtered-feature-writing-2026-08-23.xlsx"
+    );
+    expect(eventsExportFilename("group", { q: "Radio" }, date)).toBe(
+      "press-link-events-group-filtered-radio-2026-08-23.xlsx"
+    );
+  });
+
+  it("strips anything that could break out of the Content-Disposition header", () => {
+    expect(eventsExportFilename("individual", { q: 'a"\r\nX-Evil: 1' }, date)).toBe(
+      "press-link-events-individual-filtered-a-x-evil-1-2026-08-23.xlsx"
+    );
+  });
+
+  it("still says filtered when the query slugs away to nothing", () => {
+    expect(eventsExportFilename("group", { q: "!!!" }, date)).toBe(
+      "press-link-events-group-filtered-search-2026-08-23.xlsx"
+    );
+    expect(eventsExportFilename("individual", { q: "ñ" }, date)).toBe(
+      "press-link-events-individual-filtered-search-2026-08-23.xlsx"
+    );
+  });
+
+  it("truncates a pasted query and never ends the slug on a dash", () => {
+    expect(
+      eventsExportFilename("individual", { q: "abcdefghijklmnopqrstuvw x" }, date)
+    ).toBe("press-link-events-individual-filtered-abcdefghijklmnopqrstuvw-2026-08-23.xlsx");
   });
 });
