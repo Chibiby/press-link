@@ -157,3 +157,33 @@ export function eventTypeCountLabel(count: number): string {
 
 /** This page's path, so the search box and the way-back links cannot disagree. */
 export const EVENTS_PATH = "/admin/events";
+
+/** Longest slug the filename carries, so a pasted paragraph cannot become the name. */
+const FILENAME_QUERY_MAX = 24;
+
+/**
+ * The export's filename, marked when the workbook is a filtered view — the
+ * same reasoning as `overallDataExportFilename`, and the same slugging, so
+ * the two exports cannot drift on what "filtered" means in a filename.
+ *
+ * `category` is always in the name because each card downloads separately:
+ * "press-link-events-individual-...xlsx" and "...-group-...xlsx" can sit in
+ * the same downloads folder without one overwriting the other.
+ */
+export function eventsExportFilename(
+  category: "individual" | "group",
+  filters: EventFilters,
+  date: string
+): string {
+  const query = eventSearchQuery(filters);
+  if (!query) return `press-link-events-${category}-${date}.xlsx`;
+
+  const slug = query
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, FILENAME_QUERY_MAX)
+    .replace(/-+$/, "");
+
+  return `press-link-events-${category}-filtered-${slug || "search"}-${date}.xlsx`;
+}

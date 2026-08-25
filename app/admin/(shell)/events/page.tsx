@@ -1,3 +1,4 @@
+import { Download } from "lucide-react";
 import Link from "next/link";
 
 import { requireAdmin } from "@/app/admin/guard";
@@ -5,7 +6,14 @@ import { EventSearch } from "./EventSearch";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -17,35 +25,15 @@ import {
 import {
   EVENTS_PATH,
   eventEmptyState,
+  eventSearchQuery,
   eventTypeCountLabel,
   filterEventRows,
   type EventEmptyState,
   type EventFilters,
 } from "@/lib/admin/event-filters";
-import {
-  buildEventMatrix,
-  EVENT_SLOTS,
-  teamSize,
-  type EventMatrixInput,
-  type EventMatrixRow,
-} from "@/lib/dashboard/event-matrix";
-import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
-
-interface CatalogEventRow {
-  id: string;
-  level: EventLevel;
-  language: EventLanguage;
-  event_types: {
-    id: string;
-    name_en: string;
-    name_fil: string;
-    category: EventCategory;
-    min_participants: number;
-    max_participants: number | null;
-    sort_order: number;
-  } | null;
-  entries: { id: string; entry_participants: { count: number }[] }[];
-}
+import { fetchEventMatrix } from "@/lib/dashboard/fetch-event-matrix";
+import { EVENT_SLOTS, teamSize, type EventMatrixRow } from "@/lib/dashboard/event-matrix";
+import type { EventCategory } from "@/lib/events-catalog";
 
 /**
  * One category's block. Both blocks are the same table, so it is written once —
@@ -155,18 +143,13 @@ export default async function AdminEventsPage({
   const params = await searchParams;
   const { supabase } = await requireAdmin();
 
-  const { data, error } = await supabase
-    .from("events")
-    .select(
-      "id, level, language, event_types(id, name_en, name_fil, category, min_participants, max_participants, sort_order), entries(id, entry_participants(count))"
-    )
-    .overrideTypes<CatalogEventRow[]>();
+  const result = await fetchEventMatrix(supabase);
 
   // A failed query would leave `rows` empty and every figure below would compute to zero,
   // rendering "0 events across 0 contest types" as though the division ran no contests. That
   // is the same mistake as printing `0` for a contest that is not offered, one level up, so
   // the failure is shown as a failure rather than counted as an absence.
-  if (error) {
+  if ("error" in result) {
     return (
       <div className="space-y-6">
         <PageHeading title="Events" subtitle="The contest catalog could not be loaded." />
@@ -181,40 +164,7 @@ export default async function AdminEventsPage({
     );
   }
 
-  const rows: EventMatrixInput[] = (data ?? []).flatMap((row) => {
-    // events.event_type_id is NOT NULL since migration 0003, so a null type here is a
-    // broken key rather than an unclassified event — dropped, not printed unlabelled.
-    if (!row.event_types) return [];
-
-    // A submission is one row in `entries` regardless of how many named participants it
-    // carries; a participant is one row in `entry_participants` under it. Individual
-    // contests want the second count (three named entrants on one entry is three, not
-    // one) and group contests want the first (a 7-member team is one entry, not seven) —
-    // so both are computed here and `event_types.category` below picks between them.
-    const submissionCount = row.entries?.length ?? 0;
-    const participantCount = (row.entries ?? []).reduce(
-      (sum, entry) => sum + (entry.entry_participants?.[0]?.count ?? 0),
-      0
-    );
-
-    return [
-      {
-        eventId: row.id,
-        typeId: row.event_types.id,
-        typeNameEn: row.event_types.name_en,
-        typeNameFil: row.event_types.name_fil,
-        category: row.event_types.category,
-        minParticipants: row.event_types.min_participants,
-        maxParticipants: row.event_types.max_participants,
-        sortOrder: row.event_types.sort_order,
-        level: row.level,
-        language: row.language,
-        entries: row.event_types.category === "individual" ? participantCount : submissionCount,
-      },
-    ];
-  });
-
-  const matrix = buildEventMatrix(rows);
+  const { matrix } = result;
 
   // Each section is narrowed on its own, because a query legitimately belongs to
   // one of them: "news" fills Individual and empties Group, and each table then
@@ -226,6 +176,19 @@ export default async function AdminEventsPage({
   // truncation would answer a risk this page does not have.
   const individual = filterEventRows(matrix.individual, params);
   const group = filterEventRows(matrix.group, params);
+
+  // `category` is always present so the route can never fall through to "which
+  // table did this come from"; `q` only rides along when the box actually holds
+  // one, the same "absent rather than empty" rule the box itself follows. Built
+  // with `URLSearchParams` directly rather than `filterHref` — that helper's
+  // shape is one query string in, one out, and this route needs a param that is
+  // always there alongside one that is conditional.
+  const exportHref = (category: EventCategory) => {
+    const qp = new URLSearchParams({ category });
+    const q = eventSearchQuery(params);
+    if (q) qp.set("q", q);
+    return `${EVENTS_PATH}/export?${qp.toString()}`;
+  };
 
   return (
     // `group` so the search box below can dim both tables through one
@@ -252,6 +215,17 @@ export default async function AdminEventsPage({
             {eventTypeCountLabel(individual.length)}. One learner competes, with up to two
             reserves on the entry.
           </CardDescription>
+          <CardAction>
+            {/* A route handler, and a plain anchor rather than next/link — see
+                OverallDataFilter.tsx's Export button for why: next/link would
+                build a workbook on hover. */}
+            <Button asChild variant="outline" size="sm">
+              <a href={exportHref("individual")}>
+                <Download className="size-4" />
+                Export to Excel
+              </a>
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent>
           <MatrixTable rows={individual} empty={eventEmptyState(params, "individual")} />
@@ -264,6 +238,14 @@ export default async function AdminEventsPage({
           <CardDescription>
             {eventTypeCountLabel(group.length)}. A whole team enters together.
           </CardDescription>
+          <CardAction>
+            <Button asChild variant="outline" size="sm">
+              <a href={exportHref("group")}>
+                <Download className="size-4" />
+                Export to Excel
+              </a>
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent>
           <MatrixTable rows={group} empty={eventEmptyState(params, "group")} />
