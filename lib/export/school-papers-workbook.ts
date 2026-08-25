@@ -83,7 +83,10 @@ export function toSchoolPapersExportRows(
     Adviser: row.adviser,
     Gender: row.gender,
     Principal: row.principal,
-    "Section Head": row.sectionHead,
+    // A spreadsheet has no truncation concern and no modal to open the rest
+    // in, so the export prints every name — the array's screen-only reason
+    // to exist (count caption, first-3, "view all") doesn't apply here.
+    "Section Head": row.sectionHead.join(", "),
     "Assistant Head": row.assistantHead,
     Status: PAPER_STATUS_LABEL[row.status],
   }));

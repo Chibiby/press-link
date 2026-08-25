@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { requireAdmin } from "@/app/admin/guard";
 import { SchoolPaperFilterBar } from "./SchoolPaperFilterBar";
+import { SectionHeadsDialog } from "./SectionHeadsDialog";
 import { UnlockSubmissionButton } from "./UnlockSubmissionButton";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { fetchAdminSchoolPaperRows } from "@/lib/paper/fetch-admin-school-papers";
@@ -158,7 +159,28 @@ export default async function AdminSchoolPapersPage({
                 <TableCell>{row.adviser || "—"}</TableCell>
                 <TableCell>{row.gender || "—"}</TableCell>
                 <TableCell>{row.principal || "—"}</TableCell>
-                <TableCell>{row.sectionHead || "—"}</TableCell>
+                <TableCell>
+                  {row.sectionHead.length === 0 ? (
+                    "—"
+                  ) : (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] text-muted-foreground">
+                        {row.sectionHead.length === 1
+                          ? "1 section head"
+                          : `${row.sectionHead.length} section heads`}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span>{row.sectionHead.slice(0, 3).join(", ")}</span>
+                        {row.sectionHead.length > 3 && (
+                          <SectionHeadsDialog
+                            schoolName={row.schoolName}
+                            sectionHeads={row.sectionHead}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell>{row.assistantHead || "—"}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-2">

@@ -58,14 +58,13 @@ function paperPriority(level: PaperLevel, language: EventLanguage): number {
 }
 
 /**
- * Drops blanks, drops duplicates keeping first occurrence, joins survivors
- * with ", ".
+ * Drops blanks, drops duplicates keeping first occurrence, preserving order.
  *
  * A school with two papers commonly names the same adviser or principal on
  * both — that is one person, not two entries in a cell that is supposed to
  * read as a name, not a list of rows.
  */
-export function dedupedJoin(values: (string | null | undefined)[]): string {
+export function dedupedList(values: (string | null | undefined)[]): string[] {
   const seen = new Set<string>();
   const survivors: string[] = [];
 
@@ -76,7 +75,12 @@ export function dedupedJoin(values: (string | null | undefined)[]): string {
     survivors.push(trimmed);
   }
 
-  return survivors.join(", ");
+  return survivors;
+}
+
+/** `dedupedList`, joined with ", " for the fields that only ever render as one name. */
+export function dedupedJoin(values: (string | null | undefined)[]): string {
+  return dedupedList(values).join(", ");
 }
 
 /** Adviser, gender, principal and staff, combined across a school's filed papers. */
@@ -84,7 +88,13 @@ export interface CombinedPaperInfo {
   adviser: string;
   gender: string;
   principal: string;
-  sectionHead: string;
+  /**
+   * Deduped, in filing-priority order, kept as a list rather than joined —
+   * unlike the other four fields, the table shows this one truncated with a
+   * "view all" affordance, which needs the individual names, not a string
+   * it would have to re-split.
+   */
+  sectionHead: string[];
   assistantHead: string;
 }
 
@@ -118,7 +128,7 @@ export function combinedPaperInfo(
     adviser: dedupedJoin(ordered.map((paper) => paper.adviser_name)),
     gender: dedupedJoin(ordered.map((paper) => paper.adviser_gender)),
     principal: dedupedJoin(ordered.map((paper) => paper.principal_name)),
-    sectionHead: dedupedJoin(
+    sectionHead: dedupedList(
       ordered.flatMap((paper) =>
         paper.paper_staff.filter((staff) => staff.title === "section_head").map((s) => s.full_name)
       )
@@ -230,7 +240,8 @@ export interface AdminSchoolPaperRow {
   adviser: string;
   gender: string;
   principal: string;
-  sectionHead: string;
+  /** See `CombinedPaperInfo.sectionHead` — a list, not a joined string. */
+  sectionHead: string[];
   assistantHead: string;
 }
 
