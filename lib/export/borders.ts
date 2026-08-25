@@ -3,9 +3,8 @@ import type ExcelJS from "exceljs";
 const THIN = { style: "thin" } as const;
 
 /**
- * A full thin border, all four sides — distinct from the footer's top-only
- * rule row in `letterhead.ts`, which is a deliberate visual divider and not
- * a data table border.
+ * A full thin border, all four sides — a data table border, not a visual
+ * divider rule.
  */
 const FULL_BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 
