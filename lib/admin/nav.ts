@@ -64,7 +64,7 @@ export const ADMIN_NAV: NavGroup[] = [
     ],
   },
   {
-    label: "Reference",
+    label: "Overall Data",
     items: [
       { label: "Schools", href: "/admin/schools", icon: "schools" },
       { label: "Districts", href: "/admin/districts", icon: "districts" },
@@ -74,9 +74,9 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     label: "Reports",
     items: [
-      // School Summary was pulled from the rail; the route and page stay live for
-      // anyone with the direct URL, so this drops the link and nothing else.
-      { label: "Overall Data", href: "/admin/overall-data", icon: "overall" },
+      // School Summary and Overall Data were both pulled from the rail; their routes
+      // and pages stay live for anyone with the direct URL, so this drops the links
+      // and nothing else.
       { label: "Activity Log", href: "/admin/activity", icon: "activity" },
       // `stub`, like the System three: /admin/masterlist exists and renders a SoonPage,
       // so the rail links it and the page itself says what it is waiting on.
