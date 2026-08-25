@@ -1,22 +1,20 @@
-import { Check } from "lucide-react";
+import { Download } from "lucide-react";
 import Link from "next/link";
 
 import { requireAdmin } from "@/app/admin/guard";
 import { SchoolPaperFilterBar } from "./SchoolPaperFilterBar";
 import { UnlockSubmissionButton } from "./UnlockSubmissionButton";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
-import {
-  toAdminSchoolPaperRows,
-  type RawAdminSchoolPaper,
-} from "@/lib/paper/admin-papers";
+import { fetchAdminSchoolPaperRows } from "@/lib/paper/fetch-admin-school-papers";
 import {
   eligibleSchoolPaperRows,
   filterSchoolPaperListRows,
   schoolPaperEmptyState,
+  schoolPaperSearchQuery,
   type SchoolPaperListFilters,
 } from "@/lib/paper/school-paper-filters";
 import { PAPER_STATUS_LABEL } from "@/lib/paper/status";
-import { fetchAll } from "@/lib/supabase/fetch-all";
+import { filterHref } from "@/lib/search/filter-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,28 +37,16 @@ export default async function AdminSchoolPapersPage({
   const params = await searchParams;
   const { supabase } = await requireAdmin();
 
-  const [{ data: districts }, { data: schools }, raw] = await Promise.all([
+  const [{ data: districts }, { data: schools }, allRows] = await Promise.all([
     supabase.from("districts").select("id, name").order("name"),
     supabase.from("schools").select("id, name").order("name"),
-    // Paged, not one select: PostgREST caps a response at `db-max-rows` with no error,
-    // so an unbounded read of a table that grows past it drops schools off the bottom
-    // of this list silently. 332 schools today, so this is prophylactic — the
-    // `.order("id")` is not: `schools.name` has no unique constraint (migration 0001),
-    // and two schools sharing a name would shuffle between page requests.
-    fetchAll<RawAdminSchoolPaper>("The school paper registry", (from, to) =>
-      supabase
-        .from("schools")
-        .select(
-          "id, name, district_id, is_integrated, level, paper_participation, submission_locked_at, districts(name), school_papers(language, level, adviser_name, adviser_gender, principal_name, paper_staff(id, full_name, title))"
-        )
-        .order("name")
-        .order("id")
-        .range(from, to)
-        .overrideTypes<RawAdminSchoolPaper[]>()
-    ),
+    // Same query, and the same paging, as its own export route reads — see
+    // `fetchAdminSchoolPaperRows`'s doc for why this cannot be the inline select it
+    // used to be: a downloaded workbook must never disagree with the screen it was
+    // downloaded from.
+    fetchAdminSchoolPaperRows(supabase),
   ]);
 
-  const allRows = toAdminSchoolPaperRows(raw);
   // A school with nothing filed has no adviser, gender, principal or grade cell to
   // show, so it drops out before either the dropdowns or the search box run — see
   // `eligibleSchoolPaperRows`. The badge's denominator follows it too, or "12 of
@@ -73,12 +59,40 @@ export default async function AdminSchoolPapersPage({
   const rows = filterSchoolPaperListRows(eligibleRows, params);
   const empty = schoolPaperEmptyState(params);
 
+  // Built from the same `params` the dropdowns and search box already narrowed
+  // `rows` with, so a reader who filters the table down and then clicks Export
+  // downloads exactly what's on screen, not the whole roster. `schoolPaperSearchQuery`
+  // rather than reading `params.q` raw, so the href's `q` goes through the same
+  // trim/empty-string rule the table itself already applies.
+  const exportHref = (() => {
+    const qp = new URLSearchParams();
+    if (params.district) qp.set("district", params.district);
+    if (params.school) qp.set("school", params.school);
+    if (params.status) qp.set("status", params.status);
+    if (params.lock) qp.set("lock", params.lock);
+    if (params.language) qp.set("language", params.language);
+    const q = schoolPaperSearchQuery(params);
+    if (q) qp.set("q", q);
+    return filterHref("/admin/school-papers/export", qp.toString());
+  })();
+
   return (
     <div className="group flex flex-col gap-6">
       <PageHeading
         title="School Papers"
         subtitle="Every school's submission on record"
         badge={`${rows.length} of ${eligibleRows.length}`}
+        actions={
+          <Button asChild variant="outline" size="sm">
+            {/* A route handler, and a plain anchor rather than next/link — see
+                the events page's Export button for why: next/link would build a
+                workbook on hover. */}
+            <a href={exportHref}>
+              <Download className="size-4" />
+              Export to Excel
+            </a>
+          </Button>
+        }
       />
 
       <SchoolPaperFilterBar districts={districts ?? []} schools={schools ?? []} />
@@ -104,9 +118,9 @@ export default async function AdminSchoolPapersPage({
               </TableHead>
               <TableHead rowSpan={2}>School Paper Adviser</TableHead>
               <TableHead rowSpan={2}>Gender</TableHead>
-              <TableHead rowSpan={2}>
-                School Principal / Section or Assistant Heads
-              </TableHead>
+              <TableHead rowSpan={2}>School Principal</TableHead>
+              <TableHead rowSpan={2}>Section Head</TableHead>
+              <TableHead rowSpan={2}>Assistant Head</TableHead>
               <TableHead rowSpan={2}>Status</TableHead>
               <TableHead rowSpan={2}>Action</TableHead>
             </TableRow>
@@ -139,52 +153,13 @@ export default async function AdminSchoolPapersPage({
                   problems instead of a page of facts.
                 */}
                 {row.gradeSlots.map((slot) => (
-                  <TableCell key={`${slot.level}:${slot.language}`} className="text-center">
-                    {slot.filled && (
-                      <>
-                        <Check className="mx-auto size-4" aria-hidden="true" />
-                        <span className="sr-only">Filed</span>
-                      </>
-                    )}
-                  </TableCell>
+                  <TableCell key={`${slot.level}:${slot.language}`}>{slot.title}</TableCell>
                 ))}
                 <TableCell>{row.adviser || "—"}</TableCell>
                 <TableCell>{row.gender || "—"}</TableCell>
-                <TableCell>
-                  {/*
-                    Three distinct roles, not alternatives to one another, so each
-                    name keeps its own small caption above it rather than sharing
-                    one label or being told apart by position alone — the same
-                    "caption over value" idiom the Integrated/Locked badges use
-                    for "small fact attached to a bigger one", just spelled out as
-                    text instead of a pill because three of these can appear on
-                    one row at once.
-                  */}
-                  {row.principal || row.sectionHead || row.assistantHead ? (
-                    <div className="flex flex-col gap-1.5">
-                      {row.principal && (
-                        <div>
-                          <div className="text-[10px] text-muted-foreground">Principal</div>
-                          <div>{row.principal}</div>
-                        </div>
-                      )}
-                      {row.sectionHead && (
-                        <div>
-                          <div className="text-[10px] text-muted-foreground">Section Head</div>
-                          <div>{row.sectionHead}</div>
-                        </div>
-                      )}
-                      {row.assistantHead && (
-                        <div>
-                          <div className="text-[10px] text-muted-foreground">Assistant Head</div>
-                          <div>{row.assistantHead}</div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
+                <TableCell>{row.principal || "—"}</TableCell>
+                <TableCell>{row.sectionHead || "—"}</TableCell>
+                <TableCell>{row.assistantHead || "—"}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
@@ -213,7 +188,7 @@ export default async function AdminSchoolPapersPage({
                     in its base and this cell quotes back whatever was typed — a
                     pasted line would otherwise stretch the table into a sideways
                     scroll instead of wrapping. */}
-                <TableCell colSpan={11} className="py-10 text-center whitespace-normal">
+                <TableCell colSpan={13} className="py-10 text-center whitespace-normal">
                   <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
                     {empty.message}
                   </p>
