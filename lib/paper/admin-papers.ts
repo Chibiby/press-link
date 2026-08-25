@@ -9,6 +9,7 @@ import { paperStatus, type PaperStatus } from "./status";
 export interface RawAdminSchoolPaperFile {
   language: EventLanguage;
   level: PaperLevel;
+  paper_name: string;
   adviser_name: string;
   adviser_gender: "M" | "F";
   principal_name: string;
@@ -132,11 +133,14 @@ export function combinedPaperInfo(
   };
 }
 
-/** One cell of the table's grade/language grid: is this level+language on file. */
+/**
+ * One cell of the table's grade/language grid: is this level+language on
+ * file, and if so, under what title.
+ */
 export interface GradeLanguageSlot {
   level: "elementary" | "secondary";
   language: EventLanguage;
-  filled: boolean;
+  title: string | null;
 }
 
 /** The four cells in the literal left-to-right order the table renders them. */
@@ -152,30 +156,36 @@ const GRADE_LANGUAGE_GRID: { level: "elementary" | "secondary"; language: EventL
  * one school.
  *
  * An integrated school answers this from its own papers, each of which
- * already carries a level: a slot is filled iff a belonging paper matches it
- * exactly. A non-integrated school never files a levelled paper — every one
- * of its papers is `whole` — so a slot for it can only be filled by crossing
- * `schools.level` (which grade band the school teaches) with a `whole`
- * paper's language. When that classification is null, every slot here reads
- * unfilled; that is a display gap in this grid alone; it is not grounds to
- * drop the school from the roster, which only asks whether the school has
- * any paper on file at all (see `eligibleSchoolPaperRows`).
+ * already carries a level: a slot's `title` comes from the belonging paper
+ * that matches it exactly, or null when none does. A non-integrated school
+ * never files a levelled paper — every one of its papers is `whole` — so a
+ * slot for it can only resolve by crossing `schools.level` (which grade band
+ * the school teaches) with a `whole` paper's language. When that
+ * classification is null, every slot here reads null; that is a display gap
+ * in this grid alone; it is not grounds to drop the school from the roster,
+ * which only asks whether the school has any paper on file at all (see
+ * `eligibleSchoolPaperRows`).
  */
 export function gradeLanguageSlots(input: {
   isIntegrated: boolean;
   schoolLevel: SchoolLevel | null;
-  savedPapers: { language: EventLanguage; level: PaperLevel }[];
+  savedPapers: { language: EventLanguage; level: PaperLevel; paper_name: string }[];
 }): GradeLanguageSlot[] {
   const { isIntegrated, schoolLevel, savedPapers } = input;
   const belonging = savedPapers.filter((paper) => levelBelongsTo(paper.level, isIntegrated));
 
-  return GRADE_LANGUAGE_GRID.map((slot) => ({
-    ...slot,
-    filled: isIntegrated
-      ? belonging.some((paper) => paper.level === slot.level && paper.language === slot.language)
-      : schoolLevel === slot.level &&
-        belonging.some((paper) => paper.level === "whole" && paper.language === slot.language),
-  }));
+  return GRADE_LANGUAGE_GRID.map((slot) => {
+    // `unique (school_id, language, level)` means at most one belonging paper
+    // can match a given slot, so there is never a second candidate to choose
+    // between here.
+    const match = isIntegrated
+      ? belonging.find((paper) => paper.level === slot.level && paper.language === slot.language)
+      : schoolLevel === slot.level
+        ? belonging.find((paper) => paper.level === "whole" && paper.language === slot.language)
+        : undefined;
+
+    return { ...slot, title: match?.paper_name ?? null };
+  });
 }
 
 export interface AdminSchoolPaperRow {
