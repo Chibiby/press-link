@@ -82,6 +82,25 @@ function activeRowFilters(filters: SchoolPaperListFilters) {
 }
 
 /**
+ * Schools with at least one paper on file — the unconditional base the page
+ * applies before either the dropdowns or the search box run, because a
+ * school that has never touched the form has no adviser, gender, principal
+ * or grade cell to show and does not belong on a school-paper roster at all,
+ * blank or otherwise.
+ *
+ * "On file" is exactly what `row.languages.length > 0` already means: read
+ * off `paperSlots`, not a second look at `school_papers`, so a stale row
+ * that contradicts its school (see `levelBelongsTo`) still counts as nothing
+ * here either — the same fact `filterSchoolPaperRows`'s `language` filter
+ * already relies on.
+ */
+export function eligibleSchoolPaperRows(
+  rows: AdminSchoolPaperRow[]
+): AdminSchoolPaperRow[] {
+  return rows.filter((row) => row.languages.length > 0);
+}
+
+/**
  * The page's rows: the dropdown predicate, then the search box.
  *
  * Filtering happens in memory rather than in the query because the page's read
@@ -134,8 +153,9 @@ export interface SchoolPaperEmptyState {
  * Four distinct facts, because "no rows" has four causes and a reader can only act
  * on the one that applies to them. A search that matches nothing is quoted back:
  * seeing the query is how someone spots the typo, and it is the difference between
- * "your search found no school" and "there are no schools", which is a claim this
- * page must never make while 332 of them are on file.
+ * "your search found no school" and "there are no schools with a paper filed",
+ * which is a claim this page must never make while a search or a dropdown, not
+ * the base rule, is what emptied the table.
  */
 export function schoolPaperEmptyState(
   filters: SchoolPaperListFilters
@@ -158,7 +178,12 @@ export function schoolPaperEmptyState(
     // The wording the page has always used for this case, unchanged.
     return { message: "No schools match these filters.", narrowed: true };
   }
-  // Nothing is set, so the roll itself is empty — or the read came back with
-  // nothing.
-  return { message: "No schools are on the division roll yet.", narrowed: false };
+  // Nothing is set, so either nothing survived `eligibleSchoolPaperRows` — no
+  // school has filed a paper yet, whatever the ~332 on the division roll say —
+  // or the read came back with nothing. The old wording named the roll, which
+  // this base rule made misleading: the roll is never empty, only paperless.
+  return {
+    message: "No schools have a school paper on file yet.",
+    narrowed: false,
+  };
 }
