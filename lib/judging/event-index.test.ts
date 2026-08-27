@@ -42,7 +42,7 @@ function facts(overrides: Partial<EventJudgingFacts> = {}): EventJudgingFacts {
     round1Ranks: [],
     round2Units: [],
     round2Ranks: [],
-    rounds: { round1ClosedAt: null, round2CutUsed: null, resultsLockedAt: null },
+    rounds: { round1ClosedAt: null, round1LockedAt: null, round2CutUsed: null, resultsLockedAt: null },
     round2Cut: null,
     ...overrides,
   };
@@ -137,8 +137,9 @@ describe("buildEventIndex with facts", () => {
   });
 
   it("counts a placement only once the round that decides it has finished", () => {
-    // A cut of 1 settles the non-qualifier the moment round 1 closes; the qualifier
-    // waits for round 2. Placed follows that, so it is 1 here and 2 below.
+    // A cut of 1 eliminates B and sends A to round 2. Under N4 the eliminated row
+    // has no placement at all, so nothing is placed until round 2 finishes: 0
+    // here, and 1 — the qualifier alone — below.
     const half = buildEventIndex([event("e1", { entries: 2 })], {
       e1: facts({
         judgeIds: ["j1"],
@@ -148,7 +149,7 @@ describe("buildEventIndex with facts", () => {
         round2Cut: 1,
       }),
     });
-    expect(half[0].placed).toBe(1);
+    expect(half[0].placed).toBe(0);
 
     const done = buildEventIndex([event("e1", { entries: 2 })], {
       e1: facts({
@@ -160,7 +161,7 @@ describe("buildEventIndex with facts", () => {
         round2Cut: 1,
       }),
     });
-    expect(done[0].placed).toBe(2);
+    expect(done[0].placed).toBe(1);
   });
 
   it("draws the standings under the cut round 1 actually closed on", () => {
@@ -175,6 +176,7 @@ describe("buildEventIndex with facts", () => {
         round2Cut: 10,
         rounds: {
           round1ClosedAt: "2026-08-20T00:00:00Z",
+          round1LockedAt: "2026-08-20T00:00:00Z",
           round2CutUsed: 1,
           resultsLockedAt: null,
         },
@@ -261,6 +263,7 @@ describe("eventIndexSummary", () => {
           round2Ranks: sheet("j1", { a: 1 }),
           rounds: {
             round1ClosedAt: "2026-08-20T00:00:00Z",
+            round1LockedAt: "2026-08-20T00:00:00Z",
             round2CutUsed: 10,
             resultsLockedAt: "2026-08-21T00:00:00Z",
           },
@@ -299,7 +302,9 @@ describe("eventIndexSummary", () => {
     });
 
     const summary = eventIndexSummary(rows);
-    expect(summary.placed).toBe(2);
+    // e1 placed its one qualifier; e2's cut could not be read, so it contributes
+    // nothing here and is named in `withoutCut` instead.
+    expect(summary.placed).toBe(1);
     expect(summary.withoutCut).toBe(1);
   });
 

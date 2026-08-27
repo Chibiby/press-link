@@ -98,11 +98,18 @@ export const NO_JUDGING_FACTS: EventJudgingFacts = Object.freeze({
   round1Ranks: Object.freeze([]) as unknown as JudgeRank[],
   round2Units: Object.freeze([]) as unknown as ContestUnit[],
   round2Ranks: Object.freeze([]) as unknown as JudgeRank[],
+  // No `as EventRoundState` here, deliberately. A frozen object is assignable to
+  // the mutable interface on its own, so leaving the assertion off keeps the
+  // contextual check: the day `EventRoundState` gains a field, this literal fails
+  // to compile instead of silently handing every unjudged event an `undefined`
+  // that reads as "not null" — which is exactly how `round1LockedAt` once made
+  // every factless event report round 2 as open.
   rounds: Object.freeze({
     round1ClosedAt: null,
+    round1LockedAt: null,
     round2CutUsed: null,
     resultsLockedAt: null,
-  }) as EventRoundState,
+  }),
   round2Cut: null,
 });
 
@@ -141,10 +148,12 @@ export interface EventIndexRow {
    * Contestants who have an official placement — {@link finalStandings}' `finalRank`,
    * counted.
    *
-   * Not simply "0 until the results are locked". A non-qualifier's place is settled
-   * the moment round 1 closes, because it never depended on round 2, so this rises
-   * in two steps: the eliminated field first, then the qualifiers when round 2
-   * completes. Locking publishes those placements, it does not compute them.
+   * Under N4 only a qualifier has a placement: a non-qualifier was eliminated in
+   * round 1 and carries no final rank at all, rather than being placed in a block
+   * beneath the qualifiers as the 2026-08-21 contract had it. So this stays at 0
+   * until round 2 completes and then jumps to the qualifier count — it does not
+   * rise in two steps. Locking publishes those placements, it does not compute
+   * them, so it is not 0 merely because the results are unlocked either.
    *
    * Counted off {@link EventIndexRow.standings}, which is also what
    * `tabulationSummary` counts once the identities are joined on, so this column and

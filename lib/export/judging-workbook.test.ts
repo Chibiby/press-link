@@ -80,7 +80,7 @@ function facts(overrides: Partial<EventJudgingFacts> = {}): EventJudgingFacts {
     round1Ranks: [],
     round2Units: [],
     round2Ranks: [],
-    rounds: { round1ClosedAt: null, round2CutUsed: null, resultsLockedAt: null },
+    rounds: { round1ClosedAt: null, round1LockedAt: null, round2CutUsed: null, resultsLockedAt: null },
     round2Cut: 10,
     ...overrides,
   };
@@ -274,6 +274,7 @@ describe("toTabulationRows", () => {
           round2Cut: 1,
           rounds: {
             round1ClosedAt: "2026-08-01T00:00:00Z",
+            round1LockedAt: "2026-08-01T00:00:00Z",
             round2CutUsed: 1,
             resultsLockedAt: null,
           },
@@ -281,9 +282,10 @@ describe("toTabulationRows", () => {
       })
     );
     expect(judged.Qualifiers).toBe(1);
-    // Both units are placed: the one below the cut when round 1 closed, the
-    // qualifier once round 2 ranked it.
-    expect(judged.Placed).toBe(2);
+    // One placement, not two: under N4 the unit below the cut was eliminated in
+    // round 1 and has no final rank, so only the qualifier round 2 ranked is
+    // placed.
+    expect(judged.Placed).toBe(1);
   });
 
   it("shares the status wording with the judges sheet", () => {

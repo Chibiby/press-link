@@ -106,6 +106,7 @@ interface RawQualifierRow {
 interface RawRoundRow {
   event_id: string;
   round1_closed_at: string | null;
+  round1_locked_at: string | null;
   round2_cut_used: number | null;
   results_locked_at: string | null;
 }
@@ -222,7 +223,9 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
       fetchAll<RawRoundRow>("Round state", (from, to) =>
         supabase
           .from("event_rounds")
-          .select("event_id, round1_closed_at, round2_cut_used, results_locked_at")
+          .select(
+            "event_id, round1_closed_at, round1_locked_at, round2_cut_used, results_locked_at"
+          )
           .range(from, to)
           .overrideTypes<RawRoundRow[]>()
       ),
@@ -287,6 +290,7 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         row.event_id,
         {
           round1ClosedAt: row.round1_closed_at,
+          round1LockedAt: row.round1_locked_at,
           round2CutUsed: row.round2_cut_used,
           resultsLockedAt: row.results_locked_at,
         },
@@ -375,6 +379,7 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         rounds:
           roundsByEvent.get(row.id) ?? {
             round1ClosedAt: null,
+            round1LockedAt: null,
             round2CutUsed: null,
             resultsLockedAt: null,
           },

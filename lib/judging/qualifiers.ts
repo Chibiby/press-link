@@ -1,58 +1,14 @@
-import type { ConsolidatedBoard, ContestUnit, QualifierRow } from "./types";
+import type { ContestUnit, QualifierRow } from "./types";
 
 /**
- * The cut an event uses when nobody has set one — `events.round2_cut`'s default
- * in migration 0018. Kept here as well so a pure caller and a test can reason
- * about the rule without a database.
+ * What happens to a qualifying field once it exists: round 2's unit set, and the
+ * sentence that explains a field whose size is not the cut.
+ *
+ * **Drawing** the field is no longer here. Round 1 is one judge's typed ranks
+ * with blanks (N1, N2), not a consolidated panel board, so `selectQualifiers` and
+ * `DEFAULT_ROUND2_CUT` moved to `cut.ts` with the rest of the cut rule — one
+ * implementation, in the file named after it (non-negotiable 3).
  */
-export const DEFAULT_ROUND2_CUT = 10;
-
-/**
- * Who advances to round 2 (D3).
- *
- * The rule is one comparison — `round1Rank <= cut` — and it lives here, once. Not
- * in SQL, not in a page (non-negotiable 3), because round 2's unit list, the
- * judge's sheet, the admin panel's qualifier count and the export all have to
- * agree about a field whose size is not always `cut`.
- *
- * ## Why the field can be larger than the cut
- *
- * Round 1 uses competition ranking, so a three-way tie for 10th place produces
- * three rows all reading rank 10. All three satisfy `<= 10` and **twelve
- * contestants qualify under a cut of ten.** That is the correct outcome, not an
- * overflow to be trimmed: the three are level on points, and there is no fact in
- * round 1 that separates them. Cutting to exactly ten would have to break the tie
- * on something — code order, entry order, whichever row the database returned
- * first — and that is a coin toss deciding who competes for the title.
- *
- * The field can equally be *smaller* than the cut, when the event has fewer
- * contestants than the cut allows.
- *
- * ## An incomplete round 1 qualifies nobody
- *
- * No branch handles this: an incomplete board reports `rank: null` on every row
- * (non-negotiable 4), and `null` passes no comparison. So a caller who forgets to
- * check `board.complete` gets an empty field rather than a field drawn from half
- * the panel's opinion. Callers should still check, because an empty field and
- * "round 1 is not finished" are different things to say on screen.
- */
-export function selectQualifiers(board: ConsolidatedBoard, cut: number): QualifierRow[] {
-  // A cut of zero or less admits nobody. Guarded rather than trusted so a
-  // mis-set event cannot produce negative-rank comparisons downstream.
-  if (cut < 1) return [];
-
-  return board.rows
-    .filter((row) => row.rank !== null && row.points !== null && row.rank <= cut)
-    .map((row) => ({
-      unitKey: row.unitKey,
-      code: row.code,
-      entryId: row.entryId,
-      participantId: row.participantId,
-      round1Points: row.points as number,
-      round1Rank: row.rank as number,
-    }))
-    .sort((a, b) => a.round1Rank - b.round1Rank || a.code.localeCompare(b.code));
-}
 
 /**
  * The qualifiers as a unit set, ready to hand to `consolidateRound` for round 2.

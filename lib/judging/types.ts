@@ -114,10 +114,13 @@ export interface QualifierRow {
 }
 
 /**
- * One unit's official placement, per D4: round 2 alone decides the winners.
+ * One unit's official placement, per N4: round 1 rank plus round 2 points.
  *
- * A non-qualifier carries null round-2 figures and sits in a block below every
- * qualifier. `finalRank` is null while the deciding round is incomplete.
+ * A non-qualifier was never scored in round 1 and so has nothing to add. It
+ * carries null round-2 figures, a null `finalPoints` and **no final rank at
+ * all** — it is shown as eliminated in round 1 rather than placed in a block
+ * beneath the qualifiers. `finalRank` is likewise null while round 2 is
+ * incomplete.
  */
 export interface StandingRow {
   unitKey: string;
@@ -130,14 +133,24 @@ export interface StandingRow {
   round2Points: number | null;
   round2Rank: number | null;
   /**
-   * `round1Rank + round2Rank`, null if either is missing.
+   * `round1Rank + round2Points` — **the deciding number** (N4). Null unless
+   * both terms are known.
    *
-   * **Informational.** The division asked for the column and D4 means it
-   * decides nothing: do not sort by it, do not break a tie with it, do not call
-   * it official. Every surface that prints it must say so (non-negotiable 6).
+   * This was `totalRank`, and it was informational: the 2026-08-21 contract had
+   * round 2 alone deciding the winners. The division withdrew that on
+   * 2026-08-27, so the sum now settles the placement. The rename is deliberate —
+   * a caller still treating this as decoration is reading the old contract, and
+   * a compile error is a better way to find that out than a wrong medal.
+   *
+   * Round 2 **points**, not round 2 rank: the three judges' ranks added. Adding
+   * the placement instead would throw away the margin the panel produced.
    */
-  totalRank: number | null;
-  /** The official placement. Qualifiers by round 2, non-qualifiers beneath them. */
+  finalPoints: number | null;
+  /**
+   * The official placement: the ascending competition rank of `finalPoints`
+   * across the qualifiers (1, 2, 2, 4). Null for a non-qualifier, which has no
+   * placement at all, and null for every row while round 2 is incomplete.
+   */
   finalRank: number | null;
 }
 
@@ -196,6 +209,16 @@ export interface JudgeSheetState {
  */
 export interface EventRoundState {
   round1ClosedAt: string | null;
+  /**
+   * Set = round 1 is read-only and round 2 is open (N6, N7).
+   *
+   * Separate from `round1ClosedAt` because closing and locking are now two
+   * acts: the close draws the qualifier list, the lock is the attributed
+   * decision that opens round 2. `sheet-state.ts` reads *this* one, so an admin
+   * who unlocks round 1 while round 2 is in progress (N8) reopens the sheets
+   * instead of leaving them read-only against a lock that is no longer there.
+   */
+  round1LockedAt: string | null;
   /**
    * The cut in force when round 1 was closed. Recorded separately from
    * `events.round2_cut` because the live column may not move once a qualifier

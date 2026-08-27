@@ -160,7 +160,9 @@ function standing(code: string, over: Partial<StandingRow> = {}): StandingRow {
     round1Rank: 1,
     round2Points: 2,
     round2Rank: 1,
-    totalRank: 2,
+    // 1 + 2 — the sum N4 places on, kept consistent with the two rounds above so
+    // a reader can check the arithmetic against the fixture.
+    finalPoints: 3,
     finalRank: 1,
     ...over,
   };
@@ -256,7 +258,7 @@ describe("TABULATION_COLUMNS", () => {
       "round1Points",
       "round2Rank",
       "round2Points",
-      "totalRank",
+      "finalPoints",
       "finalRank",
     ]);
   });
@@ -276,12 +278,17 @@ describe("TABULATION_COLUMNS", () => {
     }
   });
 
-  it("attaches the caveat to total rank and to nothing else", () => {
-    // Non-negotiable 6. Carried on the column definition so a surface cannot
-    // render the column without having the caveat to hand.
-    const noted = TABULATION_COLUMNS.filter((c) => c.note);
-    expect(noted.map((c) => c.key)).toEqual(["totalRank"]);
-    expect(noted[0].note?.toLowerCase()).toContain("informational");
+  it("annotates no column", () => {
+    // The one that used to be annotated was total rank, which the 2026-08-21
+    // contract required to be labelled informational because round 2 alone
+    // decided. N4 withdrew that: the column is now the sum that settles the
+    // placement, and a caveat calling it informational would be false.
+    expect(TABULATION_COLUMNS.filter((c) => c.note)).toEqual([]);
+  });
+
+  it("puts the deciding sum beside the placement it produces", () => {
+    const keys = TABULATION_COLUMNS.map((c) => c.key);
+    expect(keys.indexOf("finalPoints")).toBe(keys.indexOf("finalRank") - 1);
   });
 
   it("puts final rank last, where the eye lands", () => {
@@ -317,9 +324,9 @@ describe("tabulationCell", () => {
   it("prints an absent rank as an em dash, not 0 and not a blank", () => {
     // 0 would sort as a winning place. A blank is indistinguishable from a cell
     // the export failed to write.
-    const open = { ...row, round2Rank: null, totalRank: null, finalRank: null };
+    const open = { ...row, round2Rank: null, finalPoints: null, finalRank: null };
     expect(tabulationCell(open, "round2Rank")).toBe("—");
-    expect(tabulationCell(open, "totalRank")).toBe("—");
+    expect(tabulationCell(open, "finalPoints")).toBe("—");
     expect(tabulationCell(open, "finalRank")).toBe("—");
   });
 
@@ -352,14 +359,24 @@ describe("tabulationSummary", () => {
       [
         standing("0001", { qualified: true, finalRank: 1 }),
         standing("0002", { qualified: true, finalRank: 2 }),
-        standing("0003", { qualified: false, finalRank: 3, round2Rank: null, totalRank: null }),
-        standing("0004", { qualified: false, finalRank: null, round2Rank: null, totalRank: null }),
+        standing("0003", { qualified: true, finalRank: 3 }),
+        // Eliminated in round 1, so no round-2 figures and no placement at all
+        // (N4). "Placed" counts the rows that finished, not the rows that entered.
+        standing("0004", {
+          qualified: false,
+          round1Points: null,
+          round1Rank: null,
+          round2Points: null,
+          round2Rank: null,
+          finalPoints: null,
+          finalRank: null,
+        }),
       ],
       [identity("0001"), identity("0002"), identity("0003")]
     );
     expect(tabulationSummary(rows)).toEqual({
       contestants: 4,
-      qualifiers: 2,
+      qualifiers: 3,
       placed: 3,
       unidentified: 1,
     });

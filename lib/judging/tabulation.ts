@@ -1,7 +1,6 @@
 import type { EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { levelBelongsTo, type PaperLevel } from "@/lib/paper/level";
 
-import { TOTAL_RANK_NOTE } from "./standings";
 import type { StandingRow, TabulationRow, UnitIdentity } from "./types";
 
 /**
@@ -128,10 +127,12 @@ export interface TabulationColumn {
  * section 0 of the contract omits them; D4's decision record is the specific
  * instruction and wins.
  *
- * The note on total rank is not optional dressing — non-negotiable 6 requires it
- * wherever the column appears, and putting it here means a surface cannot render
- * the column without also having the caveat to hand. Points carry no note: they
- * are a real figure that really does produce the rank beside them.
+ * No column carries a note any more. The one that did was total rank, which the
+ * 2026-08-21 contract required to be labelled informational; N4 withdrew that and
+ * the column is now `finalPoints`, the sum that decides the placement beside it.
+ * The `note` field stays on the type because a future column may need one, and
+ * because dropping it would make the tabulation test that asserts no column is
+ * annotated impossible to write.
  */
 export const TABULATION_COLUMNS: TabulationColumn[] = [
   { key: "code", label: "Code" },
@@ -144,7 +145,7 @@ export const TABULATION_COLUMNS: TabulationColumn[] = [
   { key: "round1Points", label: "Points R1", numeric: true },
   { key: "round2Rank", label: "Rank R2", numeric: true },
   { key: "round2Points", label: "Points R2", numeric: true },
-  { key: "totalRank", label: "Total rank", numeric: true, note: TOTAL_RANK_NOTE },
+  { key: "finalPoints", label: "Final points", numeric: true },
   { key: "finalRank", label: "Final rank", numeric: true },
 ];
 
