@@ -51,3 +51,9 @@ seed-data/
 
 # subagent-driven-development scratch (ledgers, briefs, review packages)
 .superpowers/
+
+# Claude Code local state (settings, worktrees, preserved scratch)
+.claude/
+
+# supabase CLI scratch
+supabase/.temp/
