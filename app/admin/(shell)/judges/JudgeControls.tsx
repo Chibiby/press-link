@@ -267,9 +267,9 @@ export function AddJudgeDialog() {
  * given day is the one they came looking for.
  *
  * Deactivating is offered from here and nowhere else. It is a roster-wide act, and
- * an event's panel card gets no `renderActions` at all — offering it from one
- * event's page would read as taking the judge off *that* event, which is what
- * unseating does.
+ * an event's panel card offers seating instead — putting this beside those controls
+ * would read as taking the judge off *that* event, which is what emptying their seat
+ * does, and the two have different consequences.
  */
 export function JudgeRowActions({ row }: { row: JudgeRosterRow }) {
   const router = useRouter();

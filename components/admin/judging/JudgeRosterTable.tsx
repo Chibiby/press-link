@@ -115,26 +115,23 @@ const ACTIONS_COLUMN: RosterColumn = { label: "Actions", className: "text-right"
  *
  * ## Why the actions arrive as a render prop
  *
- * The write path exists now: 0029 shipped the roster RPCs, and the server actions
- * that call them are client components, each holding its own `useTransition` while a
- * write is in flight. Two different server pages render this table — the whole
- * roster on `/admin/judges`, one event's seated panel on `/admin/judges/[eventId]` —
- * and they do not owe a judge the same controls. Seating and unseating only mean
- * anything inside an event; deactivating a judge is a roster-wide act, and offering
- * it from one event's panel card would misdescribe what it does.
+ * The write path exists now — 0029 shipped the roster RPCs — but the controls that
+ * call them are client components, each holding its own `useTransition` while a write
+ * is in flight, and they live in the route folder beside the server actions they
+ * import. A file under `components/` importing back out of `app/` would invert that,
+ * so the page passes them down instead.
  *
- * So the table takes a callback and imports no action. Both sides of that call are
- * server components, so the function never crosses the client boundary: it runs on
- * the server and returns an element, and where that element is a client component
- * React sends a placeholder for it in the RSC payload. What this buys is the property
- * that makes the table easy to reason about — nothing in this file ships to the
- * browser, and a page adding an interactive control cannot drag the other page's
- * table across the boundary with it.
+ * Both sides of the call are server components, so the callback never crosses the
+ * client boundary: it runs on the server and returns an element, and where that
+ * element is a client component React sends a placeholder for it in the RSC payload.
+ * What this buys is the property that makes the table easy to reason about — nothing
+ * in this file ships to the browser.
  *
  * Omitting `renderActions` omits the column outright, header included. That replaces
  * a permanently disabled "Assign" button which carried its own absence in a `title`:
- * the reason it gave is now false, and a column holding one greyed-out button per row
- * was always worse than a table that does not claim to offer an action at all.
+ * the reason it gave is now false. Seating is not what replaced it here, either — a
+ * seat means something only inside one event, so it belongs to that event's own
+ * console (`PanelSeating`), which draws the vacant seats this table has no row for.
  */
 export function JudgeRosterTable({
   rows,
@@ -142,7 +139,7 @@ export function JudgeRosterTable({
   renderActions,
 }: {
   rows: JudgeRosterRow[];
-  /** Printed when the roster — or, on an event's page, its panel — holds nobody. */
+  /** Printed when the roster holds nobody. */
   emptyMessage: string;
   /**
    * The per-row controls this page's context justifies, if any. Left off, no Actions

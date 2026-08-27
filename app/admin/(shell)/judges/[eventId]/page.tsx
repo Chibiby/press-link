@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 
 import { BoardTable } from "@/components/admin/judging/BoardTable";
 import { EventJudgingBadge, NotYetCell } from "@/components/admin/judging/EventJudgingBadge";
-import { JudgeRosterTable } from "@/components/admin/judging/JudgeRosterTable";
 import { CUT_NOT_ON_FILE } from "@/components/admin/judging/empty-states";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 import { eventFullLabel, loadJudgingEvent } from "../../judging-data";
 import { EventControls } from "./EventControls";
+import { PanelSeating } from "./PanelSeating";
 
 /**
  * One event's panel and its two boards.
@@ -36,7 +36,7 @@ export default async function EventPanelPage({
   params: Promise<{ eventId: string }>;
 }) {
   const { eventId } = await params;
-  const { row, panel, judgeNames, error } = await loadJudgingEvent(eventId);
+  const { row, seats, roster, judgeNames, error } = await loadJudgingEvent(eventId);
 
   // A failed query must not render as a missing event: `notFound()` here would tell
   // an admin the contest does not exist (non-negotiable 5).
@@ -149,14 +149,19 @@ export default async function EventPanelPage({
         <CardHeader>
           <CardTitle className="text-base">Panel</CardTitle>
           <CardDescription>
-            The judges seated on this event, in seat order. Each ranks independently; the
-            ranks are then added, so a low total is a good total.
+            All four seats, whether or not anybody is on them. A seat left vacant is the
+            reason a round has nothing filed against it, so it is drawn rather than
+            omitted — a list of who is seated cannot say which seat is missing.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <JudgeRosterTable
-            rows={panel}
-            emptyMessage="No judge is seated on this event yet, so neither round can be ranked."
+          <PanelSeating
+            eventId={row.eventId}
+            seats={seats}
+            roster={roster}
+            // A group event is ranked on one board and has no numbered seats
+            // (non-negotiable 6); `round1Cut` is null for exactly those.
+            individual={row.round1Cut !== null}
           />
         </CardContent>
       </Card>

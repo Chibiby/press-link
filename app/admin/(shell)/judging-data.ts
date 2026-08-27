@@ -494,16 +494,16 @@ export interface PanelSeat {
  * catalog is a few dozen rows; a dedicated single-row query would buy nothing and
  * would be a second place for the join to drift.
  *
- * The panel comes back in seat order, and `judgeNames` is the same list keyed for
- * `BoardTable`, which labels each rank column with the judge who filed it. Both are
- * shaped here so the page does no joining of its own.
+ * `seats` is the panel as the seating console needs it — all four, vacant ones
+ * included — and `judgeNames` is the seated subset keyed for `BoardTable`, which
+ * labels each rank column with the judge who filed it. Both are shaped here so the
+ * page does no joining of its own.
  */
 export const loadJudgingEvent = cache(
   async (
     eventId: string
   ): Promise<{
     row: EventIndexRow | null;
-    panel: JudgeRosterRow[];
     /** All four seats in seat order, the vacant ones included — the seating console's input. */
     seats: PanelSeat[];
     /** Every judge on file, so the seat picker has a roster to choose from. */
@@ -512,7 +512,7 @@ export const loadJudgingEvent = cache(
     error: string | null;
   }> => {
     const { rows, judges, seatsByEvent, error } = await loadJudgingEventIndex();
-    const nothing = { row: null, panel: [], seats: [], roster: [], judgeNames: {} };
+    const nothing = { row: null, seats: [], roster: [], judgeNames: {} };
     if (error) return { ...nothing, error };
 
     const row = rows.find((candidate) => candidate.eventId === eventId) ?? null;
@@ -538,8 +538,9 @@ export const loadJudgingEvent = cache(
 
     // Driven off the board's `judgeIds` rather than by filtering the roster: that
     // array is in seat order, and a roster filter would come back in roster order
-    // and quietly relabel every seat.
-    const panel = row.round1.judgeIds.map(
+    // and quietly relabel every seat. Local, because the only thing anybody wanted
+    // from it was `judgeNames` — the console below needs the vacancies too.
+    const seated = row.round1.judgeIds.map(
       (judgeId): JudgeRosterRow => rosterById.get(judgeId) ?? unreadable(judgeId)
     );
 
@@ -548,9 +549,9 @@ export const loadJudgingEvent = cache(
     // free — `panel` above is exactly that list, which is why it is not enough here.
     // Drawn from `PANEL_SEATS` so the four rows come out in the order the rounds are
     // worked through, whatever order the assignment rows arrived in.
-    const seated = new Map((seatsByEvent[eventId] ?? []).map((held) => [held.seat, held.judgeId]));
+    const bySeat = new Map((seatsByEvent[eventId] ?? []).map((held) => [held.seat, held.judgeId]));
     const seats = PANEL_SEATS.map((seat): PanelSeat => {
-      const judgeId = seated.get(seat);
+      const judgeId = bySeat.get(seat);
       return {
         seat,
         judge: judgeId === undefined ? null : (rosterById.get(judgeId) ?? unreadable(judgeId)),
@@ -559,10 +560,9 @@ export const loadJudgingEvent = cache(
 
     return {
       row,
-      panel,
       seats,
       roster: judges,
-      judgeNames: Object.fromEntries(panel.map((judge) => [judge.id, judge.name])),
+      judgeNames: Object.fromEntries(seated.map((judge) => [judge.id, judge.name])),
       error: null,
     };
   }
