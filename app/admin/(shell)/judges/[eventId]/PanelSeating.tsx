@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, UserMinus, UserPlus } from "lucide-react";
+import { LockOpen, Loader2, UserMinus, UserPlus } from "lucide-react";
 
 import type { JudgeRosterRow } from "@/components/admin/judging/JudgeRosterTable";
 import type { PanelSeat } from "@/app/admin/(shell)/judging-data";
@@ -44,10 +44,13 @@ import {
 } from "@/components/ui/table";
 import { ROUND1_SEAT } from "@/lib/judging/sheet-state";
 
-import { assignJudgeAction, unassignJudgeAction } from "../actions";
+import { assignJudgeAction, unassignJudgeAction, unlockJudgeSheetAction } from "../actions";
+
+/** The three things a seat's row can open. */
+type SeatDialog = "fill" | "empty" | "unlock";
 
 /**
- * One event's four seats, and the two writes that change who is on them.
+ * One event's four seats, and the three writes that act on them.
  *
  * ## Why all four seats are drawn, empty ones included
  *
@@ -67,11 +70,20 @@ import { assignJudgeAction, unassignJudgeAction } from "../actions";
  *
  * ## What this decides
  *
- * Nothing. Both writes are `security definer` RPCs from 0027 that re-check the whole
- * rule server-side (non-negotiable 2): that the caller is an admin, that the event is
- * individual, that the seat is one of the four, that the judge is active, and — for
- * emptying a seat — that its judge has no submitted sheet. A control this page offers
- * wrongly is refused there, and the refusal's own sentence is what the admin reads.
+ * Nothing. All three writes are `security definer` RPCs from 0027 that re-check the
+ * whole rule server-side (non-negotiable 2): that the caller is an admin, that the
+ * event is individual, that the seat is one of the four, that the judge is active,
+ * and — for emptying a seat — that its judge has no submitted sheet. A control this
+ * page offers wrongly is refused there, and the refusal's own sentence is what the
+ * admin reads.
+ *
+ * ## Why the sheet unlock is here
+ *
+ * A seat holding a submitted sheet cannot be emptied, and a judge cannot un-submit
+ * (N6), so without this control the refusal names an act with no button anywhere
+ * behind it. It sits on the seat rather than on the boards below because that is the
+ * dead end it exists to open, and because a sheet belongs to a seat's round: seat 1
+ * files round 1's, seats 2 to 4 file round 2's.
  */
 export function PanelSeating({
   eventId,
@@ -92,8 +104,8 @@ export function PanelSeating({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  /** Which seat's dialog is open, and which of the two it is. */
-  const [open, setOpen] = useState<{ seat: number; kind: "fill" | "empty" } | null>(null);
+  /** Which seat's dialog is open, and which of the three it is. */
+  const [open, setOpen] = useState<{ seat: number; kind: SeatDialog } | null>(null);
   const [chosen, setChosen] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -103,7 +115,7 @@ export function PanelSeating({
     [seats]
   );
 
-  function show(next: { seat: number; kind: "fill" | "empty" } | null) {
+  function show(next: { seat: number; kind: SeatDialog } | null) {
     setOpen(next);
     // Neither the last attempt's refusal nor the last seat's choice may still be
     // sitting there when the next dialog opens.
@@ -134,6 +146,8 @@ export function PanelSeating({
     );
   }
 
+  /** The seat whichever dialog is open acts on. */
+  const openSeat = seats.find((seat) => seat.seat === open?.seat) ?? null;
   const seatBeingFilled = open?.kind === "fill" ? open.seat : null;
   // A judge already on this panel is left out — except from their own seat's picker,
   // where leaving them out would make the list look as though they were unavailable.
@@ -158,11 +172,16 @@ export function PanelSeating({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {seats.map(({ seat, judge }) => (
+            {seats.map(({ seat, round, judge, sheetSubmitted }) => (
               <TableRow key={seat}>
                 <TableCell className="font-medium tabular-nums">{seat}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {seat === ROUND1_SEAT ? "Round 1" : "Round 2"}
+                  {round === 1 ? "Round 1" : "Round 2"}
+                  {judge && sheetSubmitted ? (
+                    <Badge variant="secondary" className="ml-2 text-[10px]">
+                      Submitted
+                    </Badge>
+                  ) : null}
                 </TableCell>
                 <TableCell className="font-medium">
                   {judge ? (
@@ -199,11 +218,33 @@ export function PanelSeating({
                       <UserPlus />
                       {judge ? "Change" : "Seat a judge"}
                     </Button>
-                    {judge ? (
+                    {/* Offered only where there is a sheet to reopen. A permanently
+                        greyed-out unlock on every other seat would say an act is
+                        blocked when in fact there is nothing there to unlock. */}
+                    {judge && sheetSubmitted ? (
                       <Button
                         size="sm"
                         variant="ghost"
                         disabled={isPending}
+                        onClick={() => show({ seat, kind: "unlock" })}
+                      >
+                        <LockOpen />
+                        Reopen sheet
+                      </Button>
+                    ) : null}
+                    {judge ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={isPending || sheetSubmitted}
+                        // Disabled rather than absent, and with the reason on it: the
+                        // control is one an admin expects to find, and its absence
+                        // would read as a page that failed to draw it.
+                        title={
+                          sheetSubmitted
+                            ? `This judge has submitted round ${round}'s sheet. Reopen it first — a seat emptied with ranks still on file could place a contestant on the opinion of somebody no longer on the panel.`
+                            : undefined
+                        }
                         onClick={() => show({ seat, kind: "empty" })}
                       >
                         <UserMinus />
@@ -292,6 +333,51 @@ export function PanelSeating({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={open?.kind === "unlock"}
+        onOpenChange={(next) => show(next && open ? open : null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reopen seat {open?.seat}&rsquo;s sheet?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The judge gets round {openSeat?.round} back and can change what they filed.
+              They reopen the board they already typed, not an empty one, and nothing else
+              about this event moves. A round already closed has to be reopened first —
+              a rank cannot move beneath a qualifier list or a published standing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {error}
+            </p>
+          ) : null}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                const judgeId = openSeat?.judge?.id;
+                if (!openSeat || !judgeId) return;
+                run(
+                  () => unlockJudgeSheetAction(eventId, judgeId, openSeat.round),
+                  `Seat ${openSeat.seat} can edit round ${openSeat.round} again.`
+                );
+              }}
+            >
+              {isPending && <Loader2 className="size-4 animate-spin" />}
+              Reopen sheet
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={open?.kind === "empty"}

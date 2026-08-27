@@ -137,6 +137,15 @@ export interface JudgingEventIndex {
    */
   seatsByEvent: Record<string, { seat: number; judgeId: string }[]>;
   /**
+   * Every submitted sheet, keyed by event — which judge filed it and on which round.
+   *
+   * A count of them is `sheetsSubmitted` below and answers a different question.
+   * This one is per judge because it is what decides whether a seat can be emptied:
+   * `admin_unassign_judge` refuses while its judge's sheet stands, and a console
+   * that cannot see the sheet can only find that out by being refused.
+   */
+  submittedSheetsByEvent: Record<string, { judgeId: string; round: number }[]>;
+  /**
    * Sheets a judge has submitted across the whole division. Submitting **is**
    * locking, so this is also the count of locked sheets — see `JudgeSheet`.
    */
@@ -277,8 +286,16 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
     // The seat 1 judge's round 1 submission, which is what finishes round 1 (N6).
     // Keyed by event because that is how the facts are assembled below.
     const round1SubmittedByEvent = new Map<string, string>();
+    // Every submitted sheet, whoever filed it. The map above answers "is round 1
+    // finished" and so keeps only seat 1's; this one answers "may this seat be
+    // emptied", which is asked of all four.
+    const submittedByEvent = new Map<string, { judgeId: string; round: number }[]>();
     for (const sheet of sheets) {
-      if (sheet.round !== 1 || sheet.submitted_at === null) continue;
+      if (sheet.submitted_at === null) continue;
+      const filed = submittedByEvent.get(sheet.event_id);
+      if (filed) filed.push({ judgeId: sheet.judge_id, round: sheet.round });
+      else submittedByEvent.set(sheet.event_id, [{ judgeId: sheet.judge_id, round: sheet.round }]);
+      if (sheet.round !== 1) continue;
       if (round1JudgeByEvent.get(sheet.event_id) !== sheet.judge_id) continue;
       round1SubmittedByEvent.set(sheet.event_id, sheet.submitted_at);
     }
@@ -447,6 +464,7 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         hasLogin: judge.auth_user_id !== null,
       })),
       seatsByEvent: Object.fromEntries(seatsByEvent),
+      submittedSheetsByEvent: Object.fromEntries(submittedByEvent),
       sheetsSubmitted: sheets.filter((sheet) => sheet.submitted_at !== null).length,
       error: null,
     };
@@ -456,6 +474,7 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         rows: [],
         judges: [],
         seatsByEvent: {},
+        submittedSheetsByEvent: {},
         sheetsSubmitted: 0,
         error: failure.message,
       };
@@ -481,8 +500,25 @@ export const PANEL_SEATS: readonly number[] = [ROUND1_SEAT, ...ROUND2_SEATS];
 /** One seat on an event's panel, whether or not anybody is on it. */
 export interface PanelSeat {
   seat: number;
+  /**
+   * The round this seat ranks — 1 for seat 1, 2 for the rest (N1).
+   *
+   * Carried rather than recomputed by every reader. It is the argument
+   * `admin_unlock_judge_sheet` takes, and a console that derived it from the seat
+   * number would be a second place for N1 to be written down.
+   */
+  round: number;
   /** The judge seated here, or `null` for a vacant seat. */
   judge: JudgeRosterRow | null;
+  /**
+   * Whether this seat's judge has submitted their sheet for this seat's round.
+   *
+   * Submitting is locking (see `JudgeSheet`), so this is also what stops the seat
+   * being emptied: `admin_unassign_judge` refuses while the sheet stands, because
+   * an empty seat whose ranks are still on file could place a contestant on the
+   * opinion of somebody no longer on the panel.
+   */
+  sheetSubmitted: boolean;
 }
 
 /**
@@ -511,7 +547,8 @@ export const loadJudgingEvent = cache(
     judgeNames: Record<string, string>;
     error: string | null;
   }> => {
-    const { rows, judges, seatsByEvent, error } = await loadJudgingEventIndex();
+    const { rows, judges, seatsByEvent, submittedSheetsByEvent, error } =
+      await loadJudgingEventIndex();
     const nothing = { row: null, seats: [], roster: [], judgeNames: {} };
     if (error) return { ...nothing, error };
 
@@ -550,11 +587,21 @@ export const loadJudgingEvent = cache(
     // Drawn from `PANEL_SEATS` so the four rows come out in the order the rounds are
     // worked through, whatever order the assignment rows arrived in.
     const bySeat = new Map((seatsByEvent[eventId] ?? []).map((held) => [held.seat, held.judgeId]));
+    const filed = new Set(
+      (submittedSheetsByEvent[eventId] ?? []).map((sheet) => `${sheet.judgeId}:${sheet.round}`)
+    );
     const seats = PANEL_SEATS.map((seat): PanelSeat => {
       const judgeId = bySeat.get(seat);
+      const round = seat === ROUND1_SEAT ? 1 : 2;
       return {
         seat,
+        round,
         judge: judgeId === undefined ? null : (rosterById.get(judgeId) ?? unreadable(judgeId)),
+        // Keyed on the seat's own round, not on any sheet the judge has filed here:
+        // a judge holds one seat per event, so the two agree — but reading "has a
+        // sheet" rather than "has this round's sheet" would let a stale round 1
+        // submission lock a seat that had since been moved to round 2.
+        sheetSubmitted: judgeId !== undefined && filed.has(`${judgeId}:${round}`),
       };
     });
 

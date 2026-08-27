@@ -433,8 +433,9 @@ export async function assignJudgeAction(
  *
  * Refused while that seat's judge has a submitted sheet: an empty seat whose ranks
  * are still on file is the one state that could feed a placement from somebody no
- * longer on the panel. The admin unlocks the sheet first, which is an attributed
- * act, rather than having this discard ranks on the way past.
+ * longer on the panel. The admin unlocks the sheet first — see
+ * {@link unlockJudgeSheetAction} — rather than having this discard ranks on the way
+ * past.
  */
 export async function unassignJudgeAction(eventId: string, seat: number): Promise<ActionResult> {
   return withAdmin(async (supabase) => {
@@ -445,5 +446,34 @@ export async function unassignJudgeAction(eventId: string, seat: number): Promis
     if (error) return { error: `Seat ${seat} was not emptied: ${error.message}` };
     revalidate(eventId);
     revalidateRoster();
+  });
+}
+
+/**
+ * Give one judge their sheet back.
+ *
+ * A judge cannot un-submit — submitting is locking (N6) — so this is the only way
+ * one gets a second chance, and it is also the only way out of a seat that refuses
+ * to be emptied. Narrow on purpose: the RPC clears the submission and nothing else,
+ * so the judge reopens the board they already typed rather than an empty one.
+ *
+ * Refused inside a locked round, which is the rule worth knowing here. Reopening a
+ * sheet under a qualifier list or a published standing would let a rank move
+ * beneath either without the round itself being reopened, so the round comes first
+ * and the sentence the RPC raises says which one.
+ */
+export async function unlockJudgeSheetAction(
+  eventId: string,
+  judgeId: string,
+  round: number
+): Promise<ActionResult> {
+  return withAdmin(async (supabase) => {
+    const { error } = await supabase.rpc("admin_unlock_judge_sheet", {
+      p_event_id: eventId,
+      p_judge_id: judgeId,
+      p_round: round,
+    });
+    if (error) return { error: `That sheet was not reopened: ${error.message}` };
+    revalidate(eventId);
   });
 }
