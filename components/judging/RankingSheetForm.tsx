@@ -4,7 +4,6 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Send } from "lucide-react";
 
-import { submitJudgeSheetAction } from "../../actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,38 +36,71 @@ import { validateSheetDraft, type RankDraft, type SheetFormSpec } from "@/lib/ju
 import type { ContestUnit } from "@/lib/judging/types";
 
 /**
- * The ranking sheet: a code, and a rank for it. Three columns and nothing else,
+ * The ranking sheet: a code, and a rank for it. Two columns and nothing else,
  * because there is nothing else a judge is allowed to know.
+ *
+ * ## Why one component serves both hands
+ *
+ * There are two ways a sheet gets filled — the judge types it at `/judge/[eventId]`,
+ * or an admin encodes it from a paper sheet at `/admin/judges/[eventId]/enter/[judgeId]`
+ * (N9) — and the database treats them as the same write: `judge_submit_sheet` and
+ * `admin_enter_sheet` both call `judging_write_sheet`, which validates identically
+ * and differs only in whose id lands in `entered_by`. A second copy of this form for
+ * the admin would be a second reading of N2 and N5, free to drift from this one, and
+ * the drift would show up as an admin-typed sheet the database rejects for a reason
+ * the screen never mentioned.
+ *
+ * So the form takes the write as a prop. `onSubmit` is a server action the caller has
+ * already bound its own arguments onto — the event for a judge, the event and the
+ * judge for an admin — and everything either side does differently is a string.
  *
  * ## Why the blank option carries a word
  *
- * Round 1's dropdown offers "— Eliminated" rather than an empty row. A blank is
- * a final answer (N2), and an unlabelled empty option reads as "not yet
- * answered" — a judge who reads it that way will rank the whole field and defeat
- * the cut.
+ * Round 1's dropdown offers "— Eliminated" rather than an empty row. A blank is a
+ * final answer (N2), and an unlabelled empty option reads as "not yet answered" — a
+ * reader who takes it that way will rank the whole field and defeat the cut.
  *
  * ## Why submitting asks first
  *
- * Submitting is locking, per the division's "once naka rank, i-lock". The judge
- * cannot undo it; an admin has to. A confirm step is the cheapest thing that
- * stops a misplaced click becoming an administrative errand.
+ * Writing a sheet is submitting it, and submitting is locking — the division's "once
+ * naka rank, i-lock". Nobody can revise afterwards; an admin has to unlock. A confirm
+ * step is the cheapest thing that stops a misplaced click becoming an administrative
+ * errand.
  *
- * The draft is validated here for the message and again in the server action,
- * which re-reads the sheet, and a third time inside `judge_submit_sheet`, which
- * is the actual boundary (non-negotiable 2).
+ * The draft is validated here for the message, again in the server action, which
+ * re-reads the sheet, and a third time inside `judging_write_sheet`, which is the
+ * actual boundary (non-negotiable 2).
  */
-export function RankingSheet({
-  eventId,
+export function RankingSheetForm({
   units,
   spec,
   initialDraft,
   editable,
+  onSubmit,
+  submitLabel,
+  confirmTitle,
+  confirmLead,
+  confirmAction,
 }: {
-  eventId: string;
   units: ContestUnit[];
   spec: SheetFormSpec;
   initialDraft: RankDraft;
   editable: boolean;
+  /**
+   * The write, with its ids already bound on by the caller. A server action rather
+   * than a client fetch, so the payload is re-checked against a freshly read sheet
+   * before it ever reaches the RPC.
+   */
+  onSubmit: (draft: RankDraft) => Promise<{ error: string } | void>;
+  /** The button. "Submit sheet" for a judge, "Save sheet" for an admin encoding one. */
+  submitLabel: string;
+  confirmTitle: string;
+  /**
+   * What locking means for whoever is reading. The tally of ranked-versus-eliminated
+   * is appended by this component, so a caller never has to count the draft itself.
+   */
+  confirmLead: string;
+  confirmAction: string;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<RankDraft>(initialDraft);
@@ -93,7 +125,7 @@ export function RankingSheet({
   function submit() {
     setError(null);
     startTransition(async () => {
-      const result = await submitJudgeSheetAction(eventId, draft);
+      const result = await onSubmit(draft);
       if (result?.error) {
         setError(result.error);
         return;
@@ -181,30 +213,29 @@ export function RankingSheet({
                 {isPending ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
-                    Submitting...
+                    Saving...
                   </>
                 ) : (
                   <>
                     <Send className="size-4" />
-                    Submit sheet
+                    {submitLabel}
                   </>
                 )}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Submit this sheet?</AlertDialogTitle>
+                <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Submitting locks your sheet. You will not be able to change a rank
-                  afterwards &mdash; an administrator has to unlock it for you.
+                  {confirmLead}
                   {spec.allowsBlank
-                    ? ` You have ranked ${ranked} of ${units.length}; the rest are recorded as eliminated.`
+                    ? ` ${ranked} of ${units.length} are ranked; the rest are recorded as eliminated.`
                     : ""}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Keep editing</AlertDialogCancel>
-                <AlertDialogAction onClick={submit}>Submit and lock</AlertDialogAction>
+                <AlertDialogAction onClick={submit}>{confirmAction}</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -219,11 +250,7 @@ export function RankingSheet({
 }
 
 /**
- * The dropdown's value for a blank.
- *
- * Radix's `Select` refuses an empty-string item value, and it needs *some*
- * value: the alternative is a controlled component whose blank state is
- * `undefined`, which renders the placeholder and makes "eliminated" look like
- * "unanswered". A sentinel keeps the blank a real, selectable answer.
+ * The dropdown's value for "no rank". Radix needs a non-empty string, and the
+ * empty string is reserved for its own placeholder handling.
  */
 const BLANK = "blank";

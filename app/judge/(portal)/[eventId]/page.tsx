@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Info, Lock } from "lucide-react";
 
-import { RankingSheet } from "./RankingSheet";
+import { RankingSheetForm } from "@/components/judging/RankingSheetForm";
+import { submitJudgeSheetAction } from "../../actions";
 import { loadJudgeSheet } from "../../judge-data";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -99,12 +100,19 @@ export default async function JudgeSheetPage({
                 : "No qualifiers have been drawn for this event yet."}
             </p>
           ) : (
-            <RankingSheet
-              eventId={sheet.eventId}
+            <RankingSheetForm
               units={sheet.units}
               spec={sheet.spec}
               initialDraft={sheet.draft}
               editable={editable}
+              // Bound here rather than wrapped in a closure: a server action keeps
+              // its identity across the boundary through `bind`, and the event id
+              // is then fixed on the server instead of arriving from the form.
+              onSubmit={submitJudgeSheetAction.bind(null, sheet.eventId)}
+              submitLabel="Submit sheet"
+              confirmTitle="Submit this sheet?"
+              confirmLead="Submitting locks your sheet. You will not be able to change a rank afterwards — an administrator has to unlock it for you."
+              confirmAction="Submit and lock"
             />
           )}
         </CardContent>
