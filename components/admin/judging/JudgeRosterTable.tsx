@@ -43,6 +43,15 @@ export interface JudgeRosterRow {
   email: string | null;
   /** How many events this judge sits on. */
   events: number;
+  /**
+   * How many sheets this judge has submitted, across every event.
+   *
+   * Read only to decide whether they may be deleted: submitting is locking, so a
+   * count above zero means a placement somewhere rests on their ranks and the row
+   * has to stay. Not a column — it is a fact about the console's own housekeeping,
+   * not something an admin reads off a roster.
+   */
+  submittedSheets: number;
   isActive: boolean;
   /**
    * Whether `judges.auth_user_id` is set — that is, whether this judge can sign in

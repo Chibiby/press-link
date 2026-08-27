@@ -61,25 +61,31 @@ describe("eventControls", () => {
 });
 
 describe("the round 2 cut", () => {
-  it("may be set until round 1 is closed", () => {
-    expect(enabledStatuses("set-cut")).toEqual([
-      "not-started",
-      "round1-open",
-      "round1-awaiting-close",
-    ]);
+  it("may be set until somebody has ranked against it", () => {
+    expect(enabledStatuses("set-cut")).toEqual(["not-started", "round1-open"]);
   });
 
-  it("is refused once a qualifier list has been drawn under it", () => {
-    expect(eventControl(facts({ status: "round2-open" }), "set-cut").disabledReason).toContain(
-      "Reopen it",
-    );
+  it("is refused the moment round 1's sheet lands, before the round is closed", () => {
+    // The hole migration 0030 closed: locking used to be the test, so in the
+    // window between seat 1 submitting and an admin closing the round, the cut
+    // could drop under ranks already made against the old number.
+    const reason = eventControl(
+      facts({ status: "round1-awaiting-close" }),
+      "set-cut"
+    ).disabledReason;
+    expect(reason).toContain("ranked against this cut");
+  });
+
+  it("is refused once a qualifier list has been drawn under it, and says both steps", () => {
+    const reason = eventControl(facts({ status: "round2-open" }), "set-cut").disabledReason;
+    expect(reason).toContain("Reopen round 1");
+    expect(reason).toContain("sheet");
   });
 
   it("may still be set on an event that has none on file", () => {
     expect(enabledStatuses("set-cut", { round2Cut: null })).toEqual([
       "not-started",
       "round1-open",
-      "round1-awaiting-close",
     ]);
   });
 });

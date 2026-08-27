@@ -55,11 +55,19 @@ const AFTER_ROUND1_LOCK: readonly EventJudgingStatus[] = [
 ];
 
 function setCutReason(facts: EventControlFacts): string | null {
-  // The cut decides who qualifies, so it cannot move once a qualifier list has
-  // been drawn under it. The RPC refuses this too; reopening round 1 discards
-  // the list and makes the cut editable again.
+  // The line is the ranks, not the lock (migration 0030). The cut decides how
+  // tall round 1's dropdown is, so the moment it starts to matter is the moment
+  // somebody ranks against it — not the later moment an admin closes the round.
+  //
+  // Locking used to be the test, which let the cut drop from 10 to 5 underneath a
+  // sheet that had already ranked ten: those ranks then sit above the cut the
+  // sheet is read under, a state `judging_write_sheet` will not write and
+  // that only this control could ever have produced.
   if (AFTER_ROUND1_LOCK.includes(facts.status)) {
-    return "Round 1 is closed. Reopen it to change the cut — a cut cannot move under a qualifier list already drawn from it.";
+    return "Round 1 is closed and its field is drawn. Reopen round 1, then reopen seat 1's sheet, and the cut can change.";
+  }
+  if (facts.status === "round1-awaiting-close") {
+    return "Round 1's judge has ranked against this cut. Reopen their sheet to change it.";
   }
   return null;
 }

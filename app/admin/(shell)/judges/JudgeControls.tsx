@@ -10,6 +10,7 @@ import {
   Loader2,
   MoreHorizontal,
   Pencil,
+  Trash2,
   UserMinus,
   UserPlus,
 } from "lucide-react";
@@ -62,6 +63,7 @@ import {
 import {
   assignJudgeAction,
   createJudgeAction,
+  deleteJudgeAction,
   provisionJudgeLoginAction,
   setJudgeActiveAction,
   updateJudgeAction,
@@ -97,6 +99,9 @@ const LEVEL_LABEL: Record<EventLevel, string> = {
  * component that imports no action and takes these through its `renderActions`
  * prop, so nothing in that file ships to the browser.
  */
+
+/** Which of a judge row's dialogs is open, if any. */
+type JudgeDialog = "edit" | "login" | "active" | "seat" | "delete" | null;
 
 /** The five fields `judges` holds, as the form carries them: blank, never null. */
 const EMPTY_FORM: JudgeInput = {
@@ -337,7 +342,7 @@ export function JudgeRowActions({
     seat: useId(),
   };
 
-  const [open, setOpen] = useState<"edit" | "login" | "active" | "seat" | null>(null);
+  const [open, setOpen] = useState<JudgeDialog>(null);
   const [form, setForm] = useState<JudgeInput>(EMPTY_FORM);
   const [password, setPassword] = useState("");
   const [choice, setChoice] = useState<SeatChoice>(EMPTY_SEAT_CHOICE);
@@ -347,7 +352,7 @@ export function JudgeRowActions({
 
   const picker = seatPicker(events, choice, row.id);
 
-  function show(next: "edit" | "login" | "active" | "seat" | null) {
+  function show(next: JudgeDialog) {
     setOpen(next);
     setError(null);
     setPassword("");
@@ -437,6 +442,16 @@ export function JudgeRowActions({
             {row.isActive ? <UserMinus /> : <UserPlus />}
             {row.isActive ? "Deactivate" : "Reactivate"}
           </DropdownMenuItem>
+          {/* Offered only to a judge who has ranked nothing. The RPC refuses the
+              rest, but a menu item that exists to be refused is worse than one
+              that is not there: deactivating is what those judges need, and it is
+              the line above. */}
+          {row.submittedSheets === 0 ? (
+            <DropdownMenuItem variant="destructive" onSelect={() => show("delete")}>
+              <Trash2 />
+              Delete judge
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -673,6 +688,45 @@ export function JudgeRowActions({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={open === "delete"} onOpenChange={(next) => show(next ? "delete" : null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {row.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes them from the roster for good, along with their login and any
+              seat they hold. It is offered because they have not submitted a sheet, so
+              nothing anybody has been placed on rests on their ranks.
+              {row.events > 0
+                ? ` They currently sit on ${row.events} ${
+                    row.events === 1 ? "event" : "events"
+                  }, and those seats are emptied.`
+                : ""}{" "}
+              To retire a judge who <em>has</em> judged, deactivate them instead &mdash;
+              their ranks have to stay.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <Refusal error={error} />
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isPending}
+              onClick={(event) => {
+                // The dialog has to survive a failure so the refusal above can be
+                // read, and Radix closes on click unless this is prevented.
+                event.preventDefault();
+                run(() => deleteJudgeAction(row.id), `${row.name} was deleted.`);
+              }}
+            >
+              {isPending && <Loader2 className="size-4 animate-spin" />}
+              Delete judge
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={open === "active"} onOpenChange={(next) => show(next ? "active" : null)}>
         <AlertDialogContent>

@@ -310,8 +310,12 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
     // finished" and so keeps only seat 1's; this one answers "may this seat be
     // emptied", which is asked of all four.
     const submittedByEvent = new Map<string, { judgeId: string; round: number }[]>();
+    // The same sheets counted per judge instead of per event, which is what decides
+    // whether a judge may be deleted rather than merely deactivated.
+    const submittedPerJudge = new Map<string, number>();
     for (const sheet of sheets) {
       if (sheet.submitted_at === null) continue;
+      submittedPerJudge.set(sheet.judge_id, (submittedPerJudge.get(sheet.judge_id) ?? 0) + 1);
       const filed = submittedByEvent.get(sheet.event_id);
       if (filed) filed.push({ judgeId: sheet.judge_id, round: sheet.round });
       else submittedByEvent.set(sheet.event_id, [{ judgeId: sheet.judge_id, round: sheet.round }]);
@@ -480,6 +484,7 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         affiliation: judge.affiliation,
         email: judge.email,
         events: eventsPerJudge.get(judge.id) ?? 0,
+        submittedSheets: submittedPerJudge.get(judge.id) ?? 0,
         isActive: judge.is_active,
         hasLogin: judge.auth_user_id !== null,
       })),
@@ -644,6 +649,10 @@ export const loadJudgingEvent = cache(
       affiliation: null,
       email: null,
       events: 0,
+      // Zero is the safe reading for a row that could not be read: it is only
+      // consulted to decide whether deleting is allowed, and this row is never
+      // offered that control — the panel card renders no roster actions.
+      submittedSheets: 0,
       isActive: false,
       hasLogin: false,
     });

@@ -530,3 +530,58 @@ export async function enterJudgeSheetAction(
     revalidate(eventId);
   });
 }
+
+/**
+ * Remove a judge from the roster outright (migration 0030).
+ *
+ * The counterpart to {@link setJudgeActiveAction}, and not a replacement for it.
+ * Deactivating is for a judge who judged and has retired: their submitted ranks
+ * still feed placements, so the row has to stay. Deleting is for a row that was
+ * never anybody — a typo, a duplicate, somebody who agreed in June and withdrew in
+ * July — and leaving those as "inactive" makes a roster an admin cannot read,
+ * because a retired judge and a mistake then look identical.
+ *
+ * The line is the ranks. A judge with no submitted sheet has contributed nothing any
+ * placement rests on, and their seats, drafts and the ranks on those drafts go with
+ * them through 0018's cascade — which is also how a panel gets somebody replaced
+ * before judging starts. One with a submitted sheet is refused by the RPC, in a
+ * sentence naming how many.
+ *
+ * ## The login is deleted second, and may outlive the judge
+ *
+ * `auth.users` is not writable from SQL, so the RPC hands back the id and this
+ * deletes it with the service role — the same split provisioning uses, in reverse.
+ * The order matters: the judge row goes first, because that is the delete carrying
+ * the rule, and a login left behind resolves to no judge and is refused at
+ * `/judge/login` by the guard. What it *does* still hold is the email address, and
+ * Auth will not issue a second account for one — so a failure there is reported
+ * rather than swallowed, since the next thing an admin does is usually re-add the
+ * same person.
+ */
+export async function deleteJudgeAction(judgeId: string): Promise<ActionResult> {
+  return withAdmin(async (supabase) => {
+    // Through the admin's own session, not the service role: the RPC checks
+    // `auth.uid()` against `admin_profiles`, and the service role has no uid.
+    const { data: authUserId, error } = await supabase.rpc("admin_delete_judge", {
+      p_judge_id: judgeId,
+    });
+    if (error) return { error: `That judge was not deleted: ${error.message}` };
+
+    revalidateRoster();
+
+    if (typeof authUserId !== "string") return;
+
+    const { error: loginError } = await createAdminClient().auth.admin.deleteUser(authUserId);
+    if (loginError) {
+      console.error("deleteJudgeAction: judge deleted, login orphaned", {
+        judgeId,
+        authUserId,
+        loginError,
+      });
+      return {
+        error:
+          "The judge was deleted, but their login could not be removed. It can no longer sign in, but it still holds their email address — adding that same address again will not be able to get a login until it is cleared in Supabase Auth.",
+      };
+    }
+  });
+}
