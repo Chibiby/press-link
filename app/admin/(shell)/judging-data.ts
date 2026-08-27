@@ -15,6 +15,13 @@ import {
   type EventJudgingFacts,
   type RawIndexEvent,
 } from "@/lib/judging/event-index";
+import { sheetEntryState, type SheetEntryState } from "@/lib/judging/sheet-entry";
+import {
+  draftFromRanks,
+  sheetFormSpec,
+  type RankDraft,
+  type SheetFormSpec,
+} from "@/lib/judging/sheet-form";
 import { ROUND1_SEAT, ROUND2_SEATS } from "@/lib/judging/sheet-state";
 import {
   attachIdentities,
@@ -23,8 +30,10 @@ import {
   type SchoolPaperRow,
 } from "@/lib/judging/tabulation";
 import type {
+  ContestUnit,
   EventRoundState,
   JudgeRank,
+  JudgingRound,
   TabulationRow,
   UnitIdentity,
 } from "@/lib/judging/types";
@@ -145,6 +154,16 @@ export interface JudgingEventIndex {
    * that cannot see the sheet can only find that out by being refused.
    */
   submittedSheetsByEvent: Record<string, { judgeId: string; round: number }[]>;
+  /**
+   * `event_rounds` per event id, or the all-null state for an event with no row.
+   *
+   * Already folded into each row's `state` badge, but carried raw as well because
+   * `sheetEntryState` reads the three timestamps rather than the badge: "round 1 is
+   * closed" and "the results are published" are different obstacles with different
+   * ways out, and a status label has collapsed them into one word by the time it
+   * reaches a page.
+   */
+  roundStateByEvent: Record<string, EventRoundState>;
   /**
    * Sheets a judge has submitted across the whole division. Submitting **is**
    * locking, so this is also the count of locked sheets — see `JudgeSheet`.
@@ -465,6 +484,7 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
       })),
       seatsByEvent: Object.fromEntries(seatsByEvent),
       submittedSheetsByEvent: Object.fromEntries(submittedByEvent),
+      roundStateByEvent: Object.fromEntries(roundsByEvent),
       sheetsSubmitted: sheets.filter((sheet) => sheet.submitted_at !== null).length,
       error: null,
     };
@@ -475,6 +495,7 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         judges: [],
         seatsByEvent: {},
         submittedSheetsByEvent: {},
+        roundStateByEvent: {},
         sheetsSubmitted: 0,
         error: failure.message,
       };
@@ -493,6 +514,19 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
  * beside it. `lib/judging/tabulation` prints `UNIDENTIFIED` for the same reason.
  */
 export const UNREADABLE_JUDGE = "Unidentified judge";
+
+/**
+ * An event with no `event_rounds` row: nothing closed, nothing locked.
+ *
+ * The row is written when the first round state changes, so its absence is the
+ * ordinary state of an event nobody has finished judging — not a failed read.
+ */
+const NO_ROUNDS: EventRoundState = {
+  round1ClosedAt: null,
+  round1LockedAt: null,
+  round2CutUsed: null,
+  resultsLockedAt: null,
+};
 
 /** The four seats a panel has, in the order they are worked through (N1). */
 export const PANEL_SEATS: readonly number[] = [ROUND1_SEAT, ...ROUND2_SEATS];
@@ -544,12 +578,20 @@ export const loadJudgingEvent = cache(
     seats: PanelSeat[];
     /** Every judge on file, so the seat picker has a roster to choose from. */
     roster: JudgeRosterRow[];
+    /** This event's `event_rounds` row, or the all-null state when it has none. */
+    rounds: EventRoundState;
     judgeNames: Record<string, string>;
     error: string | null;
   }> => {
-    const { rows, judges, seatsByEvent, submittedSheetsByEvent, error } =
+    const { rows, judges, seatsByEvent, submittedSheetsByEvent, roundStateByEvent, error } =
       await loadJudgingEventIndex();
-    const nothing = { row: null, seats: [], roster: [], judgeNames: {} };
+    const nothing = {
+      row: null,
+      seats: [],
+      roster: [],
+      rounds: NO_ROUNDS,
+      judgeNames: {},
+    };
     if (error) return { ...nothing, error };
 
     const row = rows.find((candidate) => candidate.eventId === eventId) ?? null;
@@ -609,11 +651,118 @@ export const loadJudgingEvent = cache(
       row,
       seats,
       roster: judges,
+      rounds: roundStateByEvent[eventId] ?? NO_ROUNDS,
       judgeNames: Object.fromEntries(seated.map((judge) => [judge.id, judge.name])),
       error: null,
     };
   }
 );
+
+/**
+ * One judge's sheet on one event, as an admin encoding it from paper sees it (N9).
+ *
+ * The admin counterpart to `loadJudgeSheet`, and deliberately not that function:
+ * this one is not scoped to the caller — an admin types somebody else's sheet — and
+ * it reads the codes off the boards the admin console already holds rather than
+ * through `judge_event_units`, which exists precisely because a judge may not select
+ * `participants` (0028). Two loaders, one anonymity wall, no shared query that could
+ * put a name on a judge's screen (non-negotiable 1).
+ *
+ * Every value the form needs comes back shaped, so the page joins nothing:
+ * `units` in code order, `spec` for the dropdown, `draft` seeded with whatever this
+ * judge already has on file, and `entry` saying whether the form may be typed into
+ * at all.
+ */
+export interface AdminSheetEntry {
+  eventId: string;
+  typeNameEn: string;
+  slotLabel: string;
+  judgeId: string;
+  judgeName: string;
+  seat: number;
+  round: JudgingRound;
+  units: ContestUnit[];
+  spec: SheetFormSpec;
+  draft: RankDraft;
+  /** Whether this sheet may be typed now, and the one sentence saying why not. */
+  entry: SheetEntryState;
+}
+
+/**
+ * The sheet for one seat's judge, or null when this event or judge is not one.
+ *
+ * Null and a failed read are kept apart for the reason they are everywhere else in
+ * this file: null means the page should 404, `error` means the read did not complete
+ * and the page has to say so rather than report an event that does not exist
+ * (non-negotiable 5).
+ */
+export async function loadSheetEntry(
+  eventId: string,
+  judgeId: string
+): Promise<{ entry: AdminSheetEntry | null; error: string | null }> {
+  const { row, seats, rounds, error } = await loadJudgingEvent(eventId);
+  if (error) return { entry: null, error };
+  if (!row) return { entry: null, error: null };
+
+  const held = seats.find((seat) => seat.judge?.id === judgeId) ?? null;
+  if (!held?.judge) return { entry: null, error: null };
+  const round: JudgingRound = held.round === 1 ? 1 : 2;
+
+  // The board carries the unit set and every judge's rank on it, which is exactly
+  // what this form needs — so no second query. `round1` rather than `round1Cut`:
+  // the cut board drops the eliminated, and a sheet has to offer every contestant
+  // a row, including the ones this judge is about to leave blank.
+  const board = round === 1 ? row.round1 : row.round2;
+  const units: ContestUnit[] = board.rows.map((boardRow) => ({
+    unitKey: boardRow.unitKey,
+    code: boardRow.code,
+    entryId: boardRow.entryId,
+    participantId: boardRow.participantId,
+  }));
+
+  // What this judge already filed, which is only ever non-empty on a sheet an admin
+  // has reopened: writing a sheet submits it, so ranks and an unsubmitted sheet
+  // coexist in exactly one state, and it is the one this form is here to correct.
+  const saved = board.rows.flatMap((boardRow) => {
+    const rank = boardRow.ranksByJudge[judgeId];
+    return rank === undefined ? [] : [{ unitKey: boardRow.unitKey, rank }];
+  });
+
+  // Round 1's dropdown is bounded by the cut, round 2's by the size of the field it
+  // was drawn against. `events.round2_cut` is the right number for round 1 and not
+  // `round2CutUsed`: the latter is written when round 1 locks, and a locked round 1
+  // is one `sheetEntryState` refuses to enter — so wherever this write can succeed,
+  // the two agree.
+  const size = round === 1 ? (row.round2Cut ?? 0) : units.length;
+
+  return {
+    entry: {
+      eventId: row.eventId,
+      typeNameEn: row.typeNameEn,
+      slotLabel: row.slotLabel,
+      judgeId,
+      judgeName: held.judge.name,
+      seat: held.seat,
+      round,
+      units,
+      spec: sheetFormSpec(round, size),
+      draft: draftFromRanks(units, saved),
+      entry: sheetEntryState({
+        // A group event has no single-judge round 1, and `round1Cut` is null for
+        // exactly those (non-negotiable 6).
+        individual: row.round1Cut !== null,
+        seat: held.seat,
+        round,
+        rounds,
+        // `PanelSeat.sheetSubmitted` is already this seat's round, so it answers the
+        // question `sheetEntryState` asks. The timestamp itself is not carried up —
+        // nothing prints it, and the rule only reads whether there is one.
+        submittedAt: held.sheetSubmitted ? "submitted" : null,
+      }),
+    },
+    error: null,
+  };
+}
 
 /** One entry with everything the identified side of an event's sheet prints. */
 interface RawIdentityEntryRow {

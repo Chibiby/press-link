@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LockOpen, Loader2, UserMinus, UserPlus } from "lucide-react";
+import { ClipboardPen, LockOpen, Loader2, UserMinus, UserPlus } from "lucide-react";
 
 import type { JudgeRosterRow } from "@/components/admin/judging/JudgeRosterTable";
 import type { PanelSeat } from "@/app/admin/(shell)/judging-data";
@@ -76,6 +77,15 @@ type SeatDialog = "fill" | "empty" | "unlock";
  * and — for emptying a seat — that its judge has no submitted sheet. A control this
  * page offers wrongly is refused there, and the refusal's own sentence is what the
  * admin reads.
+ *
+ * ## Why entering a sheet is a link and not a button
+ *
+ * The division judges on paper at the venue and encodes afterwards (N9), so typing a
+ * judge's ranks in for them is ordinary work rather than a repair. It gets its own
+ * page — `enter/[judgeId]` — because a sheet is every contestant in the event, and
+ * four seats' worth would have to ride into this card's bundle for a dialog to open
+ * without a round trip. A page also gets an address, which is what somebody reading
+ * ranks off paper on a second screen actually wants.
  *
  * ## Why the sheet unlock is here
  *
@@ -218,6 +228,17 @@ export function PanelSeating({
                       <UserPlus />
                       {judge ? "Change" : "Seat a judge"}
                     </Button>
+                    {/* Offered while the sheet is still open. Once it is in, the
+                        control that matters is Reopen, and a second one beside it
+                        pointing at a page that refuses would be noise. */}
+                    {judge && !sheetSubmitted ? (
+                      <Button asChild size="sm" variant="ghost" disabled={isPending}>
+                        <Link href={`/admin/judges/${eventId}/enter/${judge.id}`}>
+                          <ClipboardPen />
+                          Enter sheet
+                        </Link>
+                      </Button>
+                    ) : null}
                     {/* Offered only where there is a sheet to reopen. A permanently
                         greyed-out unlock on every other seat would say an act is
                         blocked when in fact there is nothing there to unlock. */}
@@ -262,7 +283,9 @@ export function PanelSeating({
       <p className="text-xs text-muted-foreground">
         Seat 1 ranks round 1 on its own and its ranks make the cut. Seats 2, 3 and 4
         rank round 2 and place the winners, and one judge cannot hold two seats here —
-        the judge who made the cut does not also place the winners.
+        the judge who made the cut does not also place the winners. Use{" "}
+        <span className="font-medium">Enter sheet</span> to type a judge&rsquo;s ranks in
+        from their paper sheet; it records you as the one who entered it.
       </p>
 
       <Dialog

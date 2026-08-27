@@ -3,8 +3,13 @@
 import { revalidatePath } from "next/cache";
 
 import { checkAdmin } from "@/app/admin/guard";
-import { loadJudgingEvent } from "../judging-data";
+import { loadJudgingEvent, loadSheetEntry } from "../judging-data";
 import { round1Qualifiers } from "@/lib/judging/cut";
+import {
+  toRankPayload,
+  validateSheetDraft,
+  type RankDraft,
+} from "@/lib/judging/sheet-form";
 import {
   validateJudgeInput,
   validateJudgePassword,
@@ -474,6 +479,54 @@ export async function unlockJudgeSheetAction(
       p_round: round,
     });
     if (error) return { error: `That sheet was not reopened: ${error.message}` };
+    revalidate(eventId);
+  });
+}
+
+/**
+ * Type a judge's sheet in for them, from paper (N9).
+ *
+ * The division judges on paper at the venue and encodes afterwards, so this is not
+ * a repair path — it is the ordinary way most sheets arrive. It writes the same
+ * sheet the judge's own screen writes: `admin_enter_sheet` and `judge_submit_sheet`
+ * both call `judging_write_sheet`, which validates identically. The only difference
+ * is whose id lands in `entered_by`, and that column exists for exactly this.
+ *
+ * ## Why the sheet is re-read instead of trusted
+ *
+ * The payload arrives from a client, so the seat, the round, the unit set, the cut
+ * and whether this sheet may be written at all are re-derived here from the database
+ * rather than read out of the form. A form left open while another admin closed
+ * round 1, moved the cut or reopened a sheet would otherwise submit against numbers
+ * that stopped being true while it sat there.
+ *
+ * Still not the authorisation boundary. `judging_write_sheet` re-checks every rule
+ * server-side (non-negotiable 2). What this adds is a sentence naming the row that
+ * is wrong, which the RPC cannot give, and the entry rules' own sentence for a sheet
+ * that was never writable.
+ */
+export async function enterJudgeSheetAction(
+  eventId: string,
+  judgeId: string,
+  draft: RankDraft
+): Promise<ActionResult> {
+  return withAdmin(async (supabase) => {
+    const { entry, error } = await loadSheetEntry(eventId, judgeId);
+    if (error) return { error: `${error} The sheet was not saved.` };
+    if (!entry) return { error: "That judge does not hold a seat on this event." };
+    if (!entry.entry.canEnter) return { error: entry.entry.reason };
+
+    const invalid = validateSheetDraft(entry.spec, entry.units, draft);
+    if (invalid) return { error: invalid };
+
+    const { error: rpcError } = await supabase.rpc("admin_enter_sheet", {
+      p_event_id: eventId,
+      p_round: entry.round,
+      p_judge_id: judgeId,
+      p_ranks: toRankPayload(draft),
+    });
+    if (rpcError) return { error: `The sheet was not saved: ${rpcError.message}` };
+
     revalidate(eventId);
   });
 }
