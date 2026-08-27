@@ -15,7 +15,7 @@ import {
   type EventJudgingFacts,
   type RawIndexEvent,
 } from "@/lib/judging/event-index";
-import { ROUND1_SEAT } from "@/lib/judging/sheet-state";
+import { ROUND1_SEAT, ROUND2_SEATS } from "@/lib/judging/sheet-state";
 import {
   attachIdentities,
   schoolPaperForEvent,
@@ -75,6 +75,12 @@ interface RawJudgeRow {
   email: string | null;
   affiliation: string | null;
   is_active: boolean;
+  /**
+   * Read but never rendered. The roster shows *whether* a judge can sign in, not
+   * which account they sign in as: the id is of no use to an admin and putting it
+   * on a page only invites someone to quote it into a support thread.
+   */
+  auth_user_id: string | null;
 }
 
 interface RawAssignmentRow {
@@ -121,6 +127,15 @@ export interface JudgingEventIndex {
   rows: EventIndexRow[];
   /** The judges on file, surname-first, with the number of events each sits on. */
   judges: JudgeRosterRow[];
+  /**
+   * Which judge holds which seat, per event id — the seating console's input.
+   *
+   * Kept beside `rows` rather than folded into `EventIndexRow` because a seat is an
+   * administrative fact about the panel, not an input to the ranking: nothing in
+   * `lib/judging` reads a seat number except to tell round 1 from round 2, and
+   * `EventJudgingFacts` already carries that.
+   */
+  seatsByEvent: Record<string, { seat: number; judgeId: string }[]>;
   /**
    * Sheets a judge has submitted across the whole division. Submitting **is**
    * locking, so this is also the count of locked sheets — see `JudgeSheet`.
@@ -185,7 +200,9 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
       fetchAll<RawJudgeRow>("The judge roster", (from, to) =>
         supabase
           .from("judges")
-          .select("id, first_name, middle_name, last_name, email, affiliation, is_active")
+          .select(
+            "id, first_name, middle_name, last_name, email, affiliation, is_active, auth_user_id"
+          )
           .order("last_name")
           .order("first_name")
           .range(from, to)
@@ -236,6 +253,11 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
     // order — which is what `EventJudgingFacts.judgeIds` promises and what the
     // panel table's seat column reads back out.
     const panelByEvent = new Map<string, string[]>();
+    // The same assignments keyed by their seat number, which `panelByEvent` throws
+    // away. A vacant seat 3 makes the two disagree — the panel is then [2, 4] and
+    // its second element is seat 4 — and the seating console has to name the seat it
+    // is filling, so it cannot read positions.
+    const seatsByEvent = new Map<string, { seat: number; judgeId: string }[]>();
     const eventsPerJudge = new Map<string, number>();
     // Seat 1 by its seat number, not by its position in the panel: an event
     // seated 2, 3 and 4 with seat 1 still vacant has no round 1 judge, and
@@ -245,6 +267,9 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
       const panel = panelByEvent.get(row.event_id);
       if (panel) panel.push(row.judge_id);
       else panelByEvent.set(row.event_id, [row.judge_id]);
+      const seats = seatsByEvent.get(row.event_id);
+      if (seats) seats.push({ seat: row.seat, judgeId: row.judge_id });
+      else seatsByEvent.set(row.event_id, [{ seat: row.seat, judgeId: row.judge_id }]);
       if (row.seat === ROUND1_SEAT) round1JudgeByEvent.set(row.event_id, row.judge_id);
       eventsPerJudge.set(row.judge_id, (eventsPerJudge.get(row.judge_id) ?? 0) + 1);
     }
@@ -416,13 +441,21 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         email: judge.email,
         events: eventsPerJudge.get(judge.id) ?? 0,
         isActive: judge.is_active,
+        hasLogin: judge.auth_user_id !== null,
       })),
+      seatsByEvent: Object.fromEntries(seatsByEvent),
       sheetsSubmitted: sheets.filter((sheet) => sheet.submitted_at !== null).length,
       error: null,
     };
   } catch (failure) {
     if (failure instanceof LoadFailure) {
-      return { rows: [], judges: [], sheetsSubmitted: 0, error: failure.message };
+      return {
+        rows: [],
+        judges: [],
+        seatsByEvent: {},
+        sheetsSubmitted: 0,
+        error: failure.message,
+      };
     }
     throw failure;
   }
@@ -438,6 +471,16 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
  * beside it. `lib/judging/tabulation` prints `UNIDENTIFIED` for the same reason.
  */
 export const UNREADABLE_JUDGE = "Unidentified judge";
+
+/** The four seats a panel has, in the order they are worked through (N1). */
+export const PANEL_SEATS: readonly number[] = [ROUND1_SEAT, ...ROUND2_SEATS];
+
+/** One seat on an event's panel, whether or not anybody is on it. */
+export interface PanelSeat {
+  seat: number;
+  /** The judge seated here, or `null` for a vacant seat. */
+  judge: JudgeRosterRow | null;
+}
 
 /**
  * One event's index row and the panel seated on it, for a detail page.
@@ -458,34 +501,58 @@ export const loadJudgingEvent = cache(
   ): Promise<{
     row: EventIndexRow | null;
     panel: JudgeRosterRow[];
+    /** All four seats in seat order, the vacant ones included — the seating console's input. */
+    seats: PanelSeat[];
+    /** Every judge on file, so the seat picker has a roster to choose from. */
+    roster: JudgeRosterRow[];
     judgeNames: Record<string, string>;
     error: string | null;
   }> => {
-    const { rows, judges, error } = await loadJudgingEventIndex();
-    if (error) return { row: null, panel: [], judgeNames: {}, error };
+    const { rows, judges, seatsByEvent, error } = await loadJudgingEventIndex();
+    const nothing = { row: null, panel: [], seats: [], roster: [], judgeNames: {} };
+    if (error) return { ...nothing, error };
 
     const row = rows.find((candidate) => candidate.eventId === eventId) ?? null;
-    if (!row) return { row: null, panel: [], judgeNames: {}, error: null };
+    if (!row) return { ...nothing, error: null };
 
     const rosterById = new Map(judges.map((judge) => [judge.id, judge]));
+    /** A seated judge whose roster row could not be read — see {@link UNREADABLE_JUDGE}. */
+    const unreadable = (judgeId: string): JudgeRosterRow => ({
+      id: judgeId,
+      name: UNREADABLE_JUDGE,
+      affiliation: null,
+      email: null,
+      events: 0,
+      isActive: false,
+      hasLogin: false,
+    });
+
     // Driven off the board's `judgeIds` rather than by filtering the roster: that
     // array is in seat order, and a roster filter would come back in roster order
     // and quietly relabel every seat.
     const panel = row.round1.judgeIds.map(
-      (judgeId): JudgeRosterRow =>
-        rosterById.get(judgeId) ?? {
-          id: judgeId,
-          name: UNREADABLE_JUDGE,
-          affiliation: null,
-          email: null,
-          events: 0,
-          isActive: false,
-        }
+      (judgeId): JudgeRosterRow => rosterById.get(judgeId) ?? unreadable(judgeId)
     );
+
+    // Every seat, not only the taken ones. The console's job is to fill seat 3 while
+    // 1 and 2 are occupied, and a list of who is seated cannot say which seat is
+    // free — `panel` above is exactly that list, which is why it is not enough here.
+    // Drawn from `PANEL_SEATS` so the four rows come out in the order the rounds are
+    // worked through, whatever order the assignment rows arrived in.
+    const seated = new Map((seatsByEvent[eventId] ?? []).map((held) => [held.seat, held.judgeId]));
+    const seats = PANEL_SEATS.map((seat): PanelSeat => {
+      const judgeId = seated.get(seat);
+      return {
+        seat,
+        judge: judgeId === undefined ? null : (rosterById.get(judgeId) ?? unreadable(judgeId)),
+      };
+    });
 
     return {
       row,
       panel,
+      seats,
+      roster: judges,
       judgeNames: Object.fromEntries(panel.map((judge) => [judge.id, judge.name])),
       error: null,
     };

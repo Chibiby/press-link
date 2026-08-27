@@ -111,8 +111,14 @@ export type RosterRow = Record<(typeof ROSTER_HEADER)[number], Cell>;
  * One judge as the workbook prints them.
  *
  * A local shape rather than the pages' `JudgeRosterRow`, which is declared in a
- * client component: importing it would pull React into `lib/`. `JudgeRosterRow` is
- * structurally assignable to this, so a route hands its loaded roster straight over.
+ * component module: `lib/` does not import from `components/`, and this file stays
+ * React-free. `JudgeRosterRow` is structurally assignable to this, so a route hands
+ * its loaded roster straight over.
+ *
+ * Only these five fields. The roster table also carries `hasLogin`, and that is
+ * deliberately not printed: whether an account has been made is a fact about this
+ * console's own provisioning, not a fact about the contest, and `ROSTER_HEADER` is
+ * the sheet a division circulates.
  */
 export interface JudgeRosterExportRow {
   name: string;
