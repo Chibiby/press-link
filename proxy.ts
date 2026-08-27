@@ -38,11 +38,12 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isAdminRoute = path.startsWith("/admin") && path !== "/admin/login";
   const isEntryRoute = path.startsWith("/entry");
+  const isJudgeRoute = path.startsWith("/judge") && path !== "/judge/login";
 
   const authCheck = classifyAuthCheck(user, error);
 
-  if (authCheck === "unauthenticated" && (isAdminRoute || isEntryRoute)) {
-    const loginPath = isAdminRoute ? "/admin/login" : "/login";
+  if (authCheck === "unauthenticated" && (isAdminRoute || isEntryRoute || isJudgeRoute)) {
+    const loginPath = isAdminRoute ? "/admin/login" : isJudgeRoute ? "/judge/login" : "/login";
     return NextResponse.redirect(new URL(loginPath, request.url));
   }
 
@@ -50,5 +51,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/entry/:path*", "/admin/:path*"],
+  matcher: ["/entry/:path*", "/admin/:path*", "/judge/:path*"],
 };

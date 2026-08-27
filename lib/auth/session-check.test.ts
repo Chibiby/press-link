@@ -1,7 +1,7 @@
 import { AuthApiError, AuthRetryableFetchError, AuthSessionMissingError } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 
-import { classifyAdminProfileLookup, classifyAuthCheck } from "./session-check";
+import { classifyAdminProfileLookup, classifyAuthCheck, classifyJudgeLookup } from "./session-check";
 
 describe("classifyAuthCheck", () => {
   it("is authenticated when getUser() returns a user, regardless of any error field", () => {
@@ -51,5 +51,22 @@ describe("classifyAdminProfileLookup", () => {
     // admin out instead of just asking them to try again.
     const error = { message: "server error", code: "500", details: "", hint: "" };
     expect(classifyAdminProfileLookup(null, error)).toBe("check-failed");
+  });
+});
+
+describe("classifyJudgeLookup", () => {
+  it("is judge when an active judge row comes back", () => {
+    expect(classifyJudgeLookup({ id: "j1" }, null)).toBe("judge");
+  });
+
+  it("is not-judge when the query succeeds with zero rows — an inactive judge lands here too", () => {
+    expect(classifyJudgeLookup(null, null)).toBe("not-judge");
+  });
+
+  it("is check-failed (not not-judge) when the query itself errored", () => {
+    // requireJudge() signs the caller out on "not-judge", so a transient
+    // query failure taking that branch would log a real judge out mid-event.
+    const error = { message: "server error", code: "500", details: "", hint: "" };
+    expect(classifyJudgeLookup(null, error)).toBe("check-failed");
   });
 });

@@ -51,3 +51,25 @@ export function classifyAdminProfileLookup(profile: unknown, error: unknown): Ad
   if (error) return "check-failed";
   return "not-admin";
 }
+
+/**
+ * What a `judges` lookup (by `.eq("auth_user_id", ...).eq("is_active", true)`
+ * with `.maybeSingle()`) tells us about the caller.
+ *
+ * The same trap as `classifyAdminProfileLookup`: a zero-row result and a
+ * failed query arrive in the same shape, and only the first is evidence this
+ * account is not a seated judge. `requireJudge()` signs the caller out on
+ * "not-judge", so a transient failure must never take that branch.
+ *
+ * An inactive judge is deliberately indistinguishable from a non-judge here:
+ * the row is filtered out by the query, so a withdrawn judge loses access to
+ * the portal while their submitted sheets stay on file (see the `judges`
+ * table comment in migration 0018).
+ */
+export type JudgeLookup = "judge" | "not-judge" | "check-failed";
+
+export function classifyJudgeLookup(judge: unknown, error: unknown): JudgeLookup {
+  if (judge) return "judge";
+  if (error) return "check-failed";
+  return "not-judge";
+}
