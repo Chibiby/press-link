@@ -1,4 +1,4 @@
-import { ArrowLeft, FileSpreadsheet, Lock, Scissors, Trophy, Undo2 } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { eventFullLabel, loadJudgingEvent } from "../../judging-data";
+import { EventControls } from "./EventControls";
 
 /**
  * One event's panel and its two boards.
@@ -21,13 +22,13 @@ import { eventFullLabel, loadJudgingEvent } from "../../judging-data";
  * seated on it has filed nothing — which is what this page shows on the morning
  * before judging starts.
  *
- * ## Why the controls are here but disabled
+ * ## Why the controls decide nothing
  *
- * Every state change in this feature is a `security definer` RPC (non-negotiable
- * 2), and those RPCs have not been written. The tables they would write to exist, so
- * what is missing is the function, not the schema, and each button's tooltip names
- * the one it is waiting on. Rendering them settles where they live and what they are
- * called; leaving them out would make this page a list rather than a console.
+ * Every state change in this feature is a `security definer` RPC that re-checks the
+ * whole rule inside the database (non-negotiable 2). Which buttons this page offers
+ * comes from `eventControls`, and that is a claim about the state rather than a
+ * permission: a control enabled wrongly is refused by the RPC, and the refusal's own
+ * sentence is what the admin ends up reading.
  */
 export default async function EventPanelPage({
   params,
@@ -125,48 +126,21 @@ export default async function EventPanelPage({
             </div>
           </dl>
 
-          <div className="flex flex-wrap gap-2 border-t pt-4">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled
-              title="Setting the cut writes events.round2_cut. It needs the set-cut RPC, which has not been written yet."
-            >
-              <Scissors />
-              Set round 2 cut
-            </Button>
-            <Button
-              size="sm"
-              disabled
-              title="Closing round 1 draws the qualifiers. It needs the close_round_1 RPC, which has not been written yet."
-            >
-              <Lock />
-              Close round 1
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled
-              title="Reopening round 1 discards the qualifiers it drew. It needs the reopen_round_1 RPC, which has not been written yet."
-            >
-              <Undo2 />
-              Reopen round 1
-            </Button>
-            <Button
-              size="sm"
-              disabled
-              title="Locking the results publishes the sheet. It needs the lock_results RPC, which has not been written yet."
-            >
-              <Trophy />
-              Lock results
-            </Button>
-          </div>
+          <EventControls
+            eventId={row.eventId}
+            facts={{
+              status: row.state.status,
+              round2Cut: row.round2Cut,
+              // A group event has no single-judge round 1, and the two-stage rounds
+              // do not touch its model (non-negotiable 6).
+              individual: row.round1Cut !== null,
+            }}
+          />
           <p className="text-xs text-muted-foreground">
-            These are this event&rsquo;s controls. Each one is a single database function that
-            checks the round is ready before it acts, so closing a round with a judge still
-            outstanding is refused by the database rather than by this page. None of those
-            functions has been written yet, so every control is disabled and nothing on this
-            page writes — the tables they will write to are already there.
+            These are this event&rsquo;s controls. Each one is a single database function
+            that checks the round is ready before it acts, so closing a round with a judge
+            still outstanding is refused by the database rather than by this page. A control
+            that is greyed out says why when you hover it.
           </p>
         </CardContent>
       </Card>
