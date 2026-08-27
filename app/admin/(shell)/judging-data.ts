@@ -437,6 +437,9 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
       judges: judgeRows.map((judge) => ({
         id: judge.id,
         name: surnameFirst(judge),
+        firstName: judge.first_name,
+        middleName: judge.middle_name,
+        lastName: judge.last_name,
         affiliation: judge.affiliation,
         email: judge.email,
         events: eventsPerJudge.get(judge.id) ?? 0,
@@ -520,6 +523,12 @@ export const loadJudgingEvent = cache(
     const unreadable = (judgeId: string): JudgeRosterRow => ({
       id: judgeId,
       name: UNREADABLE_JUDGE,
+      // Blank rather than the constant repeated into them: these three feed the edit
+      // form, and this row is one whose real names could not be read. A form seeded
+      // with "Unidentified judge" in the first-name box would save that as a name.
+      firstName: "",
+      middleName: null,
+      lastName: "",
       affiliation: null,
       email: null,
       events: 0,

@@ -30,6 +30,15 @@ export interface JudgeRosterRow {
   id: string;
   /** Surname-first, via `lib/roster/names`, so it sorts with the rest of the app. */
   name: string;
+  /**
+   * The same name unjoined, which only the edit form reads. `name` above cannot be
+   * taken apart again — "Dela Cruz, Maria A." does not say which of those words is
+   * the surname — so a form seeded by splitting it would quietly move a two-word
+   * surname into the given names on the first correction anybody made.
+   */
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
   affiliation: string | null;
   email: string | null;
   /** How many events this judge sits on. */

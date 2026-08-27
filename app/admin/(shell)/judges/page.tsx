@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { eventIndexSummary } from "@/lib/judging/event-index";
 
 import { loadJudgingEventIndex } from "../judging-data";
+import { AddJudgeDialog, JudgeRowActions } from "./JudgeControls";
 
 /**
  * The division's oversight of the judging panels.
@@ -20,9 +21,12 @@ import { loadJudgingEventIndex } from "../judging-data";
  * event's status from the ranks those sheets hold. A zero here means the row is not
  * there — it is not a placeholder standing in for a table that is missing.
  *
- * What is still absent is the *write* half. The RPCs that add a judge, seat a panel
- * and close a round have not been built, so the controls that would call them stay
- * disabled and say so. Reading is finished; writing is not.
+ * The write half is here too, as of migrations 0027 and 0029: adding a judge,
+ * correcting one, giving one a login and taking one off the roster. Each is a
+ * `security definer` RPC that re-checks the whole rule server-side, so nothing on
+ * this page is the authorisation boundary — what a refused write shows an admin is
+ * the database's own sentence. Seating a panel is not offered here: a seat only
+ * means something inside an event, so it lives on that event's page.
  *
  * Per spec §5 the judge-facing side of this feature lives at `/judge`, behind its
  * own login and its own guard. Nothing here reaches it; this is the admin console
@@ -59,14 +63,7 @@ export default async function JudgesPage() {
         subtitle="Judging panels, per-event assignments, and how far each round has got."
         actions={
           <>
-            <Button
-              size="sm"
-              disabled
-              title="Adding a judge needs the create-judge RPC, which has not been built yet. The judges table is ready for it."
-            >
-              <Gavel />
-              Add judge
-            </Button>
+            <AddJudgeDialog />
             <Button asChild size="sm" variant="outline">
               {/* A route handler, so a plain anchor: next/link would prefetch, and
                   prefetching this URL builds a workbook on every hover. The
@@ -128,7 +125,15 @@ export default async function JudgesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <JudgeRosterTable rows={judges} emptyMessage={NO_JUDGES_ON_FILE} />
+          {/* The roster-wide controls, offered here and on no other page: an event's
+              panel card renders the same table with no actions at all, because
+              deactivating a judge from inside one event would read as taking them off
+              that event, which is a different act with a different button. */}
+          <JudgeRosterTable
+            rows={judges}
+            emptyMessage={NO_JUDGES_ON_FILE}
+            renderActions={(row) => <JudgeRowActions row={row} />}
+          />
         </CardContent>
       </Card>
 
