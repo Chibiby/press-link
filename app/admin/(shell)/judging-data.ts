@@ -15,6 +15,7 @@ import {
   type EventJudgingFacts,
   type RawIndexEvent,
 } from "@/lib/judging/event-index";
+import { ROUND1_SEAT } from "@/lib/judging/sheet-state";
 import {
   attachIdentities,
   schoolPaperForEvent,
@@ -236,11 +237,25 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
     // panel table's seat column reads back out.
     const panelByEvent = new Map<string, string[]>();
     const eventsPerJudge = new Map<string, number>();
+    // Seat 1 by its seat number, not by its position in the panel: an event
+    // seated 2, 3 and 4 with seat 1 still vacant has no round 1 judge, and
+    // reading the first element would put a round 2 judge in charge of the cut.
+    const round1JudgeByEvent = new Map<string, string>();
     for (const row of assignments) {
       const panel = panelByEvent.get(row.event_id);
       if (panel) panel.push(row.judge_id);
       else panelByEvent.set(row.event_id, [row.judge_id]);
+      if (row.seat === ROUND1_SEAT) round1JudgeByEvent.set(row.event_id, row.judge_id);
       eventsPerJudge.set(row.judge_id, (eventsPerJudge.get(row.judge_id) ?? 0) + 1);
+    }
+
+    // The seat 1 judge's round 1 submission, which is what finishes round 1 (N6).
+    // Keyed by event because that is how the facts are assembled below.
+    const round1SubmittedByEvent = new Map<string, string>();
+    for (const sheet of sheets) {
+      if (sheet.round !== 1 || sheet.submitted_at === null) continue;
+      if (round1JudgeByEvent.get(sheet.event_id) !== sheet.judge_id) continue;
+      round1SubmittedByEvent.set(sheet.event_id, sheet.submitted_at);
     }
 
     // A rank does not carry its event, judge or round — it carries a sheet, and the
@@ -365,6 +380,8 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
 
       facts[row.id] = {
         judgeIds: panelByEvent.get(row.id) ?? [],
+        round1JudgeId: round1JudgeByEvent.get(row.id) ?? null,
+        round1SubmittedAt: round1SubmittedByEvent.get(row.id) ?? null,
         units,
         round1Ranks: ranksByEventRound.get(`${row.id}:1`) ?? [],
         // Round 2's unit set is the qualifier list read back through round 1's codes,

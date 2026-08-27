@@ -28,6 +28,7 @@ import { EVENT_SLOTS, slotKey } from "@/lib/dashboard/event-matrix";
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
 
 import { consolidateRound } from "./consolidate";
+import { round1Board, type Round1Board } from "./cut";
 import { eventJudgingStatus } from "./sheet-state";
 import { finalStandings } from "./standings";
 import type {
@@ -70,6 +71,23 @@ export interface RawIndexEvent {
 export interface EventJudgingFacts {
   /** The panel, in seat order. Empty means nobody is assigned. */
   judgeIds: string[];
+  /**
+   * The seat-1 judge, who ranks round 1 alone (N1), or null when that seat is
+   * empty.
+   *
+   * Named rather than taken as `judgeIds[0]`, because a panel seated 2, 3 and 4
+   * with seat 1 still vacant would otherwise put the round 2 panel's first judge
+   * in charge of the cut.
+   */
+  round1JudgeId: string | null;
+  /**
+   * When the seat-1 judge submitted their round 1 sheet, or null.
+   *
+   * Round 1's completeness is a fact about the sheet and never about the board
+   * (N6): a cut leaves most rows deliberately blank (N2), so no count of filled
+   * rows can tell you the judge has finished.
+   */
+  round1SubmittedAt: string | null;
   /** Round 1's unit set: every contestant in the event. */
   units: ContestUnit[];
   round1Ranks: JudgeRank[];
@@ -94,6 +112,8 @@ export interface EventJudgingFacts {
  */
 export const NO_JUDGING_FACTS: EventJudgingFacts = Object.freeze({
   judgeIds: Object.freeze([]) as unknown as string[],
+  round1JudgeId: null,
+  round1SubmittedAt: null,
   units: Object.freeze([]) as unknown as ContestUnit[],
   round1Ranks: Object.freeze([]) as unknown as JudgeRank[],
   round2Units: Object.freeze([]) as unknown as ContestUnit[],
@@ -126,6 +146,22 @@ export interface EventIndexRow {
   /** Seats filled on this event's panel. */
   panelSize: number;
   round1: ConsolidatedBoard;
+  /**
+   * Round 1 as the round actually is under N1: one judge's typed ranks, with a
+   * blank meaning eliminated rather than outstanding.
+   *
+   * This, not {@link EventIndexRow.round1}, is what the cut rule and the
+   * standings read, and it is why they work at all. `consolidateRound` cannot
+   * express round 1: it treats an unranked unit as a missing opinion and refuses
+   * to rank anything (non-negotiable 4), so a cut — which leaves most rows blank
+   * on purpose (N2) — makes the panel board permanently incomplete and its every
+   * rank null. Drawing qualifiers off that board yields nobody, every time.
+   *
+   * `round1` is kept beside it because the panel board is still what the boards
+   * table renders and what a group event genuinely is. null here for a group
+   * event, which has no single-judge round 1 (non-negotiable 6).
+   */
+  round1Cut: Round1Board | null;
   round2: ConsolidatedBoard;
   /** Status and the sentence to print under it, from the shared state machine. */
   state: EventJudgingState;
@@ -229,12 +265,35 @@ export function buildEventIndex(
     const round2 = consolidateRound({
       round: 2,
       units: known.round2Units,
+      // Seats 2 to 4 place the qualifiers, and seat 1 does not (N1). Consolidating
+      // over the whole panel would hold round 2 open forever waiting on a sheet
+      // the round 1 judge is never asked to file.
+      judgeIds: known.judgeIds.filter((judgeId) => judgeId !== known.round1JudgeId),
       ranks: known.round2Ranks,
-      judgeIds: known.judgeIds,
     });
 
+    // Round 1's own board, for individual events. A group event has no
+    // single-judge round 1 and keeps the panel board it has always had
+    // (non-negotiable 6).
+    const round1Cut =
+      event.category === "group"
+        ? null
+        : round1Board(
+            known.units,
+            // Seat 1's ranks alone. A stray round 1 rank from another seat cannot
+            // be written through the RPCs, so this filter is defensive — but a
+            // rank that did get through would otherwise become a qualifier.
+            known.round1JudgeId === null
+              ? []
+              : known.round1Ranks.filter((rank) => rank.judgeId === known.round1JudgeId)
+          );
+
+    const round1Field = round1Cut ?? round1;
+
     const standings =
-      cutInForce === null ? null : finalStandings({ round1, round2, cut: cutInForce });
+      cutInForce === null
+        ? null
+        : finalStandings({ round1: round1Field, round2, cut: cutInForce });
 
     return {
       eventId: event.eventId,
@@ -247,8 +306,23 @@ export function buildEventIndex(
       entries: event.entries,
       panelSize: known.judgeIds.length,
       round1,
+      round1Cut,
       round2,
-      state: eventJudgingStatus({ rounds: known.rounds, round1, round2 }),
+      state: eventJudgingStatus({
+        rounds: known.rounds,
+        // The one judge's board where there is one, and `complete` from their
+        // submission rather than from a full sheet — a cut is finished with rows
+        // still blank (N2, N6). A group event keeps the panel reading.
+        round1:
+          round1Cut === null
+            ? round1
+            : {
+                rows: round1Cut.rows,
+                judgeIds: known.round1JudgeId === null ? [] : [known.round1JudgeId],
+                complete: known.round1SubmittedAt !== null,
+              },
+        round2,
+      }),
       round2Cut: known.round2Cut,
       standings,
       placed:

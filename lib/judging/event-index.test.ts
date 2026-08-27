@@ -36,8 +36,16 @@ function sheet(judgeId: string, places: Record<string, number>): JudgeRank[] {
 }
 
 function facts(overrides: Partial<EventJudgingFacts> = {}): EventJudgingFacts {
+  const judgeIds = overrides.judgeIds ?? [];
   return {
-    judgeIds: [],
+    judgeIds,
+    // The panel arrives in seat order, so the first judge holds seat 1 and is the
+    // one who ranks round 1 (N1). Overridable below for the tests that need to
+    // say otherwise.
+    round1JudgeId: judgeIds[0] ?? null,
+    // Round 1 is finished when the judge submits, never when the board looks
+    // full: a cut is finished with rows still blank (N2, N6).
+    round1SubmittedAt: null,
     units: [],
     round1Ranks: [],
     round2Units: [],
@@ -102,9 +110,52 @@ describe("buildEventIndex with no facts", () => {
 });
 
 describe("buildEventIndex with facts", () => {
-  it("consolidates a finished round 1 and asks the admin to close it", () => {
+  it("reads a submitted round 1 off the sheet and asks the admin to lock it", () => {
+    // The submission is what finishes round 1, not a full board (N6). Both facts
+    // are supplied here because they are genuinely independent: the judge has
+    // ranked and has also pressed submit.
     const rows = buildEventIndex([event("e1", { entries: 2 })], {
       e1: facts({
+        judgeIds: ["j1"],
+        units: [A, B],
+        round1Ranks: sheet("j1", { a: 1, b: 2 }),
+        round1SubmittedAt: "2026-08-20T00:00:00Z",
+        round2Cut: 10,
+      }),
+    });
+
+    expect(rows[0].panelSize).toBe(1);
+    expect(rows[0].round1Cut?.scored).toBe(2);
+    expect(rows[0].state.status).toBe("round1-awaiting-close");
+    expect(rows[0].round2Cut).toBe(10);
+  });
+
+  it("draws qualifiers off a cut that leaves rows blank, which the panel board cannot", () => {
+    // The reason `round1Cut` exists. `consolidateRound` reads the blank third row
+    // as a missing opinion and refuses to rank anything (non-negotiable 4), so
+    // the panel board beside it qualifies nobody — while the cut qualifies two.
+    const C = unit("0003", "c");
+    const rows = buildEventIndex([event("e1", { entries: 3 })], {
+      e1: facts({
+        judgeIds: ["j1"],
+        units: [A, B, C],
+        round1Ranks: sheet("j1", { a: 1, b: 2 }),
+        round1SubmittedAt: "2026-08-20T00:00:00Z",
+        round2Cut: 2,
+      }),
+    });
+
+    expect(rows[0].round1.complete).toBe(false);
+    expect(rows[0].round1.rows.every((row) => row.rank === null)).toBe(true);
+    expect(rows[0].standings?.filter((row) => row.qualified).map((row) => row.code)).toEqual([
+      "0001",
+      "0002",
+    ]);
+  });
+
+  it("keeps the panel board for a group event, whose model is untouched (NN6)", () => {
+    const rows = buildEventIndex([event("g1", { category: "group", entries: 2 })], {
+      g1: facts({
         judgeIds: ["j1"],
         units: [A, B],
         round1Ranks: sheet("j1", { a: 1, b: 2 }),
@@ -112,10 +163,8 @@ describe("buildEventIndex with facts", () => {
       }),
     });
 
-    expect(rows[0].panelSize).toBe(1);
+    expect(rows[0].round1Cut).toBeNull();
     expect(rows[0].round1.complete).toBe(true);
-    expect(rows[0].state.status).toBe("round1-awaiting-close");
-    expect(rows[0].round2Cut).toBe(10);
   });
 
   it("carries the standings the pages draw, rather than leaving each to recompute", () => {
@@ -140,9 +189,11 @@ describe("buildEventIndex with facts", () => {
     // A cut of 1 eliminates B and sends A to round 2. Under N4 the eliminated row
     // has no placement at all, so nothing is placed until round 2 finishes: 0
     // here, and 1 — the qualifier alone — below.
+    // Seat 1 cuts, and does not also place the winners (N1) — so the round 2
+    // ranks below come from j2, not from the judge who ranked round 1.
     const half = buildEventIndex([event("e1", { entries: 2 })], {
       e1: facts({
-        judgeIds: ["j1"],
+        judgeIds: ["j1", "j2"],
         units: [A, B],
         round1Ranks: sheet("j1", { a: 1, b: 2 }),
         round2Units: [A],
@@ -153,11 +204,11 @@ describe("buildEventIndex with facts", () => {
 
     const done = buildEventIndex([event("e1", { entries: 2 })], {
       e1: facts({
-        judgeIds: ["j1"],
+        judgeIds: ["j1", "j2"],
         units: [A, B],
         round1Ranks: sheet("j1", { a: 1, b: 2 }),
         round2Units: [A],
-        round2Ranks: sheet("j1", { a: 1 }),
+        round2Ranks: sheet("j2", { a: 1 }),
         round2Cut: 1,
       }),
     });
@@ -195,8 +246,11 @@ describe("buildEventIndex with facts", () => {
       }),
     });
 
+    // Two of the two ranks seat 1 has to file. Not "2 of 4": round 1 is one
+    // judge (N1), and counting the round 2 panel into its denominator would
+    // report a finished cut as half done.
     expect(rows[0].state.status).toBe("round1-open");
-    expect(rows[0].state.reason).toContain("2 of 4 ranks filed");
+    expect(rows[0].state.reason).toContain("2 of 2 ranks filed");
     // Non-negotiable 4: no row is ranked while a judge is outstanding, not even the
     // rows the finished judge has already placed.
     expect(rows[0].round1.rows.every((row) => row.rank === null)).toBe(true);
@@ -254,13 +308,15 @@ describe("eventIndexSummary", () => {
           judgeIds: ["j1"],
           units: [A],
           round1Ranks: sheet("j1", { a: 1 }),
+          round1SubmittedAt: "2026-08-20T00:00:00Z",
         }),
         e2: facts({
-          judgeIds: ["j1"],
+          judgeIds: ["j1", "j2"],
           units: [A],
           round1Ranks: sheet("j1", { a: 1 }),
+          round1SubmittedAt: "2026-08-20T00:00:00Z",
           round2Units: [A],
-          round2Ranks: sheet("j1", { a: 1 }),
+          round2Ranks: sheet("j2", { a: 1 }),
           rounds: {
             round1ClosedAt: "2026-08-20T00:00:00Z",
             round1LockedAt: "2026-08-20T00:00:00Z",
@@ -291,11 +347,11 @@ describe("eventIndexSummary", () => {
     // no sign that an event was left out of it (non-negotiable 5).
     const rows = buildEventIndex([event("e1"), event("e2")], {
       e1: facts({
-        judgeIds: ["j1"],
+        judgeIds: ["j1", "j2"],
         units: [A, B],
         round1Ranks: sheet("j1", { a: 1, b: 2 }),
         round2Units: [A],
-        round2Ranks: sheet("j1", { a: 1 }),
+        round2Ranks: sheet("j2", { a: 1 }),
         round2Cut: 1,
       }),
       e2: facts({ round2Cut: null }),

@@ -74,8 +74,12 @@ function sheet(judgeId: string, places: Record<string, number>): JudgeRank[] {
  * now that `events.round2_cut` exists and is `not null default 10`.
  */
 function facts(overrides: Partial<EventJudgingFacts> = {}): EventJudgingFacts {
+  const judgeIds = overrides.judgeIds ?? [];
   return {
-    judgeIds: [],
+    judgeIds,
+    // Seat order, so the first judge holds seat 1 and ranks round 1 alone (N1).
+    round1JudgeId: judgeIds[0] ?? null,
+    round1SubmittedAt: null,
     units: [],
     round1Ranks: [],
     round2Units: [],
@@ -266,11 +270,12 @@ describe("toTabulationRows", () => {
     const [judged] = toTabulationRows(
       buildEventIndex([event("e1", { entries: 2 })], {
         e1: facts({
-          judgeIds: ["j1"],
+          judgeIds: ["j1", "j2"],
           units: [A, B],
           round1Ranks: sheet("j1", { a: 1, b: 2 }),
           round2Units: [A],
-          round2Ranks: sheet("j1", { a: 1 }),
+          // j2, not j1: seat 1 cuts the field and does not also place it (N1).
+          round2Ranks: sheet("j2", { a: 1 }),
           round2Cut: 1,
           rounds: {
             round1ClosedAt: "2026-08-01T00:00:00Z",
