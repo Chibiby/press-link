@@ -3,7 +3,16 @@
 import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Gavel, KeyRound, Loader2, MoreHorizontal, Pencil, UserMinus, UserPlus } from "lucide-react";
+import {
+  Armchair,
+  Gavel,
+  KeyRound,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  UserMinus,
+  UserPlus,
+} from "lucide-react";
 
 import type { JudgeRosterRow } from "@/components/admin/judging/JudgeRosterTable";
 import {
@@ -34,14 +43,41 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { LANGUAGE_LABEL, type EventLanguage, type EventLevel } from "@/lib/events-catalog";
 import { MIN_JUDGE_PASSWORD, type JudgeInput } from "@/lib/judges/judge-input";
+import {
+  EMPTY_SEAT_CHOICE,
+  seatPicker,
+  type SeatableEvent,
+  type SeatChoice,
+} from "@/lib/judging/seat-picker";
 
 import {
+  assignJudgeAction,
   createJudgeAction,
   provisionJudgeLoginAction,
   setJudgeActiveAction,
   updateJudgeAction,
 } from "./actions";
+
+/**
+ * The full word, for a dialog with room for it.
+ *
+ * The compact "Elem · Eng" form belongs to the index tables and lives in
+ * `eventSlotLabel`. Here each half is its own question, so neither can be
+ * abbreviated against the other.
+ */
+const LEVEL_LABEL: Record<EventLevel, string> = {
+  elementary: "Elementary",
+  secondary: "Secondary",
+};
 
 /**
  * The roster's write controls: add a judge, correct one, give one a login, and
@@ -259,32 +295,64 @@ export function AddJudgeDialog() {
 }
 
 /**
- * The three things that can be done to a judge already on the roster.
+ * The four things that can be done to a judge already on the roster.
  *
- * A menu rather than the row of plain buttons `AccountRowActions` uses, because
- * there are three of them and two are rare: a roster of forty judges would
- * otherwise carry a hundred and twenty buttons, and the one an admin wants on any
- * given day is the one they came looking for.
+ * A menu rather than the row of plain buttons `AccountRowActions` uses: there are
+ * four of them and most are rare, so a roster of forty judges would otherwise carry
+ * a hundred and sixty buttons, and the one an admin wants on any given day is the
+ * one they came looking for.
  *
  * Deactivating is offered from here and nowhere else. It is a roster-wide act, and
  * an event's panel card offers seating instead — putting this beside those controls
  * would read as taking the judge off *that* event, which is what emptying their seat
  * does, and the two have different consequences.
+ *
+ * ## Why seating is offered from both ends
+ *
+ * The panel page fills one event's four seats; this fills one judge's schedule
+ * across contests. They write the same row through the same RPC, and which one an
+ * admin reaches for is a question of what they have in front of them — an event
+ * whose panel is short, or a judge who has agreed to take three contests. Neither
+ * ordering can be made to serve the other without asking for the same answers in a
+ * worse order.
  */
-export function JudgeRowActions({ row }: { row: JudgeRosterRow }) {
+export function JudgeRowActions({
+  row,
+  events,
+}: {
+  row: JudgeRosterRow;
+  /**
+   * The individual events this judge could be seated on, with who is on each seat.
+   * Group events are left out: they are ranked on one board and have no seats
+   * (non-negotiable 6).
+   */
+  events: SeatableEvent[];
+}) {
   const router = useRouter();
   const passwordId = useId();
+  const seatIds = {
+    contest: useId(),
+    language: useId(),
+    level: useId(),
+    seat: useId(),
+  };
 
-  const [open, setOpen] = useState<"edit" | "login" | "active" | null>(null);
+  const [open, setOpen] = useState<"edit" | "login" | "active" | "seat" | null>(null);
   const [form, setForm] = useState<JudgeInput>(EMPTY_FORM);
   const [password, setPassword] = useState("");
+  const [choice, setChoice] = useState<SeatChoice>(EMPTY_SEAT_CHOICE);
+  const [seat, setSeat] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function show(next: "edit" | "login" | "active" | null) {
+  const picker = seatPicker(events, choice, row.id);
+
+  function show(next: "edit" | "login" | "active" | "seat" | null) {
     setOpen(next);
     setError(null);
     setPassword("");
+    setChoice(EMPTY_SEAT_CHOICE);
+    setSeat("");
     if (next === "edit") {
       // Seeded from the row every time it opens rather than held in state, so a
       // dialog closed on a refusal does not reopen holding the rejected values —
@@ -298,6 +366,23 @@ export function JudgeRowActions({ row }: { row: JudgeRosterRow }) {
         affiliation: row.affiliation ?? "",
       });
     }
+  }
+
+  /**
+   * Answer one of the three narrowing questions, and forget the seat.
+   *
+   * The seat has to go with any of them. "Seat 2 · replacing Reyes, A." is a fact
+   * about one event, and leaving it selected while the event underneath it changes
+   * would carry a sentence the reader agreed to onto a panel it was never about —
+   * silently, since seat 2 exists on every event and nothing would look wrong.
+   *
+   * The narrower *answers* are cleared by the callers rather than here, because
+   * which ones go stale depends on which question was answered: a new contest may
+   * not be run in the language already chosen, but a new level invalidates nothing.
+   */
+  function narrow(next: SeatChoice) {
+    setChoice(next);
+    setSeat("");
   }
 
   function run(action: () => Promise<{ error: string } | void>, done: string) {
@@ -334,6 +419,16 @@ export function JudgeRowActions({ row }: { row: JudgeRosterRow }) {
               Give a login
             </DropdownMenuItem>
           )}
+          {/* Offered even to a judge with no login yet. Seating and signing in are
+              separate facts: a panel is agreed in a meeting and the accounts follow,
+              so refusing to seat somebody until an account exists would invert the
+              order the division actually works in. */}
+          {row.isActive ? (
+            <DropdownMenuItem onSelect={() => show("seat")}>
+              <Armchair />
+              Seat on an event
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant={row.isActive ? "destructive" : "default"}
@@ -445,6 +540,137 @@ export function JudgeRowActions({ row }: { row: JudgeRosterRow }) {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={open === "seat"} onOpenChange={(next) => show(next ? "seat" : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Seat {row.name} on an event</DialogTitle>
+            <DialogDescription>
+              A contest runs separately in English and in Filipino, and separately at
+              each level, so all three answers together name one event. Seat 1 ranks
+              round 1 alone and makes the cut; seats 2, 3 and 4 place the winners.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor={seatIds.contest}>Contest</Label>
+              <Select
+                value={choice.contest}
+                disabled={isPending}
+                onValueChange={(next) => narrow({ contest: next, language: "", level: "" })}
+              >
+                <SelectTrigger id={seatIds.contest} className="w-full">
+                  <SelectValue placeholder="Choose a contest" />
+                </SelectTrigger>
+                <SelectContent>
+                  {picker.contests.map((contest) => (
+                    <SelectItem key={contest} value={contest}>
+                      {contest}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor={seatIds.language}>Language</Label>
+                <Select
+                  value={choice.language}
+                  disabled={isPending || picker.languages.length === 0}
+                  onValueChange={(next) =>
+                    narrow({ ...choice, language: next as EventLanguage, level: "" })
+                  }
+                >
+                  <SelectTrigger id={seatIds.language} className="w-full">
+                    <SelectValue placeholder="Choose a language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {picker.languages.map((language) => (
+                      <SelectItem key={language} value={language}>
+                        {LANGUAGE_LABEL[language]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor={seatIds.level}>Level</Label>
+                <Select
+                  value={choice.level}
+                  disabled={isPending || picker.levels.length === 0}
+                  onValueChange={(next) => narrow({ ...choice, level: next as EventLevel })}
+                >
+                  <SelectTrigger id={seatIds.level} className="w-full">
+                    <SelectValue placeholder="Choose a level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {picker.levels.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {LEVEL_LABEL[level]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor={seatIds.seat}>Seat</Label>
+              <Select
+                value={seat}
+                disabled={isPending || picker.event === null || picker.blocked !== null}
+                onValueChange={setSeat}
+              >
+                <SelectTrigger id={seatIds.seat} className="w-full">
+                  <SelectValue placeholder="Choose a seat" />
+                </SelectTrigger>
+                <SelectContent>
+                  {picker.seats.map((option) => (
+                    <SelectItem key={option.seat} value={String(option.seat)}>
+                      {/* An occupied seat is offered rather than hidden: reseating is
+                          how a panel gets corrected, and a seat that vanished from the
+                          list would read as one this event does not have. */}
+                      Seat {option.seat} · round {option.round}
+                      {option.occupiedBy ? ` · replacing ${option.occupiedBy}` : " · vacant"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {picker.blocked ??
+                  (picker.event === null
+                    ? "Answer the three above and this event's four seats appear here."
+                    : "Choosing a seat somebody is already on replaces them. Their sheets stay on the event until an admin clears them.")}
+              </p>
+            </div>
+          </div>
+
+          <Refusal error={error} />
+
+          <DialogFooter>
+            <Button variant="outline" disabled={isPending} onClick={() => show(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={isPending || picker.event === null || picker.blocked !== null || seat === ""}
+              onClick={() => {
+                const eventId = picker.event?.eventId;
+                if (!eventId) return;
+                run(
+                  () => assignJudgeAction(eventId, row.id, Number(seat)),
+                  `${row.name} is on seat ${seat} of ${choice.contest}.`
+                );
+              }}
+            >
+              {isPending && <Loader2 className="size-4 animate-spin" />}
+              Seat judge
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

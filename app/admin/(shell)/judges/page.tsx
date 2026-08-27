@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { eventIndexSummary } from "@/lib/judging/event-index";
 
-import { loadJudgingEventIndex } from "../judging-data";
+import { loadJudgingEventIndex, seatableEvents } from "../judging-data";
 import { AddJudgeDialog, JudgeRowActions } from "./JudgeControls";
 
 /**
@@ -33,7 +33,8 @@ import { AddJudgeDialog, JudgeRowActions } from "./JudgeControls";
  * view of the same panels.
  */
 export default async function JudgesPage() {
-  const { rows, judges, sheetsSubmitted, error } = await loadJudgingEventIndex();
+  const index = await loadJudgingEventIndex();
+  const { rows, judges, sheetsSubmitted, error } = index;
 
   // A failed query would leave `rows` empty, and an empty index renders as "no
   // events" with every figure at zero — which reads as a division that runs no
@@ -55,6 +56,9 @@ export default async function JudgesPage() {
   }
 
   const summary = eventIndexSummary(rows);
+  // Built once for the whole table rather than per row: every judge's picker offers
+  // the same catalog, and the only per-judge part is which seat is theirs already.
+  const seatable = seatableEvents(index);
 
   return (
     <div className="space-y-6">
@@ -132,7 +136,7 @@ export default async function JudgesPage() {
           <JudgeRosterTable
             rows={judges}
             emptyMessage={NO_JUDGES_ON_FILE}
-            renderActions={(row) => <JudgeRowActions row={row} />}
+            renderActions={(row) => <JudgeRowActions row={row} events={seatable} />}
           />
         </CardContent>
       </Card>

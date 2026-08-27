@@ -15,6 +15,7 @@ import {
   type EventJudgingFacts,
   type RawIndexEvent,
 } from "@/lib/judging/event-index";
+import type { SeatableEvent } from "@/lib/judging/seat-picker";
 import { sheetEntryState, type SheetEntryState } from "@/lib/judging/sheet-entry";
 import {
   draftFromRanks,
@@ -530,6 +531,38 @@ const NO_ROUNDS: EventRoundState = {
 
 /** The four seats a panel has, in the order they are worked through (N1). */
 export const PANEL_SEATS: readonly number[] = [ROUND1_SEAT, ...ROUND2_SEATS];
+
+/**
+ * The events a judge may be seated on, with who holds each seat.
+ *
+ * Group events are left out rather than shown as unfillable: they are ranked on one
+ * board and have no numbered seats (non-negotiable 6), and `admin_assign_judge`
+ * refuses them outright. A picker that offered one would be offering a refusal.
+ *
+ * Joined here rather than on the page, for the reason every other join in this file
+ * is: the roster and the assignments arrive as separate reads, and a page that
+ * stitched them itself would be a second place for a seat to acquire the wrong name.
+ */
+export function seatableEvents(index: JudgingEventIndex): SeatableEvent[] {
+  const nameById = new Map(index.judges.map((judge) => [judge.id, judge.name]));
+
+  return index.rows
+    .filter((row) => row.category === "individual")
+    .map((row) => ({
+      eventId: row.eventId,
+      typeNameEn: row.typeNameEn,
+      level: row.level,
+      language: row.language,
+      seats: (index.seatsByEvent[row.eventId] ?? []).map((held) => ({
+        seat: held.seat,
+        judgeId: held.judgeId,
+        // Same fallback as the panel, and for the same reason: a seat whose judge
+        // could not be read is still a seat that is taken, and printing nothing
+        // would offer it as vacant.
+        judgeName: nameById.get(held.judgeId) ?? UNREADABLE_JUDGE,
+      })),
+    }));
+}
 
 /** One seat on an event's panel, whether or not anybody is on it. */
 export interface PanelSeat {
