@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   filterUserAccountRows,
+  globalFreezeFromLock,
+  submissionCellState,
   summariseUserAccounts,
   toUserAccountRows,
   userAccountsEmptyState,
   userAccountsSearchQuery,
   type RawUserAccountSchool,
 } from "./user-accounts-filters";
+import type { RevisionGrant } from "@/lib/submissions/revision-grant";
 
 const raw = (over: Partial<RawUserAccountSchool> = {}): RawUserAccountSchool => ({
   id: "s1",
@@ -20,6 +23,7 @@ const raw = (over: Partial<RawUserAccountSchool> = {}): RawUserAccountSchool => 
   paper_participation: "undecided",
   entries: [{ count: 0 }],
   school_papers: [{ count: 0 }],
+  revision_grants: [],
   ...over,
 });
 
@@ -206,5 +210,180 @@ describe("userAccountsEmptyState", () => {
       message: "No schools are on the division roll yet.",
       narrowed: false,
     });
+  });
+});
+
+// The row keeps the wire shape. Resolving it is `activeGrant()`'s job, against
+// the one `now` the page owns — so what is asserted here is only that the first
+// element survives the mapping and that the two empty shapes both read as null.
+describe("toUserAccountRows: grant", () => {
+  const wire = {
+    id: "g1",
+    expires_at: "2026-08-28T08:19:00Z",
+    granted_at: "2026-08-28T07:49:00Z",
+    revoked_at: null,
+    allow_paper: true,
+    allow_roster: true,
+    allow_entries: true,
+  };
+
+  it("carries the embedded row through untouched", () => {
+    expect(toUserAccountRows([raw({ revision_grants: [wire] })])[0].grant).toEqual(wire);
+  });
+
+  // `[][0]` is `undefined`, which is not the value the row's type promises.
+  it("is null for an empty embed, not undefined", () => {
+    expect(toUserAccountRows([raw({ revision_grants: [] })])[0].grant).toBeNull();
+  });
+
+  it("is null when the embed came back null", () => {
+    expect(toUserAccountRows([raw({ revision_grants: null })])[0].grant).toBeNull();
+  });
+
+  // Only one row can pass `revoked_at is null` under revision_grants_one_live, so
+  // a second element means the select was written wrong; taking the first is
+  // still the only defensible answer, and it is asserted rather than assumed.
+  it("takes the first element when more than one comes back", () => {
+    const second = { ...wire, id: "g2" };
+    expect(
+      toUserAccountRows([raw({ revision_grants: [wire, second] })])[0].grant?.id,
+    ).toBe("g1");
+  });
+});
+
+describe("submissionCellState", () => {
+  const grant: RevisionGrant = {
+    id: "g1",
+    expiresAt: "2026-08-28T08:19:00Z",
+    grantedAt: "2026-08-28T07:49:00Z",
+    surfaces: ["paper", "roster", "entries"],
+  };
+
+  const state = (over: Partial<Parameters<typeof submissionCellState>[0]> = {}) =>
+    submissionCellState({
+      lockedAt: null,
+      hasFiledAnything: true,
+      grant: null,
+      global: "open",
+      ...over,
+    });
+
+  it("is open for an unlocked school under no division-wide lock", () => {
+    expect(state()).toBe("open");
+  });
+
+  it("is locked for a school that locked itself", () => {
+    expect(state({ lockedAt: "2026-08-20T01:00:00Z" })).toBe("locked");
+  });
+
+  it("is locked for every school under a division-wide lock", () => {
+    expect(state({ global: "locked" })).toBe("locked");
+  });
+
+  // The guards are refusing every school-side write while the flag cannot be
+  // read, so calling the row open would be the page contradicting the database.
+  it("is locked while the division-wide switch is unreadable", () => {
+    expect(state({ global: "unavailable" })).toBe("locked");
+  });
+
+  // The pair that is easy to get wrong, in both directions. Closed exists only
+  // under the division-wide lock: outside one, a school with nothing filed is a
+  // school that has not started and its window is still open.
+  it("is open for a school that has filed nothing while the division lock is off", () => {
+    expect(state({ hasFiledAnything: false })).toBe("open");
+  });
+
+  it("is closed for a school that has filed nothing while the division lock is on", () => {
+    expect(state({ hasFiledAnything: false, global: "locked" })).toBe("closed");
+  });
+
+  it("is closed for a school that has filed nothing while the switch is unreadable", () => {
+    expect(state({ hasFiledAnything: false, global: "unavailable" })).toBe("closed");
+  });
+
+  // Its own lock does not change the answer: with nothing filed there is still
+  // nothing for Unlock to reopen, and the cell must not offer it.
+  it("is closed rather than locked when the school locked itself and filed nothing", () => {
+    expect(
+      state({ hasFiledAnything: false, lockedAt: "2026-08-20T01:00:00Z", global: "locked" }),
+    ).toBe("closed");
+  });
+
+  it("is locked, not closed, for a school under the division lock that has filed something", () => {
+    expect(state({ hasFiledAnything: true, global: "locked" })).toBe("locked");
+  });
+
+  // A live grant is announced first, in every combination beneath it — 0031's
+  // wrapper consults revision_allows() before either lock, so any other answer
+  // here would be the row contradicting the guard.
+  it("is revision under a division-wide lock", () => {
+    expect(state({ grant, global: "locked" })).toBe("revision");
+  });
+
+  it("is revision over the school's own lock as well", () => {
+    expect(state({ grant, lockedAt: "2026-08-20T01:00:00Z", global: "locked" })).toBe(
+      "revision",
+    );
+  });
+
+  it("is revision even for a school that has filed nothing", () => {
+    expect(state({ grant, hasFiledAnything: false, global: "locked" })).toBe("revision");
+  });
+
+  // A grant outlives an unlock: the office lifts the deadline and the row stays
+  // live for another twenty minutes. The cell still says so, because Revoke is
+  // the only control that closes it and the row is where that control lives.
+  it("is revision with no division-wide lock at all", () => {
+    expect(state({ grant, global: "open" })).toBe("revision");
+  });
+});
+
+describe("globalFreezeFromLock", () => {
+  it("reads a set flag as locked", () => {
+    expect(
+      globalFreezeFromLock({ state: "locked", at: null, by: null, byName: null }),
+    ).toBe("locked");
+  });
+
+  it("reads a clear flag as open", () => {
+    expect(globalFreezeFromLock({ state: "unlocked" })).toBe("open");
+  });
+
+  // The missing singleton: the guard raises on it, so every school-side write is
+  // already being refused and the cell must not call the row open.
+  it("reads an unknown lock whose writes are refused as unavailable", () => {
+    expect(
+      globalFreezeFromLock({
+        state: "unknown",
+        reason: "no-row",
+        detail: "no row",
+        writes: "refused",
+      }),
+    ).toBe("unavailable");
+  });
+
+  // The regression `SubmissionsWrites` exists to prevent: a failed read that
+  // established nothing — an expired JWT, a timeout, 0022 unapplied — must not
+  // put 336 rows into a freeze the page never established.
+  it("reads an unknown lock that established nothing as open", () => {
+    expect(
+      globalFreezeFromLock({
+        state: "unknown",
+        reason: "unreadable",
+        detail: "network",
+        writes: "undetermined",
+      }),
+    ).toBe("open");
+  });
+
+  it("reads an unknown lock whose writes are open as open", () => {
+    expect(
+      globalFreezeFromLock({
+        state: "unknown",
+        reason: "unreadable",
+        detail: "relation does not exist",
+        writes: "open",
+      }),
+    ).toBe("open");
   });
 });
