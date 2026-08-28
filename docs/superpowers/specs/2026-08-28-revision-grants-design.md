@@ -166,12 +166,17 @@ ever left unguarded mid-migration.
 
 ## The two RPCs
 
-`admin_grant_revision(target_school uuid, allow_paper boolean, allow_roster
-boolean, allow_entries boolean, minutes int)` — re-checks `admin_profiles` itself
+`admin_grant_revision(target_school uuid, p_allow_paper boolean, p_allow_roster
+boolean, p_allow_entries boolean, p_minutes int)` — re-checks `admin_profiles` itself
 (RLS does not apply inside a definer function, so the policies are never
 consulted), revokes any live grant for the school, inserts the new one, returns
 it. `minutes` is clamped to 1–1440 in the database as well as in the action,
 because a Server Action is a public POST endpoint and the RPC is the last line.
+
+The four `p_` prefixes are not cosmetic. `returns table` makes each output column
+a parameter of the function too, so a bare `allow_paper` would be ambiguous
+between the argument and the column it is inserted into. These are the names
+PostgREST posts, so the Server Action has to spell them this way.
 
 `admin_revoke_revision(target_school uuid)` — stamps `revoked_at` on the live
 grant. Idempotent: revoking a school with no live grant succeeds and changes
@@ -234,7 +239,7 @@ a window is open.
 Logic lives in pure modules, as `lock-state.ts` and `school-lock.ts` already do,
 because nothing in this repo renders a component under test.
 
-- `lib/submissions/revision-grant.ts` — grant shape, `activeGrant(now, row)`,
+- `lib/submissions/revision-grant.ts` — grant shape, `activeGrant(row, now)`,
   scope labels, `remainingLabel`, `validateGrantInput`, duration presets.
 - `revision-grant.test.ts` — the expiry boundary (`expires_at === now` is
   expired, not active), revoked-but-unexpired, a read that failed, every scope
