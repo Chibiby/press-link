@@ -17,6 +17,9 @@ const raw = (over: Partial<RawUserAccountSchool> = {}): RawUserAccountSchool => 
   auth_user_id: "u1",
   submission_locked_at: null,
   districts: { name: "Alabel" },
+  paper_participation: "undecided",
+  entries: [{ count: 0 }],
+  school_papers: [{ count: 0 }],
   ...over,
 });
 
@@ -57,6 +60,48 @@ describe("toUserAccountRows", () => {
   it("carries the lock timestamp through unchanged", () => {
     expect(rows[0].lockedAt).toBeNull();
     expect(rows[2].lockedAt).toBe("2026-08-20T01:00:00Z");
+  });
+});
+
+// The three conditions are ORed deliberately: a school that saved paper
+// details, or answered the paper question either way, has started work its own
+// dashboard shows it — so only a school with all three empty may be called
+// closed. Each condition is exercised alone, because an OR that accidentally
+// reads one field twice passes any test that sets two of them at once.
+describe("toUserAccountRows: hasFiledAnything", () => {
+  const filed = (over: Partial<RawUserAccountSchool>) =>
+    toUserAccountRows([raw(over)])[0].hasFiledAnything;
+
+  it("is false for a school with no entries, no paper and an unanswered question", () => {
+    expect(filed({})).toBe(false);
+  });
+
+  it("is true on an entry alone", () => {
+    expect(filed({ entries: [{ count: 1 }] })).toBe(true);
+  });
+
+  it("is true on a saved school paper alone", () => {
+    expect(filed({ school_papers: [{ count: 1 }] })).toBe(true);
+  });
+
+  it("is true once the paper question is answered yes", () => {
+    expect(filed({ paper_participation: "yes" })).toBe(true);
+  });
+
+  // Declining is an answer. A school that said no has finished deciding, and
+  // calling that "nothing filed" would report its decision as inaction.
+  it("is true once the paper question is answered no", () => {
+    expect(filed({ paper_participation: "no" })).toBe(true);
+  });
+
+  // PostgREST returns `[]`, not `[{ count: 0 }]`, for a school with no related
+  // rows, and a failed embed can arrive as null. Neither may read as filed.
+  it("treats an empty or null embedded count as zero", () => {
+    expect(filed({ entries: [], school_papers: null })).toBe(false);
+  });
+
+  it("treats a null paper_participation as unanswered", () => {
+    expect(filed({ paper_participation: null })).toBe(false);
   });
 });
 

@@ -12,6 +12,14 @@ import { SEARCH_PARAM, searchParamValue } from "@/lib/search/filter-params";
  * other module about what a school *is* rather than what it has submitted.
  */
 
+/**
+ * A PostgREST embedded aggregate. `entries(count)` comes back as a one-element
+ * array holding the count, not as a number, and as `[]` for a school with no
+ * related rows at all — so both shapes have to be tolerated at the boundary
+ * rather than asserted away with a cast.
+ */
+type EmbeddedCount = { count: number }[] | null;
+
 /** A `schools` row joined to its district, as /admin/users fetches it. */
 export interface RawUserAccountSchool {
   id: string;
@@ -23,6 +31,12 @@ export interface RawUserAccountSchool {
   /** Non-null means only an admin unlock can free the school's submission. */
   submission_locked_at: string | null;
   districts: { name: string } | null;
+  /** `'undecided'` until the school answers the school-paper question. */
+  paper_participation: string | null;
+  /** How many entries the school has filed. */
+  entries: EmbeddedCount;
+  /** How many school-paper rows the school has saved. */
+  school_papers: EmbeddedCount;
 }
 
 export interface UserAccountRow {
@@ -33,6 +47,24 @@ export interface UserAccountRow {
   districtName: string;
   hasLogin: boolean;
   lockedAt: string | null;
+  /**
+   * Whether the school has started its submission at all.
+   *
+   * Three conditions, not one: an entry filed, a school-paper row saved, or the
+   * paper question answered either way. A school that saved its paper details
+   * and stopped has started — reporting it as having filed nothing would be a
+   * lie about work its staff can see in their own dashboard. The Submission
+   * column reads this to say "Closed" instead of "Locked" under a
+   * division-wide lock: a school with nothing filed has nothing to reopen, so
+   * "Locked" invites an admin to unlock something that does not exist.
+   */
+  hasFiledAnything: boolean;
+}
+
+/** The first element's count, or 0 — see `EmbeddedCount`. */
+function embeddedCount(raw: EmbeddedCount): number {
+  if (!Array.isArray(raw) || raw.length === 0) return 0;
+  return raw[0]?.count ?? 0;
 }
 
 /** The query's shape turned into the row shape the table reads. */
@@ -45,6 +77,10 @@ export function toUserAccountRows(raw: RawUserAccountSchool[]): UserAccountRow[]
     districtName: row.districts?.name ?? "",
     hasLogin: row.auth_user_id !== null,
     lockedAt: row.submission_locked_at,
+    hasFiledAnything:
+      embeddedCount(row.entries) > 0 ||
+      embeddedCount(row.school_papers) > 0 ||
+      (row.paper_participation !== null && row.paper_participation !== "undecided"),
   }));
 }
 

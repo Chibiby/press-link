@@ -60,11 +60,17 @@ export default async function UsersPage({
     // `fetchAll`'s doc. 336 schools today. `.order("id")` last because
     // `schools.name` carries no unique constraint, so ties would otherwise
     // reshuffle between page requests.
+    //
+    // `entries(count)` and `school_papers(count)` are embedded aggregates, not
+    // joins: PostgREST computes them in the same statement, so the third
+    // Submission state ("Closed", for a school that filed nothing) costs no
+    // extra round-trip and no per-row query. With `paper_participation` they
+    // are the three conditions `hasFiledAnything` reads.
     fetchAll<RawUserAccountSchool>("The school account list", (from, to) =>
       supabase
         .from("schools")
         .select(
-          "id, name, school_id_number, district_id, auth_user_id, submission_locked_at, districts(name)"
+          "id, name, school_id_number, district_id, auth_user_id, submission_locked_at, paper_participation, districts(name), entries(count), school_papers(count)"
         )
         .order("districts(name)")
         .order("name")
