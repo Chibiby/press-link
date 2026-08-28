@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import Image from "next/image";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
@@ -21,6 +21,7 @@ import {
   FileText,
   Gavel,
   LayoutDashboard,
+  Loader2,
   Map,
   Newspaper,
   School,
@@ -34,7 +35,14 @@ import {
 } from "lucide-react";
 
 import { Wordmark } from "@/components/brand/wordmark";
-import { ADMIN_NAV, isNavActive, type NavIcon } from "@/lib/admin/nav";
+import {
+  ADMIN_NAV,
+  isNavActive,
+  pendingNavHref,
+  resolveNavPath,
+  type NavIcon,
+  type PendingNav,
+} from "@/lib/admin/nav";
 import { cn } from "@/lib/utils";
 import { version as APP_VERSION } from "@/package.json";
 
@@ -61,6 +69,35 @@ const ICONS: Record<NavIcon, LucideIcon> = {
 };
 
 /**
+ * A nav item's icon, swapped for a spinner while that item's navigation is in
+ * flight.
+ *
+ * It is its own component because `useLinkStatus` only reports on the `<Link>`
+ * above it — the hook has to run inside the link's subtree, so the icon cannot
+ * stay inline in `AdminNav`.
+ *
+ * The two glyphs are the same `size-4`, so the row does not reflow when one
+ * replaces the other. In practice this rarely fires: the rail's links are
+ * prefetched and every admin route now has a `loading.tsx`, which is exactly
+ * the case the Next docs say skips the pending state. It is the affordance for
+ * the cold link on a slow connection, where the click would otherwise look
+ * ignored for a second.
+ *
+ * `aria-hidden` on the spinner because the optimistic highlight and
+ * `aria-current` already say where the admin is going; a screen reader does not
+ * also need to be told an icon is spinning.
+ */
+function NavItemIcon({ icon: Icon }: { icon: LucideIcon }) {
+  const { pending } = useLinkStatus();
+
+  return pending ? (
+    <Loader2 aria-hidden className="size-4 shrink-0 animate-spin" />
+  ) : (
+    <Icon className="size-4 shrink-0" />
+  );
+}
+
+/**
  * The nav list itself, shared by the desktop rail and the mobile drawer.
  * `onNavigate` lets the drawer close itself on a link click; the rail passes
  * nothing. `collapsed` is the rail's icon-only mode — the drawer never sets it,
@@ -84,6 +121,41 @@ export function AdminNav({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
+  /**
+   * The click the router has not caught up with yet.
+   *
+   * `usePathname()` only changes once the destination has rendered, so keying
+   * the highlight off it alone leaves the rail looking unresponsive for as long
+   * as the new page takes to load — the admin clicks, and the item they clicked
+   * stays grey. Holding the clicked href here moves the highlight in the same
+   * frame as the click; `resolveNavPath` decides when to stop believing it.
+   *
+   * Every rule about *which* path wins lives in lib/admin/nav.ts, not here.
+   */
+  const [pending, setPending] = useState<PendingNav | null>(null);
+  const navPath = resolveNavPath(pathname, pending);
+
+  useEffect(() => {
+    // Not optional housekeeping: `resolveNavPath` ignores a record whose `from`
+    // is not the current pathname, but ignoring is not forgetting. Left in
+    // place, a record from /admin -> /admin/entries would come back to life the
+    // moment the admin returned to /admin — lighting Entries on the dashboard.
+    // Retiring it the first time the pathname moves is what closes that.
+    //
+    // The functional updater is what keeps `pending` out of the dependency
+    // list: depending on it would run this the instant a click set it and clear
+    // the highlight before the navigation had finished, which is the entire
+    // behaviour this state exists to provide.
+    //
+    // Deliberate, and no cascade in the case the rule is guarding: this returns
+    // the identical value when there is nothing to drop, and React bails out of
+    // a state update that changes nothing. It re-renders once per navigation,
+    // when a live record retires — and that render is the one that hands the
+    // highlight back to the real pathname.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPending((current) => (pendingNavHref(pathname, current) === null ? null : current));
+  }, [pathname]);
+
   // Group labels are paired to their items below via `aria-labelledby`, which
   // needs a real id. It cannot be derived from the label alone: both navs can
   // be mounted at once (see MobileNav's effect), and duplicate ids would let
@@ -163,7 +235,11 @@ export function AdminNav({
                   );
                 }
 
-                const active = isNavActive(pathname, item.href);
+                // `navPath`, not `pathname`: during a pending click that is the
+                // href the admin is on their way to, which is what moves the
+                // highlight — and `aria-current` with it — on click rather than
+                // on arrival.
+                const active = isNavActive(navPath, item.href);
                 // A stub's tooltip says so; a finished page's is just its name.
                 const hint = item.stub ? `${item.label} — coming soon` : item.label;
 
@@ -171,7 +247,14 @@ export function AdminNav({
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      onClick={onNavigate}
+                      onClick={() => {
+                        // Recorded from the pathname as it is at the click, so
+                        // the record can tell later whether the router has
+                        // moved. The drawer's own close callback still runs —
+                        // it was the whole handler before this.
+                        setPending({ href: item.href, from: pathname });
+                        onNavigate?.();
+                      }}
                       aria-current={active ? "page" : undefined}
                       title={collapsed ? hint : undefined}
                       className={cn(
@@ -182,7 +265,7 @@ export function AdminNav({
                           : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       )}
                     >
-                      <Icon className="size-4 shrink-0" />
+                      <NavItemIcon icon={Icon} />
                       {collapsed ? (
                         <span className="sr-only">{hint}</span>
                       ) : (

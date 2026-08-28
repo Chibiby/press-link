@@ -113,3 +113,48 @@ export function isNavActive(pathname: string, href: string): boolean {
   if (href === "/admin") return pathname === "/admin";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
+
+/**
+ * A sidebar click the router has not caught up with yet.
+ *
+ * `href` alone would be enough to move the highlight, but not enough to know
+ * when to stop trusting it, so the pathname the click was made *from* is
+ * recorded with it. That pairing is the whole rule: while the URL is still the
+ * one the admin clicked from, the click has not landed and the optimistic
+ * highlight stands; the moment the pathname is anything else the record is
+ * stale and the real URL wins.
+ *
+ * Comparing against `from` rather than asking "have we arrived at `href` yet?"
+ * is deliberate. A back button pressed mid-navigation, or a redirect from the
+ * page itself, moves the URL somewhere the clicked item does not cover — and an
+ * "arrived?" test would answer no forever and leave the wrong item lit for the
+ * rest of the session.
+ */
+export interface PendingNav {
+  /** The item that was clicked. */
+  href: string;
+  /** The pathname at the moment of the click. */
+  from: string;
+}
+
+/**
+ * The clicked item's href while it is still worth showing, or null once the
+ * router has moved and the pathname can speak for itself.
+ */
+export function pendingNavHref(pathname: string, pending: PendingNav | null): string | null {
+  if (!pending) return null;
+  return pending.from === pathname ? pending.href : null;
+}
+
+/**
+ * The path the sidebar should compute its active item from: the pending click
+ * if there is a live one, otherwise the real pathname.
+ *
+ * This is what makes the rail highlight on click instead of on arrival. It is
+ * here rather than in the sidebar for the same reason `isNavActive` is — the
+ * rail is not where route rules get decided, and a rule with no test is a rule
+ * that gets quietly broken by the next person to touch the component.
+ */
+export function resolveNavPath(pathname: string, pending: PendingNav | null): string {
+  return pendingNavHref(pathname, pending) ?? pathname;
+}

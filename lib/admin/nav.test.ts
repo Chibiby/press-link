@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ADMIN_NAV, isNavActive } from "./nav";
+import { ADMIN_NAV, isNavActive, pendingNavHref, resolveNavPath } from "./nav";
 
 describe("isNavActive", () => {
   it("matches the dashboard root exactly", () => {
@@ -112,5 +112,70 @@ describe("stub and soon flags", () => {
       "/admin/masterlist",
       "/admin/settings",
     ]);
+  });
+});
+
+describe("resolveNavPath", () => {
+  it("uses the real pathname when nothing is pending", () => {
+    expect(resolveNavPath("/admin/entries", null)).toBe("/admin/entries");
+  });
+
+  it("uses the clicked href while the URL has not moved yet", () => {
+    // The frame after the click: the router is still fetching, usePathname()
+    // still says /admin, and the rail must already show Entries.
+    expect(resolveNavPath("/admin", { href: "/admin/entries", from: "/admin" })).toBe(
+      "/admin/entries"
+    );
+  });
+
+  it("drops the clicked href once the URL has arrived", () => {
+    expect(
+      resolveNavPath("/admin/entries", { href: "/admin/entries", from: "/admin" })
+    ).toBe("/admin/entries");
+  });
+
+  it("drops the clicked href when the URL moved somewhere else entirely", () => {
+    // Back button pressed mid-navigation. Holding the pending href here would
+    // leave Entries lit on a page that is not Entries, permanently.
+    expect(resolveNavPath("/admin/schools", { href: "/admin/entries", from: "/admin" })).toBe(
+      "/admin/schools"
+    );
+  });
+
+  it("resolves a deep destination the clicked item still covers", () => {
+    // /admin/judges/abc lights Judges Portal either way, but only because the
+    // real pathname is used once it arrives — the pending record is stale.
+    const path = resolveNavPath("/admin/judges/abc", {
+      href: "/admin/judges",
+      from: "/admin",
+    });
+    expect(path).toBe("/admin/judges/abc");
+    expect(isNavActive(path, "/admin/judges")).toBe(true);
+  });
+
+  it("lights the clicked item and nothing else", () => {
+    // The property the sidebar actually depends on: exactly one item is active
+    // during the pending frame, and it is the one that was clicked.
+    const path = resolveNavPath("/admin", { href: "/admin/tabulators", from: "/admin" });
+    const active = ADMIN_NAV.flatMap((group) => group.items).filter((item) =>
+      isNavActive(path, item.href)
+    );
+    expect(active.map((item) => item.href)).toEqual(["/admin/tabulators"]);
+  });
+});
+
+describe("pendingNavHref", () => {
+  it("is null with no pending click", () => {
+    expect(pendingNavHref("/admin", null)).toBeNull();
+  });
+
+  it("is null once the pathname has changed", () => {
+    expect(pendingNavHref("/admin/events", { href: "/admin/events", from: "/admin" })).toBeNull();
+  });
+
+  it("keeps the href while the pathname is unchanged", () => {
+    expect(pendingNavHref("/admin", { href: "/admin/events", from: "/admin" })).toBe(
+      "/admin/events"
+    );
   });
 });
