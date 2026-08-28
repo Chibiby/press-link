@@ -8,6 +8,7 @@ import { EntryWizard } from "./EntryWizard";
 import { LockSubmissionDialog } from "./LockSubmissionDialog";
 import { PaperGateDialog } from "./PaperGateDialog";
 import { RosterPanel } from "./RosterPanel";
+import { RevisionGrantNotice } from "./RevisionGrantNotice";
 import { SchoolPaperDialog } from "./SchoolPaperDialog";
 import type {
   EntryRow,
@@ -39,6 +40,7 @@ export function EntryDashboard({
   paperFlow,
   paperStatus,
   submissionLock,
+  serverNow,
   participation,
   isIntegrated,
 }: {
@@ -55,12 +57,20 @@ export function EntryDashboard({
   /** The three-state label shared with the admin pages. */
   paperStatus: PaperStatus;
   /**
-   * The school's own lock and the division-wide switch, already resolved into
-   * one banner and one read-only decision — see lib/submissions/school-lock.ts.
+   * The school's own lock, the division-wide switch and any live revision grant,
+   * already resolved into one banner and one read-only decision per surface —
+   * see lib/submissions/school-lock.ts.
    * `paperFlow.submissionLocked` still decides everything that is only about
    * this school's own lock, such as whether it may lock itself.
    */
   submissionLock: EntrySubmissionLock;
+  /**
+   * The instant the server rendered this page, ISO. Only the revision countdown
+   * reads it, and it has to arrive as a prop: this is a client component, so a
+   * `new Date()` anywhere in it is the *device's* clock, which is the one clock
+   * that has no bearing on whether a write is accepted.
+   */
+  serverNow: string;
   participation: PaperParticipation;
   /** Integrated schools file two papers per language — see lib/paper/level.ts. */
   isIntegrated: boolean;
@@ -82,8 +92,21 @@ export function EntryDashboard({
   // guard for exactly this reason. Forcing either open would trap the school in a
   // dialog it can neither complete nor dismiss. Nothing is lost by waiting: both
   // are still owed, and both come back the moment submissions do.
-  const paperRequired = paperFlow.paperFormOpen && !submissionLock.readOnly;
-  const gateRequired = paperFlow.askQuestion && !submissionLock.readOnly;
+  //
+  // Since 0031 the freeze is per surface, and every site in this file reads the
+  // surface the *database* guards its write at rather than a collapsed "is
+  // anything frozen": a grant scoped to entries alone must leave the paper dialog
+  // as shut as the triggers do, and must not leave read-only the entries the
+  // office reopened on the phone. The mapping, once:
+  //
+  //   paper   — the paper dialog, and the contest question with it. The answer
+  //             goes through `set_paper_participation()`, which 0031 guards at
+  //             `paper` beside `school_papers` and `paper_staff`.
+  //   roster  — the roster panel: `participants` and `coaches`.
+  //   entries — creating an entry and the entries table: `entries`,
+  //             `entry_participants` and `entry_coaches`.
+  const paperRequired = paperFlow.paperFormOpen && !submissionLock.readOnly.paper;
+  const gateRequired = paperFlow.askQuestion && !submissionLock.readOnly.paper;
   const paperOpen = paperRequired || (paperOpenOverride ?? false);
   const gateOpen = gateRequired || gateOpenOverride;
 
@@ -98,10 +121,11 @@ export function EntryDashboard({
   }
 
   const canCreateEntry =
-    !submissionLock.readOnly && participants.length > 0 && coaches.length > 0;
+    !submissionLock.readOnly.entries && participants.length > 0 && coaches.length > 0;
 
   // The meaning comes from the derivation, the component from here — the same
-  // split the admin lock control uses.
+  // split the admin lock control uses. The grant's `clock` never reaches this:
+  // it renders through `RevisionGrantNotice`, which owns its own icon.
   const BannerIcon = submissionLock.banner?.icon === "alert" ? TriangleAlert : Lock;
 
   const rosterCount = participants.length + coaches.length;
@@ -118,14 +142,24 @@ export function EntryDashboard({
       {/* One banner, whichever lock the school is actually held by. The
           division-wide cases reuse this exact alert rather than a louder one of
           their own: to a school being frozen is being frozen, and the only thing
-          that differs is who did it and what, if anything, it can do next. */}
-      {submissionLock.banner && (
-        <Alert>
-          <BannerIcon />
-          <AlertTitle>{submissionLock.banner.title}</AlertTitle>
-          <AlertDescription>{submissionLock.banner.description}</AlertDescription>
-        </Alert>
-      )}
+          that differs is who did it and what, if anything, it can do next.
+
+          The grant is the exception, and switched on `kind` because that is what
+          the union discriminates on. It is the only state the school can act on
+          and the only one carrying a deadline of its own, so it gets a component
+          that can announce itself once and then count down, instead of a fourth
+          row of copy inside an alert that means "frozen". The three frozen kinds
+          below are untouched, wording and markup both. */}
+      {submissionLock.banner &&
+        (submissionLock.banner.kind === "grant" ? (
+          <RevisionGrantNotice banner={submissionLock.banner} serverNow={serverNow} />
+        ) : (
+          <Alert>
+            <BannerIcon />
+            <AlertTitle>{submissionLock.banner.title}</AlertTitle>
+            <AlertDescription>{submissionLock.banner.description}</AlertDescription>
+          </Alert>
+        ))}
 
       {/* Paper and lock state cover the whole submission rather than either
           list, so they sit above the split instead of inside the roster.
@@ -226,7 +260,7 @@ export function EntryDashboard({
               participants={participants}
               coaches={coaches}
               usage={usage}
-              locked={submissionLock.readOnly || !paperFlow.rosterEnabled}
+              locked={submissionLock.readOnly.roster || !paperFlow.rosterEnabled}
             />
           </div>
         </section>
@@ -262,7 +296,7 @@ export function EntryDashboard({
             entries={entries}
             onCreate={openCreate}
             onEdit={openEdit}
-            locked={submissionLock.readOnly}
+            locked={submissionLock.readOnly.entries}
           />
         </section>
       </div>
@@ -284,7 +318,7 @@ export function EntryDashboard({
         onOpenChange={setPaperOpenOverride}
         papers={papers}
         archivedPapers={archivedPapers}
-        locked={submissionLock.readOnly}
+        locked={submissionLock.readOnly.paper}
         required={paperRequired}
         isIntegrated={isIntegrated}
       />

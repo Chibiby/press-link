@@ -17,6 +17,7 @@ import type { EventRow, EventTypeRow } from "./wizard-steps";
 import { formatParticipantNumber, type UsageMap } from "@/lib/roster/limits";
 import type { EventCategory } from "@/lib/events-catalog";
 import { entrySubmissionLock, globalFreezeFromRead } from "@/lib/submissions/school-lock";
+import { activeGrant, type RawRevisionGrant } from "@/lib/submissions/revision-grant";
 import { DashboardHeader } from "@/components/dashboard-header";
 
 /** Formatted server-side so the client never re-derives a locale string. */
@@ -132,6 +133,7 @@ export default async function EntryPage() {
     { data: rawCoaches },
     { data: rawEntries },
     { data: settings, error: settingsError },
+    { data: grantRow, error: grantError },
   ] = await Promise.all([
     supabase
       .from("school_papers")
@@ -192,6 +194,25 @@ export default async function EntryPage() {
       .eq("id", true)
       .maybeSingle()
       .overrideTypes<{ submissions_locked: boolean | null }>(),
+    // This school's live revision grant from migration 0031, read beside the
+    // division-wide switch so a school that was reopened is told so before it
+    // goes looking for the buttons that came back.
+    //
+    // `revoked_at is null` is what "live" means in 0031, and its partial unique
+    // index makes at most one row match. The order and the limit are belt and
+    // braces for a database where that index is missing: the newest grant is
+    // read rather than an arbitrary one. Whether the window is still open is not
+    // asked here — `activeGrant()` answers that, once, against one instant, the
+    // way `revision_allows()` answers it inside every write.
+    supabase
+      .from("revision_grants")
+      .select("id, expires_at, granted_at, revoked_at, allow_paper, allow_roster, allow_entries")
+      .eq("school_id", school.id)
+      .is("revoked_at", null)
+      .order("granted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .overrideTypes<RawRevisionGrant>(),
   ]);
 
   const entries: EntryRow[] = (rawEntries ?? []).map((row) => {
@@ -276,11 +297,34 @@ export default async function EntryPage() {
   // school must not see as a broken dashboard.
   if (settingsError) console.error("EntryPage submissions lock", settingsError);
 
-  // One banner, and one read-only decision, for both locks — see
-  // lib/submissions/school-lock.ts for which one wins when both apply.
+  // Logged, then treated as no grant — the same shrug `loadSubmissionsLock` gives
+  // an unreadable `app_settings`, for the same reason. The ordinary cause is that
+  // 0031 has not reached this database yet and the table is simply not there; RLS
+  // and a network blip read identically. Nothing about this read enforces
+  // anything, because `revision_allows()` is consulted inside the database on
+  // every school-side write and is unaffected either way; all that is at stake is
+  // what the school is *told*, and a school told nothing sees exactly the page it
+  // saw before this feature existed. Throwing here would take the whole dashboard
+  // down without making one write more, or less, permitted.
+  if (grantError) console.error("EntryPage revision grant", grantError);
+
+  // One instant for the whole render, and it is the server's. Every judgement about
+  // the window is made from it here — a device clock is routinely minutes out, and a
+  // browser must never be the thing that decides a window is open while the guard is
+  // refusing every write. The banner's countdown is handed this same instant as
+  // `serverNow` so that what it displays agrees with the clock `revision_allows()`
+  // is actually comparing against; all it is allowed to do at zero is ask the server
+  // again.
+  const now = new Date();
+  const grant = activeGrant(grantError ? null : grantRow, now);
+
+  // One banner, and one read-only decision per surface, for both locks and the
+  // grant — see lib/submissions/school-lock.ts for which one wins when they
+  // overlap.
   const submissionLock = entrySubmissionLock({
     schoolLocked: paperFlow.submissionLocked,
     global: globalFreezeFromRead({ data: settings, error: settingsError }),
+    grant,
   });
 
   return (
@@ -304,6 +348,7 @@ export default async function EntryPage() {
           paperFlow={paperFlow}
           paperStatus={status}
           submissionLock={submissionLock}
+          serverNow={now.toISOString()}
           participation={school.paper_participation}
           isIntegrated={school.is_integrated}
         />
