@@ -346,11 +346,11 @@ export async function loadJudgeSheet(
       }));
     }
 
-    // The cut that produced the field wins over the live column, for the same
-    // reason the admin index prefers it: an admin may move `events.round2_cut`
-    // after a qualifier list exists, and a dropdown built on the new number would
-    // offer ranks the list was never drawn under.
-    const size = round === 1 ? (rounds.round2CutUsed ?? event.round2_cut) : units.length;
+    // The field, in both rounds. Round 1 is no longer bounded by the cut — a judge
+    // ranks as far down the field as they mean to, up to ROUND1_RANK_LIMIT, and the
+    // cut is applied afterwards by `round1Qualifiers` to decide who advances. Round
+    // 2's field is the qualifier list this sheet was drawn against.
+    const size = units.length;
 
     // Round 2's notice needs the round 1 working, which this judge deliberately
     // cannot read — so it is written from the field size against the cut alone.

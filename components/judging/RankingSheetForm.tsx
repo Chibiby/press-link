@@ -58,7 +58,8 @@ import type { ContestUnit } from "@/lib/judging/types";
  *
  * Round 1's dropdown offers "— Eliminated" rather than an empty row. A blank is a
  * final answer (N2), and an unlabelled empty option reads as "not yet answered" — a
- * reader who takes it that way will rank the whole field and defeat the cut.
+ * reader who takes it that way will place the whole field to be tidy, and record an
+ * opinion of every contestant they meant to eliminate.
  *
  * ## Why submitting asks first
  *

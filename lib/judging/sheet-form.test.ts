@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   draftFromRanks,
+  ROUND1_RANK_LIMIT,
   sheetFormSpec,
   toRankPayload,
   validateSheetDraft,
@@ -20,10 +21,27 @@ function draft(pairs: Record<string, number | null>): RankDraft {
 }
 
 describe("sheetFormSpec", () => {
-  it("offers blank and 1 to the cut in round 1 (N2)", () => {
+  it("offers blank and 1 to the size of the field in round 1 (N2)", () => {
     const spec = sheetFormSpec(1, 3);
     expect(spec.options).toEqual([1, 2, 3]);
     expect(spec.allowsBlank).toBe(true);
+  });
+
+  it("caps round 1 at ROUND1_RANK_LIMIT however large the field is", () => {
+    // The ceiling is the dropdown's, not the contest's. A field of sixty is not a
+    // field this division runs, and a select of sixty rows is not one a judge can
+    // use on a phone.
+    const spec = sheetFormSpec(1, 60);
+    expect(spec.options).toHaveLength(ROUND1_RANK_LIMIT);
+    expect(spec.options.at(-1)).toBe(ROUND1_RANK_LIMIT);
+  });
+
+  it("does not bound round 1 by the cut, so a judge may rank past the line", () => {
+    // The regression this guards: the dropdown used to be built from the event's
+    // round-2 cut, and a judge under a cut of ten could not place the eleventh
+    // contestant at all. The cut is applied to the filed sheet by round1Qualifiers
+    // instead — see lib/judging/cut.ts.
+    expect(sheetFormSpec(1, 30).options).toHaveLength(30);
   });
 
   it("offers 1 to the qualifier count and no blank in round 2 (N5)", () => {
@@ -67,7 +85,7 @@ describe("validateSheetDraft — round 1", () => {
     ).toBeNull();
   });
 
-  it("refuses a rank above the cut, naming the contestant", () => {
+  it("refuses a rank above the highest on offer, naming the contestant", () => {
     const result = validateSheetDraft(spec, FIELD, draft({ "u-0001": 3, "u-0002": null, "u-0003": null }));
     expect(result).toContain("0001");
     expect(result).toContain("1 to 2");
@@ -96,9 +114,9 @@ describe("validateSheetDraft — round 1", () => {
     expect(result).toContain("out of date");
   });
 
-  it("explains a missing cut rather than reporting every row as wrong", () => {
+  it("explains a sheet with no ranks on offer rather than reporting every row as wrong", () => {
     const result = validateSheetDraft(sheetFormSpec(1, 0), FIELD, draft({}));
-    expect(result).toContain("no round-2 cut");
+    expect(result).toContain("no ranks to give");
   });
 });
 

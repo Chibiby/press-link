@@ -775,12 +775,11 @@ export async function loadSheetEntry(
     return rank === undefined ? [] : [{ unitKey: boardRow.unitKey, rank }];
   });
 
-  // Round 1's dropdown is bounded by the cut, round 2's by the size of the field it
-  // was drawn against. `events.round2_cut` is the right number for round 1 and not
-  // `round2CutUsed`: the latter is written when round 1 locks, and a locked round 1
-  // is one `sheetEntryState` refuses to enter — so wherever this write can succeed,
-  // the two agree.
-  const size = round === 1 ? (row.round2Cut ?? 0) : units.length;
+  // Both dropdowns are bounded by the size of the field the sheet covers — every
+  // contestant in round 1, the qualifier list in round 2 — and round 1's is capped
+  // again at ROUND1_RANK_LIMIT. The cut no longer bounds it: it decides who advances
+  // off the filed sheet, which is `round1Qualifiers`' job and not this form's.
+  const size = units.length;
 
   return {
     entry: {

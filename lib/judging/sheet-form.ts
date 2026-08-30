@@ -2,9 +2,9 @@
  * What a judge's ranking sheet offers, and what it will accept back.
  *
  * The two rounds are not the same form (N1, N2, N5). Round 1 offers blank and
- * 1…cut, and blank is a final answer meaning eliminated. Round 2 offers
- * 1…qualifierCount with no blank, because every qualifier must be placed. Ties
- * are legal in both.
+ * 1…the size of the field, capped at {@link ROUND1_RANK_LIMIT}; blank is a final
+ * answer meaning eliminated. Round 2 offers 1…qualifierCount with no blank,
+ * because every qualifier must be placed. Ties are legal in both.
  *
  * Pure, like the rest of `lib/judging`: the page renders what `sheetFormSpec`
  * describes and the server action checks what `validateSheetDraft` says, so the
@@ -41,19 +41,39 @@ export interface SheetFormSpec {
 }
 
 /**
+ * How many places round 1's dropdown will ever offer.
+ *
+ * Round 1 used to be bounded by the event's round-2 cut: a cut of ten meant a
+ * judge could type 1 to 10 and nothing else. That conflated two decisions. The
+ * cut is the division's rule about **who advances**, and it is applied to the
+ * filed sheet by `round1Qualifiers`; how far down a field a judge is willing to
+ * place is the judge's own working. A judge who ranks fifteen under a cut of ten
+ * has not made a mistake — they have ranked past the line, and the eleventh
+ * onwards simply do not qualify.
+ *
+ * So the dropdown is bounded by the field instead, and by this ceiling. The
+ * ceiling is a usability bound, not a rule of the contest: a select of several
+ * hundred rows is unusable on the phone a judge actually holds, and no division
+ * event fields anything near fifty contestants. `judging_write_sheet` enforces
+ * the same bound server-side (migration 0032), because a maximum the client
+ * alone keeps is not a maximum.
+ */
+export const ROUND1_RANK_LIMIT = 50;
+
+/**
  * The form for one round.
  *
- * `size` is the cut in round 1 and the qualifier count in round 2 — the two
- * numbers that bound the dropdown. They are different facts about different
- * fields, so the caller names which one it is passing by calling with the round
- * rather than by passing both and hoping the right one is read.
+ * `size` is the size of the field in both rounds — every contestant in round 1,
+ * the qualifiers in round 2. Round 1 caps it at {@link ROUND1_RANK_LIMIT}; round 2
+ * needs no cap of its own, since its field is a subset of round 1's.
  *
  * A size below 1 yields no options rather than throwing. An event with no
- * contestants, or a cut an admin has set to nought, is a sheet with nothing to
- * rank — which the page renders as an empty state, not as a crash.
+ * contestants is a sheet with nothing to rank — which the page renders as an
+ * empty state, not as a crash.
  */
 export function sheetFormSpec(round: JudgingRound, size: number): SheetFormSpec {
-  const count = Number.isInteger(size) && size > 0 ? size : 0;
+  const field = Number.isInteger(size) && size > 0 ? size : 0;
+  const count = round === 1 ? Math.min(field, ROUND1_RANK_LIMIT) : field;
   const options = Array.from({ length: count }, (_, index) => index + 1);
 
   if (round === 1) {
@@ -61,7 +81,7 @@ export function sheetFormSpec(round: JudgingRound, size: number): SheetFormSpec 
       round,
       options,
       allowsBlank: true,
-      hint: `Rank the top ${count} and leave everyone else blank. A blank is a final answer — it means eliminated. Two contestants may share a rank.`,
+      hint: `Rank as far down the field as you mean to, from 1 to ${count}, and leave everyone else blank. A blank is a final answer — it means eliminated. Two contestants may share a rank.`,
     };
   }
 
@@ -94,7 +114,7 @@ export function validateSheetDraft(
   }
   if (highest === 0) {
     return spec.round === 1
-      ? "This event has no round-2 cut set, so there is no rank to give. Ask an administrator to set one."
+      ? "This sheet offers no ranks to give, so there is nothing to submit."
       : "No qualifiers have been drawn for this event yet.";
   }
 

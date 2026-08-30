@@ -60,7 +60,11 @@ export interface Round1Board {
   judgeId: string | null;
   /** Ordered by rank, then by code inside a tie; blanks last, by code. */
   rows: Round1Row[];
-  /** How many rows carry a rank. Under N2 this is exactly the qualifier count. */
+  /**
+   * How many rows carry a rank — that is, how many the judge did not eliminate.
+   * Not the qualifier count: a judge may rank past the cut, and `round1Qualifiers`
+   * is what applies the cut to these rows.
+   */
   scored: number;
 }
 
@@ -124,12 +128,14 @@ export function round1Board(units: ContestUnit[], ranks: JudgeRank[]): Round1Boa
 /**
  * Who advances to round 2 (D3, N2, N3).
  *
- * **The qualifier set is exactly the set of scored rows.** The judge's dropdown
- * offers blank or 1…cut, so a scored rank cannot exceed the cut and nothing is
- * filtered afterwards. The `rank <= cut` comparison is kept anyway, because an
- * admin may lower `events.round2_cut` after a sheet was filed and a rank above
- * the new cut must then stop qualifying rather than sneak through on the
- * strength of having been legal once.
+ * **The qualifier set is the scored rows at or above the cut.** `rank <= cut` is
+ * the whole rule and it is load-bearing, not defensive: round 1's dropdown is
+ * bounded by the field rather than by the cut (see `ROUND1_RANK_LIMIT`), so a
+ * judge may deliberately rank fifteen under a cut of ten, and the eleventh
+ * onwards are scored, placed and not qualified. The same comparison also covers
+ * an admin lowering `events.round2_cut` after a sheet was filed: a rank above the
+ * new cut stops qualifying rather than sneaking through on the strength of having
+ * been legal once.
  *
  * ## Why the field can be larger than the cut
  *

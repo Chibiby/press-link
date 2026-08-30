@@ -64,14 +64,29 @@ cut does not also place the winners.
 Exactly three is enforced, not advisory: Round 2 cannot be locked unless three
 judges are seated and all three have submitted.
 
-### N2 — Round 1 scores the top N and blanks the rest
+### N2 — Round 1 ranks as far down as the judge means to, and blanks the rest
 
 The judge is shown every participant's code and a rank dropdown offering
-**blank, 1 … cut**, where `cut` is `events.round2_cut`. Blank is a valid, final
-answer and means *eliminated*. A scored participant advances.
+**blank, 1 … the size of the field**, capped at `ROUND1_RANK_LIMIT` (50). Blank is
+a valid, final answer and means *eliminated*.
 
-Because the dropdown cannot offer a rank above the cut, **the qualifier set is
-exactly the set of scored participants.** Nothing is filtered afterwards.
+**Superseded, 2026-08-30.** As first built, the dropdown offered **blank, 1 … cut**,
+where `cut` is `events.round2_cut`, and this section drew the consequence: "because
+the dropdown cannot offer a rank above the cut, the qualifier set is exactly the set
+of scored participants." That identity is what was wrong. How far down a field a
+judge is willing to place is the judge's working; who advances is the division's
+rule, applied *to* that working. Bounding the form by the cut meant a judge under a
+cut of ten could not record an opinion about the eleventh contestant at all.
+
+So the two are separated. The judge ranks as far as they mean to, and
+`round1Qualifiers` applies `rank <= cut` to the filed sheet — the comparison was
+always there, and it is now load-bearing rather than defensive. **The qualifier set
+is the scored participants at or above the cut**; a sheet of fifteen under a cut of
+ten sends ten through and leaves five scored, placed on the judge's sheet, and
+eliminated. `judging_write_sheet` enforces the new bound in migration 0032.
+
+The 50 is a usability ceiling, not a rule of the contest: no division event fields
+anything near it, and a select of several hundred rows is unusable on a phone.
 
 ### N3 — Round 1 ranks may tie, and a tie can push the field past the cut
 
