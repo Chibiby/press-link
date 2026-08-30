@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MAX_ROUND2_CUT } from "@/lib/judging/cut";
 import { eventControl, type EventControlFacts } from "@/lib/judging/event-controls";
 
 import {
@@ -197,6 +198,7 @@ export function EventControls({
               id="round2-cut"
               type="number"
               min={1}
+              max={MAX_ROUND2_CUT}
               step={1}
               inputMode="numeric"
               value={cut}
@@ -204,8 +206,10 @@ export function EventControls({
               disabled={isPending}
             />
             <p className="text-xs text-muted-foreground">
-              A tie at the cut line takes everyone tied on it, so the field can come out
-              larger than this number.
+              Any number from 1 to {MAX_ROUND2_CUT} — the ceiling is how far down the field
+              round 1 can rank, and a cut above it would admit places nobody can type. A tie
+              at the cut line takes everyone tied on it, so the field can come out larger
+              than this number.
             </p>
           </div>
 

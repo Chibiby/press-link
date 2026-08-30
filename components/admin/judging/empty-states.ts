@@ -32,9 +32,9 @@ export const NO_ENTRIES_TO_RANK = "This event has no entries, so there is nothin
 /**
  * Why a round-2 cut cell is blank.
  *
- * `events.round2_cut` is `not null default 10`, so this is unreachable while the
+ * `events.round2_cut` is `not null default 30`, so this is unreachable while the
  * read succeeds — it stands for the case where the column came back with nothing.
- * Note what it does *not* say: that the cut is 10. Printing the division's usual
+ * Note what it does *not* say: that the cut is 30. Printing the division's usual
  * default in place of an unread value would invent a decision (non-negotiable 5).
  */
 export const CUT_NOT_ON_FILE = "No round-2 cut is on file for this event.";

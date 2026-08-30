@@ -91,7 +91,7 @@ describe("buildEventIndex with no facts", () => {
   });
 
   it("leaves the round 2 cut null rather than defaulting it", () => {
-    // `events.round2_cut` is `not null default 10`, so a null here is a value that
+    // `events.round2_cut` is `not null default 30`, so a null here is a value that
     // could not be read. Substituting 10 would report a decision nobody took.
     expect(rows[0].round2Cut).toBeNull();
   });

@@ -96,7 +96,7 @@ export interface EventJudgingFacts {
   round2Ranks: JudgeRank[];
   rounds: EventRoundState;
   /**
-   * `events.round2_cut`, which is `not null default 10`. null therefore means the
+   * `events.round2_cut`, which is `not null default 30`. null therefore means the
    * value could not be read — which is not the same as 10, and must not be rendered
    * as though the division had chosen it.
    */

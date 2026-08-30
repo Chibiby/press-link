@@ -60,7 +60,7 @@ export default async function EventSheetPage({
   /**
    * With no cut on file there is no field to divide, so no standings were computed and
    * every figure on this page is unavailable rather than nought (non-negotiable 5).
-   * `events.round2_cut` is `not null default 10`, so this needs a failed read to happen
+   * `events.round2_cut` is `not null default 30`, so this needs a failed read to happen
    * at all — but it is the one absence left on this page, and an unmeasured zero here
    * would be read as a contest nobody entered.
    */

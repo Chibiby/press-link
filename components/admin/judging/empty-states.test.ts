@@ -53,12 +53,12 @@ describe("the workbook's copies of the screen's absences", () => {
     }
   });
 
-  it("never offers the default of 10 as a stand-in for an unread cut", () => {
-    // `events.round2_cut` is `not null default 10`, so a cut that cannot be printed
-    // is a value that could not be read. Printing 10 would report a decision nobody
+  it("never offers the default of 30 as a stand-in for an unread cut", () => {
+    // `events.round2_cut` is `not null default 30`, so a cut that cannot be printed
+    // is a value that could not be read. Printing 30 would report a decision nobody
     // took for that event (non-negotiable 5).
-    expect(CUT_NOT_ON_FILE).not.toContain("10");
-    expect(XL_CUT_NOT_SET).toContain("not the division's usual default of 10");
+    expect(CUT_NOT_ON_FILE).not.toContain("30");
+    expect(XL_CUT_NOT_SET).toContain("not the division's usual default of 30");
   });
 
   it("says nothing about a table being absent, because none of them are", () => {

@@ -73,7 +73,7 @@ function sheet(judgeId: string, places: Record<string, number>): JudgeRank[] {
 
 /**
  * Nothing judged, but a cut on file — which is what an untouched event looks like
- * now that `events.round2_cut` exists and is `not null default 10`.
+ * now that `events.round2_cut` exists and is `not null default 30`.
  */
 function facts(overrides: Partial<EventJudgingFacts> = {}): EventJudgingFacts {
   const judgeIds = overrides.judgeIds ?? [];

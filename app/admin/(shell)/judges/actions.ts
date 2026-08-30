@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { checkAdmin } from "@/app/admin/guard";
 import { loadJudgingEvent, loadSheetEntry } from "../judging-data";
-import { round1Qualifiers } from "@/lib/judging/cut";
+import { MAX_ROUND2_CUT, round1Qualifiers } from "@/lib/judging/cut";
 import {
   toRankPayload,
   validateSheetDraft,
@@ -72,14 +72,23 @@ function revalidate(eventId: string) {
  * The per-event round 2 cut.
  *
  * There is no division-wide cut and no default written here. `events.round2_cut`
- * is per event and this is how it is chosen; the column's `default 10` is only
+ * is per event and this is how it is chosen; the column's `default 30` is only
  * the value an untouched event starts on, never a decision anyone took. The RPC
  * refuses the change once round 1 is locked, because a cut that has already
  * produced a qualifier list cannot move under it.
+ *
+ * The ceiling is `MAX_ROUND2_CUT`, checked here for the sentence and again in the
+ * RPC, which is the boundary. A cut above what round 1 can record would admit
+ * ranks seat 1 has no way to type.
  */
 export async function setRound2CutAction(eventId: string, cut: number): Promise<ActionResult> {
   if (!Number.isInteger(cut) || cut < 1) {
     return { error: "The cut must be a whole number of at least 1." };
+  }
+  if (cut > MAX_ROUND2_CUT) {
+    return {
+      error: `The cut cannot be more than ${MAX_ROUND2_CUT}, which is as far down the field as round 1 can rank.`,
+    };
   }
 
   return withAdmin(async (supabase) => {

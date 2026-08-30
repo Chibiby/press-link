@@ -64,7 +64,7 @@ import { borderRow } from "./borders";
 export const XL_NO_PANEL = "No panel is seated, so there are no ranks to count.";
 export const XL_NO_UNITS = "This event has no entries, so there is nothing to rank.";
 export const XL_CUT_NOT_SET =
-  "No round-2 cut is on file for this event. This cell holds that reason, not a cut of nought — and not the division's usual default of 10, which nobody has chosen for this event.";
+  "No round-2 cut is on file for this event. This cell holds that reason, not a cut of nought — and not the division's usual default of 30, which nobody has chosen for this event.";
 export const XL_NO_JUDGES =
   "No judge has been added yet. The roster is empty, so no panel can be seated. This is an empty table, read and found to hold nothing.";
 
@@ -200,7 +200,7 @@ export function toPanelRows(rows: EventIndexRow[]): PanelRow[] {
     Panel: row.panelSize === 0 ? XL_NO_PANEL : row.panelSize,
     "Round 1": roundCell(row.round1, row.panelSize),
     "Round 2": roundCell(row.round2, row.panelSize),
-    // Never 10. `events.round2_cut` is `not null default 10`, so a null here is a
+    // Never 30. `events.round2_cut` is `not null default 30`, so a null here is a
     // value that could not be read — and printing the default in its place would
     // report a decision nobody took for this event.
     "R2 cut": row.round2Cut === null ? XL_CUT_NOT_SET : row.round2Cut,
@@ -359,7 +359,7 @@ function aboutSheet(
       ["", "cut is on file."],
       [],
       ["The round-2 cut"],
-      ["", "Spelled out rather than shown as the division's usual default of 10. The"],
+      ["", "Spelled out rather than shown as the division's usual default of 30. The"],
       ["", "column is never empty in the database, so a cut that cannot be printed is a"],
       ["", "value that could not be read — and 10 in its place would report a decision"],
       ["", "nobody took for that event."],

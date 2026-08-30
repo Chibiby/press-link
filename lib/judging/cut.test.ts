@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { competitionRank } from "./consolidate";
-import { DEFAULT_ROUND2_CUT, round1Board, round1Qualifiers, selectQualifiers } from "./cut";
+import {
+  DEFAULT_ROUND2_CUT,
+  MAX_ROUND2_CUT,
+  round1Board,
+  round1Qualifiers,
+  selectQualifiers,
+} from "./cut";
+import { ROUND1_RANK_LIMIT } from "./sheet-form";
 import type { BoardRow, ConsolidatedBoard, ContestUnit, JudgeRank } from "./types";
 
 /**
@@ -297,8 +304,15 @@ describe("selectQualifiers — the consolidated-board path", () => {
   });
 });
 
-describe("DEFAULT_ROUND2_CUT", () => {
-  it("defaults the cut to ten", () => {
-    expect(DEFAULT_ROUND2_CUT).toBe(10);
+describe("the cut's default and ceiling", () => {
+  it("defaults the cut to thirty", () => {
+    expect(DEFAULT_ROUND2_CUT).toBe(30);
+  });
+
+  it("holds the ceiling at the round 1 rank limit, which it cannot exceed", () => {
+    // A cut above what seat 1 can type would admit ranks round 1 has no way to
+    // record: the qualifier list is drawn from the sheet, not from the number.
+    expect(MAX_ROUND2_CUT).toBe(ROUND1_RANK_LIMIT);
+    expect(DEFAULT_ROUND2_CUT).toBeLessThanOrEqual(MAX_ROUND2_CUT);
   });
 });

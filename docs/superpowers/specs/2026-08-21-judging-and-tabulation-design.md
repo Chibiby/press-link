@@ -41,7 +41,15 @@ degenerate case (sum of one), so nothing special-cases panel size.
 Admin oversight lives at `/admin/judges`: create a judge, assign them to
 events, watch progress, unlock a sheet, close round 1.
 
-### D3 — Round 2 cut is per event, default 10, ties at the line all advance
+### D3 — Round 2 cut is per event, default 30 (max 50), ties at the line all advance
+
+**Amended, 2026-08-30.** The default was 10 when this was written; the division
+raised it to 30 in migration 0033, which also puts a ceiling of 50 on it —
+`MAX_ROUND2_CUT`, which is `ROUND1_RANK_LIMIT`. The two are the same number
+because the qualifier list is drawn from what seat 1 typed, so a cut above what
+round 1 can rank would admit places nobody has any way to record. The cut remains
+per event and freely editable between those bounds until seat 1 has submitted.
+Everything below is unchanged: only the number moved.
 
 `events.round2_cut`. Qualifying is `round1Rank <= cut`. Because round 1 uses
 competition ranking (1, 2, 2, 4), a three-way tie for 10th produces three rows
@@ -97,6 +105,8 @@ the file is safe to re-run; never touch a table this feature does not own.
 
 ```sql
 -- events: the per-event round 2 cut
+-- As shipped in 0018. 0033 later raised the default to 30 and replaced the
+-- constraint with `check (round2_cut between 1 and 50) not valid`.
 alter table events add column if not exists round2_cut int not null default 10;
 alter table events add constraint events_round2_cut_check check (round2_cut >= 1);
 

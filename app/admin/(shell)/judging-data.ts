@@ -66,7 +66,7 @@ interface RawEventRow {
   id: string;
   level: EventLevel;
   language: EventLanguage;
-  /** `not null default 10` since migration 0018, so this is always a real choice. */
+  /** `not null default 30` since migration 0033, so this is always a real choice. */
   round2_cut: number;
   event_types: {
     name_en: string;
@@ -471,7 +471,7 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
             round2CutUsed: null,
             resultsLockedAt: null,
           },
-        // `not null default 10` in the schema, so the fallback is unreachable and
+        // `not null default 30` in the schema, so the fallback is unreachable and
         // stands only so a read that somehow returns nothing reports "no cut on
         // file" instead of inventing the default the division happens to use.
         round2Cut: typeof row.round2_cut === "number" ? row.round2_cut : null,

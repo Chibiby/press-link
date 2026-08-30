@@ -14,11 +14,30 @@ import type { ConsolidatedBoard, ContestUnit, JudgeRank, QualifierRow } from "./
  */
 
 /**
- * The cut an event uses when nobody has set one — `events.round2_cut`'s default
- * in migration 0018. Kept here as well so a pure caller and a test can reason
- * about the rule without a database.
+ * The cut an event uses when nobody has set one — `events.round2_cut`'s default,
+ * raised from 10 to 30 in migration 0033. Kept here as well so a pure caller and a
+ * test can reason about the rule without a database.
+ *
+ * It is still only the value an untouched event starts on, never a decision anyone
+ * took for that event — which is why no surface prints it in place of a cut it
+ * could not read (see `CUT_NOT_ON_FILE`).
  */
-export const DEFAULT_ROUND2_CUT = 10;
+export const DEFAULT_ROUND2_CUT = 30;
+
+/**
+ * The largest cut an event may be set to.
+ *
+ * The same 50 as `ROUND1_RANK_LIMIT`, and the same kind of bound: a ceiling on the
+ * form rather than a rule of the contest. It cannot sensibly exceed the round-1
+ * limit, because a cut of sixty would admit ranks round 1 has no way to record —
+ * the qualifier list is drawn from what seat 1 typed, and seat 1 cannot type past
+ * fifty. `admin_set_round2_cut` enforces this server-side (migration 0033).
+ *
+ * Rows already above it are left alone rather than clamped: an event judged under
+ * a larger cut has a qualifier list drawn from that number, and moving it after
+ * the fact would silently change who advanced.
+ */
+export const MAX_ROUND2_CUT = 50;
 
 /** One unit's line on round 1's board. */
 export interface Round1Row {
