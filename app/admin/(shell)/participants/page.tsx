@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requireAdmin } from "@/app/admin/guard";
+import { ParticipantActions } from "./ParticipantActions";
 import { ParticipantFilterBar } from "./ParticipantFilterBar";
 import { ResetPaperButton } from "./ResetPaperButton";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
@@ -128,6 +129,11 @@ export default async function AdminParticipantsPage({
               <TableHead>District</TableHead>
               <TableHead className="w-20">Events</TableHead>
               <TableHead className="w-44">School paper</TableHead>
+              {/* No label. The column is one icon button per row, and a heading over
+                  it would be read as a data column that happens to be empty. */}
+              <TableHead className="w-12">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -174,6 +180,9 @@ export default async function AdminParticipantsPage({
                     </div>
                   )}
                 </TableCell>
+                <TableCell className="text-right">
+                  <ParticipantActions participantId={row.id} fullName={row.fullName} />
+                </TableCell>
               </TableRow>
             ))}
             {rows.length === 0 && (
@@ -182,7 +191,7 @@ export default async function AdminParticipantsPage({
                     `whitespace-nowrap` in its base and this cell quotes back
                     whatever was typed — a pasted line would otherwise stretch the
                     table into a sideways scroll instead of wrapping. */}
-                <TableCell colSpan={7} className="py-10 text-center whitespace-normal">
+                <TableCell colSpan={8} className="py-10 text-center whitespace-normal">
                   <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
                     {empty.message}
                   </p>
