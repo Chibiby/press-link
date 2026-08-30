@@ -34,6 +34,8 @@ function entry(
     language: "english",
     teammates: [],
     coachNames: ["Reyes, Juan"],
+    coachId: "c-1",
+    coachName: "Reyes, Juan",
     minParticipants: 1,
     judged: false,
     ...overrides,

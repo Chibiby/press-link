@@ -73,6 +73,17 @@ export interface ParticipantDetail {
   judgedEventIds: string[];
 }
 
+/** One `entry_coaches` row as the detail query selects it. */
+interface RawCoachLink {
+  participant_id: string | null;
+  coaches: {
+    id: string;
+    first_name: string;
+    middle_name: string | null;
+    last_name: string;
+  } | null;
+}
+
 interface RawDetailEntry {
   entry_id: string;
   entries: {
@@ -88,10 +99,23 @@ interface RawDetailEntry {
     entry_participants: {
       participants: { id: string; first_name: string; middle_name: string | null; last_name: string } | null;
     }[];
-    entry_coaches: {
-      coaches: { first_name: string; middle_name: string | null; last_name: string } | null;
-    }[];
+    entry_coaches: RawCoachLink[];
   } | null;
+}
+
+/**
+ * The coach an entry pairs with one contestant, or null.
+ *
+ * `participant_id` on `entry_coaches` is 0019's column and it is what makes the
+ * pairing a fact rather than an inference. A group entry leaves it null on every
+ * row — the coaches are the team's — so this correctly finds nobody there instead
+ * of returning whichever coach the query happened to order first.
+ */
+function pairedCoach(links: RawCoachLink[], participantId: string): RawCoachLink["coaches"] {
+  return (
+    (links ?? []).find((link) => link.participant_id === participantId && link.coaches)?.coaches ??
+    null
+  );
 }
 
 export async function loadParticipantDetailAction(
@@ -136,7 +160,7 @@ export async function loadParticipantDetailAction(
       supabase
         .from("entry_participants")
         .select(
-          "entry_id, entries(id, event_id, events(name, category, level, language, event_types(min_participants)), entry_participants(participants(id, first_name, middle_name, last_name)), entry_coaches(coaches(first_name, middle_name, last_name)))"
+          "entry_id, entries(id, event_id, events(name, category, level, language, event_types(min_participants)), entry_participants(participants(id, first_name, middle_name, last_name)), entry_coaches(participant_id, coaches(id, first_name, middle_name, last_name)))"
         )
         .eq("participant_id", participantId)
         .overrideTypes<RawDetailEntry[]>(),
@@ -196,6 +220,15 @@ export async function loadParticipantDetailAction(
           .map((link) => link.coaches)
           .filter((coach) => coach !== null)
           .map((coach) => surnameFirst(coach!)),
+        // The one paired with this contestant, which on an individual entry is the
+        // only coach that is theirs. A group entry pairs nobody — its coaches belong
+        // to the team — so both stay null there rather than borrowing a team coach
+        // and presenting them as this contestant's.
+        coachId: pairedCoach(entry.entry_coaches, participantId)?.id ?? null,
+        coachName: (() => {
+          const paired = pairedCoach(entry.entry_coaches, participantId);
+          return paired ? surnameFirst(paired) : null;
+        })(),
         // 1 rather than 0 when the catalog row cannot be read: a minimum of nought
         // would let the consequence list say an emptied team is fine.
         minParticipants: entry.events.event_types?.min_participants ?? 1,

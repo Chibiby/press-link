@@ -46,6 +46,18 @@ export interface ParticipantEntrySummary {
   /** The coaches named on the entry, surname first. */
   coachNames: string[];
   /**
+   * The coach paired with **this** contestant on this entry, not the entry's coaches
+   * at large.
+   *
+   * The distinction is the whole point on a group entry, where the coaches are the
+   * team's and none of them is this contestant's in particular — so both are null
+   * there. On an individual entry 0019 pairs exactly one, and it is the one a move
+   * defaults to carrying: the coach who prepared this contestant for one contest is
+   * the coach who prepares them for the next.
+   */
+  coachId: string | null;
+  coachName: string | null;
+  /**
    * The fewest contestants this entry's event allows, from `event_types`. Carried
    * here so `moveConsequences` can say what taking one out would leave behind
    * without the dialog fetching the catalog a second time.

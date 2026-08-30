@@ -151,7 +151,14 @@ export function ParticipantActions({
           if (!next) setOpen(null);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        {/* Three rows, and the middle one is the only one that scrolls.
+            `DialogContent` is a bare grid with no height cap of its own, so a move
+            form — school, warning, three selects, a consequence list — grew taller
+            than the viewport and pushed its own buttons off the bottom of the screen
+            with no way to reach them. `minmax(0,1fr)` is what lets the middle row
+            shrink below its content; `1fr` alone would not, and the overflow would go
+            on escaping. */}
+        <DialogContent className="grid max-h-[85dvh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 sm:max-w-lg">
           {open === "history" ? (
             <HistoryBody
               fullName={fullName}
@@ -185,13 +192,6 @@ export function ParticipantActions({
   );
 }
 
-/**
- * The value the coach select carries for "leave the pairing alone".
- *
- * A sentinel rather than an empty string: Radix reads "" as no selection at all and
- * would show the placeholder instead of the option the admin is actually on.
- */
-const KEEP_COACH = "keep";
 
 /** The shared waiting and failure states, so neither dialog invents its own wording. */
 function Pending({ isLoading, loadError }: { isLoading: boolean; loadError: string | null }) {
@@ -242,34 +242,40 @@ function HistoryBody({
         </DialogDescription>
       </DialogHeader>
 
-      <Pending isLoading={isLoading} loadError={loadError} />
+      {/* The only part that scrolls. Header and footer stay put, so the buttons
+          are always reachable however long the form or the list below grows. */}
+      <div className="min-h-0 space-y-4 overflow-y-auto py-4">
+        <Pending isLoading={isLoading} loadError={loadError} />
 
-      {rows && rows.length === 0 ? (
-        // Not "nothing ever happened": the log starts where migration 0024 installed
-        // it, and a contestant registered before that has no rows rather than no
-        // history. Saying which is the difference between a quiet record and a
-        // missing one.
-        <p className="py-2 text-sm text-muted-foreground">
-          Nothing has been recorded against this contestant. The action log only covers
-          changes made since it was installed, so anything earlier is not held here.
-        </p>
-      ) : null}
+        {rows && rows.length === 0 ? (
+          // Not "nothing ever happened": the log starts where migration 0024 installed
+          // it, and a contestant registered before that has no rows rather than no
+          // history. Saying which is the difference between a quiet record and a
+          // missing one.
+          <p className="py-2 text-sm text-muted-foreground">
+            Nothing has been recorded against this contestant. The action log only covers
+            changes made since it was installed, so anything earlier is not held here.
+          </p>
+        ) : null}
 
-      {rows && rows.length > 0 ? (
-        <ul className="space-y-2">
-          {rows.map((row) => (
-            <li key={row.id} className="rounded-lg border p-3">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-sm font-medium">{row.action}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">{row.when}</span>
-              </div>
-              {row.detail ? (
-                <p className="mt-1 text-sm text-muted-foreground">{row.detail}</p>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+        {rows && rows.length > 0 ? (
+          <ul className="space-y-2">
+            {rows.map((row) => (
+              <li key={row.id} className="rounded-lg border p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-sm font-medium">{row.action}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">{row.when}</span>
+                </div>
+                {row.detail ? (
+                  <p className="mt-1 text-sm text-muted-foreground">{row.detail}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      <DialogFooter showCloseButton />
     </>
   );
 }
@@ -298,55 +304,61 @@ function ViewBody({
         </DialogDescription>
       </DialogHeader>
 
-      <Pending isLoading={isLoading} loadError={loadError} />
+      {/* The only part that scrolls. Header and footer stay put, so the buttons
+          are always reachable however long the form or the list below grows. */}
+      <div className="min-h-0 space-y-4 overflow-y-auto py-4">
+        <Pending isLoading={isLoading} loadError={loadError} />
 
-      {detail ? (
-        detail.entries.length === 0 ? (
-          // Not an error and not a blank panel: a learner on the roster with no entry
-          // is an ordinary state, and it is one an admin may be checking for.
-          <p className="py-2 text-sm text-muted-foreground">
-            This contestant is on the roster but is not entered in any event.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {detail.entries.map((entry) => (
-              <li key={entry.entryId} className="rounded-lg border p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{entry.eventName}</span>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {slotLabel(entry.level, entry.language)}
-                  </Badge>
-                  <Badge variant="outline" className="text-[10px] capitalize">
-                    {entry.category}
-                  </Badge>
-                  {entry.judged && (
-                    <Badge variant="outline" className="text-[10px]">
-                      <Gavel className="size-3" />
-                      Ranked
+        {detail ? (
+          detail.entries.length === 0 ? (
+            // Not an error and not a blank panel: a learner on the roster with no entry
+            // is an ordinary state, and it is one an admin may be checking for.
+            <p className="py-2 text-sm text-muted-foreground">
+              This contestant is on the roster but is not entered in any event.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {detail.entries.map((entry) => (
+                <li key={entry.entryId} className="rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{entry.eventName}</span>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {slotLabel(entry.level, entry.language)}
                     </Badge>
-                  )}
-                </div>
-                <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
-                  <div className="flex gap-2">
-                    <dt className="w-20 shrink-0">Coach</dt>
-                    <dd>{entry.coachNames.length ? entry.coachNames.join("; ") : "None named"}</dd>
+                    <Badge variant="outline" className="text-[10px] capitalize">
+                      {entry.category}
+                    </Badge>
+                    {entry.judged && (
+                      <Badge variant="outline" className="text-[10px]">
+                        <Gavel className="size-3" />
+                        Ranked
+                      </Badge>
+                    )}
                   </div>
-                  {entry.category === "group" && (
+                  <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
                     <div className="flex gap-2">
-                      <dt className="w-20 shrink-0">Team</dt>
-                      <dd>
-                        {entry.teammates.length
-                          ? entry.teammates.join("; ")
-                          : "No other contestants on this entry"}
-                      </dd>
+                      <dt className="w-20 shrink-0">Coach</dt>
+                      <dd>{entry.coachNames.length ? entry.coachNames.join("; ") : "None named"}</dd>
                     </div>
-                  )}
-                </dl>
-              </li>
-            ))}
-          </ul>
-        )
-      ) : null}
+                    {entry.category === "group" && (
+                      <div className="flex gap-2">
+                        <dt className="w-20 shrink-0">Team</dt>
+                        <dd>
+                          {entry.teammates.length
+                            ? entry.teammates.join("; ")
+                            : "No other contestants on this entry"}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
+      </div>
+
+      <DialogFooter showCloseButton />
     </>
   );
 }
@@ -368,9 +380,11 @@ function MoveBody({
 }) {
   const [fromEntryId, setFromEntryId] = useState<string>("");
   const [toEventId, setToEventId] = useState<string>("");
-  // "" means keep whoever the source entry paired with this contestant, which is
-  // the right default: the coach who prepared them usually still coaches them.
-  const [coachId, setCoachId] = useState<string>(KEEP_COACH);
+  // null means the admin has not touched the select, in which case the coach already
+  // paired with this contestant on the entry they are leaving is the answer — see
+  // `selectedCoachId`. Held as "untouched" rather than seeded with that id, because
+  // the id is not known until the detail load lands and the source entry is settled.
+  const [coachId, setCoachId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -389,6 +403,17 @@ function MoveBody({
   );
 
   const destination = destinations.find((row) => row.event.id === toEventId)?.event;
+
+  /**
+   * The coach the new entry will name: whoever the admin picked, or — until they
+   * pick — the one already paired with this contestant on the entry they are
+   * leaving. Exactly one, which is what an individual entry allows (0019).
+   *
+   * "" when there is neither, which is a group entry the contestant has no pairing
+   * on, or a school with nobody on its coach roster. Radix reads "" as no selection
+   * and shows the placeholder, which is the honest state: nobody is named yet.
+   */
+  const selectedCoachId = coachId ?? source?.coachId ?? "";
 
   const notes = useMemo(() => {
     if (!detail || !source || !destination) return [];
@@ -417,7 +442,7 @@ function MoveBody({
         // Only ever true once the consequences above have been shown and clicked
         // through. The RPC refuses a silent discard without it.
         confirmDiscard: confirming,
-        coachId: coachId === KEEP_COACH ? null : coachId,
+        coachId: selectedCoachId || null,
       });
       if ("error" in result) {
         setError(result.error);
@@ -441,178 +466,201 @@ function MoveBody({
         </DialogDescription>
       </DialogHeader>
 
-      <Pending isLoading={isLoading} loadError={loadError} />
+      {/* The only part that scrolls. Header and footer stay put, so the buttons
+          are always reachable however long the form grows. */}
+      <div className="min-h-0 space-y-4 overflow-y-auto py-4">
+        <Pending isLoading={isLoading} loadError={loadError} />
 
-      {detail ? (
-        <div className="rounded-lg border bg-muted/40 p-3 text-sm">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <School className="size-4 shrink-0 text-muted-foreground" />
-            {/* The school, said plainly and before anything is chosen. Every list below
-                is scoped to it — the coaches are its roster, the destination entry
-                would be its entry — and an admin working down a filtered table has no
-                other reminder of whose contestant this is. */}
-            <span className="font-medium">{detail.schoolName || "School not recorded"}</span>
-            {detail.districtName ? (
-              <span className="text-muted-foreground">· {detail.districtName}</span>
-            ) : null}
-            <span className="text-muted-foreground">· No. {detail.numberLabel}</span>
+        {detail ? (
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <School className="size-4 shrink-0 text-muted-foreground" />
+              {/* The school, said plainly and before anything is chosen. Every list below
+                  is scoped to it — the coaches are its roster, the destination entry
+                  would be its entry — and an admin working down a filtered table has no
+                  other reminder of whose contestant this is. */}
+              <span className="font-medium">{detail.schoolName || "School not recorded"}</span>
+              {detail.districtName ? (
+                <span className="text-muted-foreground">· {detail.districtName}</span>
+              ) : null}
+              <span className="text-muted-foreground">· No. {detail.numberLabel}</span>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {detail && entries.length > 0 ? (
-        // Shown before the form and not after it. This is an administrative
-        // correction to work a school filed and can no longer reach: the school will
-        // not be asked, will not be told, and will find their entry changed the next
-        // time they open it. That is the point of the feature and it is also the
-        // thing an admin should have in mind while choosing.
-        <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-          <TriangleAlert className="size-4 shrink-0 translate-y-0.5 text-amber-600 dark:text-amber-500" />
-          <p className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">This changes a school&rsquo;s entry.</span>{" "}
-            The school is not asked and is not notified, and the change is recorded against
-            this contestant under your name. Where the school can still edit its own entries,
-            ask them to correct it instead.
+        {detail && entries.length > 0 ? (
+          // Shown before the form and not after it. This is an administrative
+          // correction to work a school filed and can no longer reach: the school will
+          // not be asked, will not be told, and will find their entry changed the next
+          // time they open it. That is the point of the feature and it is also the
+          // thing an admin should have in mind while choosing.
+          <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+            <TriangleAlert className="size-4 shrink-0 translate-y-0.5 text-amber-600 dark:text-amber-500" />
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">This changes a school&rsquo;s entry.</span>{" "}
+              The school is not asked and is not notified, and the change is recorded against
+              this contestant under your name. Where the school can still edit its own entries,
+              ask them to correct it instead.
+            </p>
+          </div>
+        ) : null}
+
+        {detail && entries.length === 0 ? (
+          <p className="py-2 text-sm text-muted-foreground">
+            This contestant is not entered in anything, so there is nothing to move. A school
+            adds them to an event from its own entry form.
           </p>
-        </div>
-      ) : null}
+        ) : null}
 
-      {detail && entries.length === 0 ? (
-        <p className="py-2 text-sm text-muted-foreground">
-          This contestant is not entered in anything, so there is nothing to move. A school
-          adds them to an event from its own entry form.
-        </p>
-      ) : null}
+        {detail && entries.length > 0 ? (
+          <div className="space-y-4">
+            {entries.length > 1 ? (
+              <div className="space-y-2">
+                <Label htmlFor="move-from">Move them out of</Label>
+                <Select
+                  value={source?.entryId ?? ""}
+                  onValueChange={(value) => {
+                    setFromEntryId(value);
+                    setToEventId("");
+                    // The coach too: "keep" means the pairing on the *source* entry, and
+                    // a different source is a different pairing. Leaving a chosen coach
+                    // selected across that change would carry one entry's answer onto
+                    // another entry's question.
+                    setCoachId(null);
+                    setConfirming(false);
+                  }}
+                >
+                  <SelectTrigger id="move-from" className="w-full">
+                    <SelectValue placeholder="Which entry" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {entries.map((entry) => (
+                      <SelectItem key={entry.entryId} value={entry.entryId}>
+                        {eventOptionLabel({
+                          name: entry.eventName,
+                          level: entry.level,
+                          language: entry.language,
+                        })}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              // A field rather than a sentence, so the three rows of this form line up
+              // and read as one thing: out of, into, with whom. A contestant in a single
+              // event has nothing to choose here, and a select of one would invite them
+              // to try.
+              <div className="space-y-2">
+                <Label>Move them out of</Label>
+                <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  {source
+                    ? eventOptionLabel({
+                        name: source.eventName,
+                        level: source.level,
+                        language: source.language,
+                      })
+                    : ""}
+                </p>
+              </div>
+            )}
 
-      {detail && entries.length > 0 ? (
-        <div className="space-y-4">
-          {entries.length > 1 ? (
             <div className="space-y-2">
-              <Label htmlFor="move-from">Move them out of</Label>
+              <Label htmlFor="move-to">Move them into</Label>
               <Select
-                value={source?.entryId ?? ""}
+                value={toEventId}
                 onValueChange={(value) => {
-                  setFromEntryId(value);
-                  setToEventId("");
-                  // The coach too: "keep" means the pairing on the *source* entry, and
-                  // a different source is a different pairing. Leaving a chosen coach
-                  // selected across that change would carry one entry's answer onto
-                  // another entry's question.
-                  setCoachId(KEEP_COACH);
+                  setToEventId(value);
                   setConfirming(false);
+                  setError(null);
                 }}
+                disabled={!source}
               >
-                <SelectTrigger id="move-from" className="w-full">
-                  <SelectValue placeholder="Which entry" />
+                <SelectTrigger id="move-to" className="w-full">
+                  <SelectValue placeholder="Choose an event" />
                 </SelectTrigger>
                 <SelectContent>
-                  {entries.map((entry) => (
-                    <SelectItem key={entry.entryId} value={entry.entryId}>
-                      {eventOptionLabel({
-                        name: entry.eventName,
-                        level: entry.level,
-                        language: entry.language,
-                      })}
+                  {destinations.map((row) => (
+                    // Disabled rather than absent, with the obstacle named: an admin who
+                    // cannot find an event learns nothing, and one who finds it greyed out
+                    // with "Already entered in this event" learns what they came for.
+                    <SelectItem
+                      key={row.event.id}
+                      value={row.event.id}
+                      disabled={row.disabledReason !== null}
+                    >
+                      <span className="flex flex-col items-start gap-0.5">
+                        <span>{row.label}</span>
+                        {row.disabledReason ? (
+                          // On its own line rather than appended with a dash. Sixty-odd
+                          // options each carrying "News Writing · Elem · Eng — Already
+                          // entered in this event" on one line is a list nobody scans;
+                          // the contest name has to stay the thing the eye lands on.
+                          <span className="text-xs">{row.disabledReason}</span>
+                        ) : null}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Currently in{" "}
-              <span className="font-medium text-foreground">
-                {source
-                  ? eventOptionLabel({
-                      name: source.eventName,
-                      level: source.level,
-                      language: source.language,
-                    })
-                  : ""}
-              </span>
-              .
-            </p>
-          )}
 
-          <div className="space-y-2">
-            <Label htmlFor="move-to">Move them into</Label>
-            <Select
-              value={toEventId}
-              onValueChange={(value) => {
-                setToEventId(value);
-                setConfirming(false);
-                setError(null);
-              }}
-              disabled={!source}
-            >
-              <SelectTrigger id="move-to" className="w-full">
-                <SelectValue placeholder="Choose an event" />
-              </SelectTrigger>
-              <SelectContent>
-                {destinations.map((row) => (
-                  // Disabled rather than absent, with the obstacle named: an admin who
-                  // cannot find an event learns nothing, and one who finds it greyed out
-                  // with "Already entered in this event" learns what they came for.
-                  <SelectItem
-                    key={row.event.id}
-                    value={row.event.id}
-                    disabled={row.disabledReason !== null}
-                  >
-                    {row.label}
-                    {row.disabledReason ? ` — ${row.disabledReason}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="move-coach">Coach on the new entry</Label>
-            <Select value={coachId} onValueChange={setCoachId} disabled={!source}>
-              <SelectTrigger id="move-coach" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={KEEP_COACH}>
-                  {source?.coachNames.length
-                    ? `Keep ${source.coachNames.join("; ")}`
-                    : "Keep the current coach"}
-                </SelectItem>
-                {/* This school's roster and no other. A coach from elsewhere on an
-                    entry would be a worse mistake than the one being corrected, which
-                    is why the RPC checks the school again. */}
-                {detail.coaches.map((coach) => (
-                  <SelectItem key={coach.id} value={coach.id}>
-                    {coach.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {detail.coaches.length === 0
-                ? "This school has no coaches on its roster, so there is nobody to choose. The pairing on the current entry is carried over."
-                : "An individual entry names one coach per contestant. A team shares its coaches, so a choice here is added to the team rather than paired with this contestant."}
-            </p>
-          </div>
-
-          {notes.length > 0 && (
-            <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-              <p className="text-sm font-medium">Before you move them</p>
-              <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                {notes.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
+            <div className="space-y-2">
+              <Label htmlFor="move-coach">Coach</Label>
+              <Select
+                value={selectedCoachId}
+                onValueChange={setCoachId}
+                disabled={!source || detail.coaches.length === 0}
+              >
+                <SelectTrigger id="move-coach" className="w-full">
+                  <SelectValue placeholder="Choose a coach" />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* This school's roster and no other. A coach from elsewhere on an
+                      entry would be a worse mistake than the one being corrected, which
+                      is why the RPC checks the school again. One choice, because a
+                      contestant has one coach. */}
+                  {detail.coaches.map((coach) => (
+                    <SelectItem key={coach.id} value={coach.id}>
+                      {coach.name}
+                      {coach.id === source?.coachId ? " — coaches them now" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {detail.coaches.length === 0
+                  ? "This school has nobody on its coach roster, so there is nobody to name."
+                  : destination?.category === "group"
+                    ? // A team's coaches are the team's. Said here because the select
+                      // looks the same in both cases and the effect is not.
+                      "A team shares its coaches, so this one is only added if that entry has none yet."
+                    : source?.coachName
+                      ? `One coach per contestant. ${source.coachName} coaches them in ${source.eventName}, and carries over unless you change this.`
+                      : "One coach per contestant. Nobody is paired with them on their current entry, so choose who takes them."}
+              </p>
             </div>
-          )}
-        </div>
-      ) : null}
 
-      {error ? (
-        <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+            {notes.length > 0 && (
+              <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+                <p className="text-sm font-medium">Before you move them</p>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                  {notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+
+      </div>
 
       <DialogFooter>
         <Button variant="outline" disabled={isPending} onClick={onDone}>
