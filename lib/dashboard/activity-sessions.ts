@@ -46,6 +46,8 @@ import {
 export type ActivityEventKind =
   | "participant-added"
   | "participant-removed"
+  /** An admin moved a contestant from one event to another (0035). */
+  | "participant-moved"
   | "coach-added"
   | "coach-removed"
   | "entry-submitted"
@@ -116,6 +118,7 @@ const TIME_OF_DAY = new Intl.DateTimeFormat("en-PH", {
 const UNGROUPED_KIND: Record<ActivityEventKind, ActivityKind> = {
   "participant-added": "participant",
   "participant-removed": "participant",
+  "participant-moved": "participant",
   "coach-added": "coach",
   "coach-removed": "coach",
   "entry-submitted": "entry",
@@ -133,6 +136,7 @@ const UNGROUPED_KIND: Record<ActivityEventKind, ActivityKind> = {
 const KIND_HREF: Record<ActivityEventKind, string> = {
   "participant-added": "/admin/participants",
   "participant-removed": "/admin/participants",
+  "participant-moved": "/admin/participants",
   "coach-added": "/admin/coaches",
   "coach-removed": "/admin/coaches",
   "entry-submitted": "/admin/entries",
@@ -227,6 +231,15 @@ export function describeSession(counts: KindCounts, school: string, atLeast: boo
     // keeps deleted people and deleted entries in predicates of their own instead
     // of one list mixing learners with events.
     predicates.push(`withdrew ${count(tally("entry-withdrawn"), "entry", "entries", atLeast)}`);
+  }
+  if (tally("participant-moved") > 0) {
+    // Its own predicate rather than a line in `added` or `removed`: a move is
+    // neither, and it is the only kind in this vocabulary an administrator writes
+    // rather than a school. "moved 1 contestant between events" says who it happened
+    // to without claiming the school did it.
+    predicates.push(
+      `moved ${count(tally("participant-moved"), "contestant", "contestants", atLeast)} between events`
+    );
   }
   if (tally("paper-updated") > 0) predicates.push("updated its school paper");
   if (tally("paper-answered") > 0) predicates.push("answered the school paper question");

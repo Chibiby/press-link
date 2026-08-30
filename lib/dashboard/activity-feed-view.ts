@@ -41,6 +41,7 @@ const SESSION_PREFIX = "session:";
 const LOGGED_KIND: Record<ActivityEventKind, true> = {
   "participant-added": true,
   "participant-removed": true,
+  "participant-moved": true,
   "coach-added": true,
   "coach-removed": true,
   "entry-submitted": true,

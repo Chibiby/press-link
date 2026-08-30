@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { checkAdmin } from "@/app/admin/guard";
+import { auditAction, auditLogState } from "@/lib/admin/audit-log";
 import type { EventCategory, EventLanguage, EventLevel } from "@/lib/events-catalog";
 import { formatParticipantNumber } from "@/lib/roster/limits";
 import { surnameFirst } from "@/lib/roster/names";
@@ -59,6 +60,13 @@ export interface ParticipantDetail {
   entries: ParticipantEntrySummary[];
   /** The whole catalog, in the order the events matrix lists it. */
   events: MoveEventOption[];
+  /**
+   * This school's coaches, so a move can name the one who takes the contestant in
+   * the contest they are moving into. That school's own roster and no other: a
+   * coach from elsewhere on an entry would be a worse mistake than the one being
+   * corrected, which is why the RPC checks it again.
+   */
+  coaches: { id: string; name: string }[];
   /** Events this school already has an entry in — not only this participant's. */
   schoolEventIds: string[];
   /** Events a judge has ranked in, so a move can say what it will cost. */
@@ -147,13 +155,22 @@ export async function loadParticipantDetailAction(
   // Both are read for the school, not for the participant: whether a destination
   // entry already exists is a fact about the school, and it is what tells the dialog
   // whether this move creates one.
-  const [{ data: schoolEntries }, { data: judgedSheets }] = await Promise.all([
+  const [{ data: schoolEntries }, { data: judgedSheets }, { data: schoolCoaches }] =
+    await Promise.all([
     supabase.from("entries").select("event_id").eq("school_id", participant.school_id),
     // Which events have been ranked. A submitted sheet is exactly a sheet with ranks
     // on it — writing a sheet is what submits it (N6) — so this answers the question
     // without joining judge_ranks. One row per judge per round, small enough to read
     // whole, and asking per event would be a query per option in the dropdown.
     supabase.from("judge_sheets").select("event_id").not("submitted_at", "is", null),
+    supabase
+      .from("coaches")
+      .select("id, first_name, middle_name, last_name")
+      .eq("school_id", participant.school_id)
+      .order("last_name")
+      .overrideTypes<
+        { id: string; first_name: string; middle_name: string | null; last_name: string }[]
+      >(),
   ]);
 
   const judgedEventIds = [
@@ -198,6 +215,10 @@ export async function loadParticipantDetailAction(
       events: events ?? [],
       schoolEventIds: (schoolEntries ?? []).map((row) => row.event_id as string),
       judgedEventIds,
+      coaches: (schoolCoaches ?? []).map((coach) => ({
+        id: coach.id,
+        name: surnameFirst(coach),
+      })),
     },
   };
 }
@@ -221,6 +242,8 @@ export async function moveParticipantEventAction(input: {
   fromEntryId: string;
   toEventId: string;
   confirmDiscard: boolean;
+  /** null keeps whoever the source entry paired with this contestant. */
+  coachId: string | null;
 }): Promise<{ error: string } | { success: true; notes: string[] }> {
   const check = await checkAdmin();
   if (!check.isAdmin) {
@@ -237,6 +260,7 @@ export async function moveParticipantEventAction(input: {
     p_from_entry_id: input.fromEntryId,
     p_to_event_id: input.toEventId,
     p_discard_ranks: input.confirmDiscard,
+    p_coach_id: input.coachId,
   });
 
   if (error) {
@@ -248,6 +272,7 @@ export async function moveParticipantEventAction(input: {
     destinationEntryCreated?: boolean;
     sourceEntryDeleted?: boolean;
     coachCarried?: boolean;
+    coachChosen?: boolean;
     ranksDiscarded?: number;
   };
 
@@ -274,4 +299,93 @@ export async function moveParticipantEventAction(input: {
   revalidatePath("/entry");
 
   return { success: true as const, notes };
+}
+
+/** One line of a contestant's history, already worded and formatted. */
+export interface ParticipantHistoryRow {
+  id: string;
+  /** "23 Aug 2026, 4:12 PM" in Manila — the division's clock, pinned like every other formatter. */
+  when: string;
+  /** `auditAction`'s phrase for the kind, so this dialog and the audit log agree. */
+  action: string;
+  /** What the row denormalised at write time: a name, an event, or a move's two events. */
+  detail: string | null;
+}
+
+const HISTORY_WHEN = new Intl.DateTimeFormat("en-PH", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Manila",
+});
+
+/**
+ * What has been recorded against this contestant, newest first.
+ *
+ * Read from `activity_events` by `subject_id`, which is the participant's own id on
+ * every kind that is about a person — 0025 stamps it on `participant-added` and
+ * `participant-removed`, and 0035's move does the same. So this is the contestant's
+ * history and not their school's: the entry rows a move also produces are stamped
+ * with an *entry* id and belong to `/admin/audit-logs`, which is the surface for
+ * reading the division's whole account of itself.
+ *
+ * The log only reaches back to when it was installed. A contestant registered before
+ * migration 0024 has nothing here, and the dialog says so rather than showing an
+ * empty list that reads as "nothing ever happened".
+ */
+export async function loadParticipantHistoryAction(
+  participantId: string
+): Promise<{ error: string } | { rows: ParticipantHistoryRow[] }> {
+  const check = await checkAdmin();
+  if (!check.isAdmin) {
+    return {
+      error:
+        check.reason === "unauthenticated"
+          ? "Not authenticated."
+          : "You are not authorized to read the activity log.",
+    };
+  }
+
+  const { data, error } = await check.supabase
+    .from("activity_events")
+    // `at desc, id desc`, like the audit page: a single action can stamp several
+    // rows in one instant, and an unstable order shuffles them between two reads.
+    .select("id, at, kind, label")
+    .eq("subject_id", participantId)
+    .order("at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(100)
+    .overrideTypes<{ id: number; at: string; kind: string; label: string | null }[]>();
+
+  if (error) {
+    // `auditLogState` tells a missing table from a real failure, and the two need
+    // different sentences: one is a log that was never installed, the other is a log
+    // that would not answer. Reporting the second as the first is how a broken audit
+    // trail looks healthy.
+    console.error("loadParticipantHistoryAction", error);
+    return {
+      error:
+        auditLogState(error) === "absent"
+          ? "The activity log is not installed on this database, so no history was recorded."
+          : "The activity log could not be read.",
+    };
+  }
+
+  const rows: ParticipantHistoryRow[] = [];
+  for (const row of data ?? []) {
+    const at = Date.parse(row.at);
+    // `at` is not null in the schema, so this is unreachable against a real
+    // database — and a row rendering as "Invalid Date" is worse than one dropped.
+    if (!Number.isFinite(at)) continue;
+    rows.push({
+      id: String(row.id),
+      when: HISTORY_WHEN.format(at),
+      action: auditAction(row.kind),
+      detail: (row.label ?? "").trim() || null,
+    });
+  }
+
+  return { rows };
 }

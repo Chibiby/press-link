@@ -37,6 +37,17 @@ function legacyItem(id: string, at: string): ActivityItem {
 }
 
 describe("describeSession", () => {
+  it("gives a move its own predicate, since it is neither an addition nor a removal", () => {
+    // The only kind in this vocabulary an administrator writes rather than a school,
+    // so it must not fold into "added" or "removed" and read as the school's doing.
+    expect(describeSession({ "participant-moved": 2 }, SCHOOL, false)).toBe(
+      "Bagong Silang ES moved 2 contestants between events"
+    );
+    expect(describeSession({ "participant-moved": 1 }, SCHOOL, false)).toBe(
+      "Bagong Silang ES moved 1 contestant between events"
+    );
+  });
+
   it("writes the sentence the requirement asked for", () => {
     expect(
       describeSession(
