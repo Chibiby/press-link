@@ -8,9 +8,11 @@ import {
   type EventJudgingFacts,
   type RawIndexEvent,
 } from "@/lib/judging/event-index";
-import type { ContestUnit, JudgeRank } from "@/lib/judging/types";
+import { TABULATION_COLUMNS } from "@/lib/judging/tabulation";
+import type { ContestUnit, JudgeRank, TabulationRow as SheetRow } from "@/lib/judging/types";
 
 import {
+  buildEventSheetWorkbook,
   buildJudgesWorkbook,
   buildTabulatorsWorkbook,
   PANEL_HEADER,
@@ -413,6 +415,115 @@ describe("buildTabulatorsWorkbook", () => {
   it("heads the tabulation sheet with every column, in order", () => {
     const sheet = book.getWorksheet("Sheets by event")!;
     expect(rowValues(sheet, HEADER_ROW)).toEqual([...TABULATION_HEADER]);
+  });
+
+  it("writes a real xlsx file", async () => {
+    const buffer = Buffer.from(await book.xlsx.writeBuffer());
+    expect(buffer.subarray(0, 2).toString("latin1")).toBe("PK");
+  });
+});
+
+/**
+ * One event's sheet, as the tabulators' page has it: two qualifiers placed and one
+ * contestant eliminated in round 1, who therefore has no round-2 figures and no
+ * final placement at all (N4).
+ */
+function sheetRow(code: string, overrides: Partial<SheetRow> = {}): SheetRow {
+  return {
+    unitKey: `u-${code}`,
+    code,
+    entryId: `e-${code}`,
+    participantId: `u-${code}`,
+    qualified: true,
+    round1Points: 1,
+    round1Rank: 1,
+    round2Points: 6,
+    round2Rank: 1,
+    finalPoints: 7,
+    finalRank: 1,
+    name: "Dela Cruz, Maria L.",
+    coaches: ["Reyes, Juan", "Santos, Ana"],
+    schoolPaper: "The Torch",
+    schoolName: "Sarangani NHS",
+    districtName: "Alabel",
+    ...overrides,
+  };
+}
+
+const EVENT_ROWS: SheetRow[] = [
+  sheetRow("0001"),
+  sheetRow("0002", { round1Rank: 2, round1Points: 2, round2Points: 8, round2Rank: 2, finalPoints: 10, finalRank: 2 }),
+  sheetRow("0003", {
+    qualified: false,
+    round1Points: null,
+    round1Rank: null,
+    round2Points: null,
+    round2Rank: null,
+    finalPoints: null,
+    finalRank: null,
+  }),
+];
+
+describe("buildEventSheetWorkbook", () => {
+  const row = UNJUDGED[0];
+  const book = buildEventSheetWorkbook({ row, rows: EVENT_ROWS, unidentified: [] }, AT);
+
+  it("names the event before any figure, because a results sheet gets printed", () => {
+    expect(book.worksheets.map((s) => s.name)).toEqual(["About this export", "Results sheet"]);
+    const text = sheetText(book.getWorksheet("About this export")!);
+    expect(text).toContain(row.typeNameEn);
+    expect(text).toContain(row.slotLabel);
+    expect(text).toContain(AT);
+    expect(text).toContain(`/admin/tabulators/${row.eventId}`);
+  });
+
+  it("heads the sheet with the page's own columns, in the page's own order", () => {
+    // The guarantee TABULATION_COLUMNS exists for: the file a tabulator downloads
+    // must not have different columns in a different order from the screen it came
+    // from. A literal header in the builder is how that would come apart.
+    const sheet = book.getWorksheet("Results sheet")!;
+    expect(rowValues(sheet, HEADER_ROW)).toEqual(TABULATION_COLUMNS.map((c) => c.label));
+  });
+
+  it("writes a rank as a number, so the sheet can be sorted on it", () => {
+    const sheet = book.getWorksheet("Results sheet")!;
+    const first = rowValues(sheet, HEADER_ROW + 1);
+    expect(first[0]).toBe("0001");
+    expect(first[TABULATION_COLUMNS.findIndex((c) => c.key === "finalRank")]).toBe(1);
+  });
+
+  it("prints an absent placement as an em dash, never as a nought", () => {
+    // 0 would sort as a winning place. The eliminated contestant has no round-2
+    // anything and no final rank at all — that is an absence, not a score.
+    const sheet = book.getWorksheet("Results sheet")!;
+    const eliminated = rowValues(sheet, HEADER_ROW + 3);
+    expect(eliminated[0]).toBe("0003");
+    expect(eliminated[TABULATION_COLUMNS.findIndex((c) => c.key === "finalRank")]).toBe("—");
+    expect(eliminated[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Points")]).toBe("—");
+  });
+
+  it("joins coaches with semicolons, since a name may carry a comma", () => {
+    const sheet = book.getWorksheet("Results sheet")!;
+    expect(rowValues(sheet, HEADER_ROW + 1)[TABULATION_COLUMNS.findIndex((c) => c.key === "coach")]).toBe(
+      "Reyes, Juan; Santos, Ana"
+    );
+  });
+
+  it("names the codes it could not identify, rather than leaving them to be noticed", () => {
+    const flawed = buildEventSheetWorkbook(
+      { row, rows: EVENT_ROWS, unidentified: ["0007"] },
+      AT
+    );
+    expect(sheetText(flawed.getWorksheet("About this export")!)).toContain("0007");
+  });
+
+  it("keeps the sheet and explains an empty one, worded for which absence it is", () => {
+    // Dropping the sheet would read as an export that never covered this event.
+    const noCut = buildEventSheetWorkbook({ row: NO_CUT[0], rows: [], unidentified: [] }, AT);
+    expect(sheetText(noCut.getWorksheet("Results sheet")!)).toContain(XL_CUT_NOT_SET);
+
+    const empty = buildEventSheetWorkbook({ row, rows: [], unidentified: [] }, AT);
+    expect(sheetText(empty.getWorksheet("Results sheet")!)).toContain("no contestants on file");
   });
 
   it("writes a real xlsx file", async () => {

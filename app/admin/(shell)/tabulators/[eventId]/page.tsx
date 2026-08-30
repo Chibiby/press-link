@@ -97,14 +97,15 @@ export default async function EventSheetPage({
                 Panel boards
               </Link>
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled
-              title="No per-event workbook has been written yet. The export on the sheets index covers every event, this one among them."
-            >
-              <Download />
-              Export sheet
+            {/* A plain link, not a client-side fetch: the browser saves what a
+                navigation returns, and the handler answers a caller it refuses with
+                a status rather than with a redirect to a login page — which is what
+                would otherwise be saved under an .xlsx name. */}
+            <Button asChild size="sm" variant="outline">
+              <a href={`/admin/tabulators/${row.eventId}/export`}>
+                <Download />
+                Export sheet
+              </a>
             </Button>
           </>
         }

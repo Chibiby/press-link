@@ -4,6 +4,12 @@ import type { EventCategory } from "@/lib/events-catalog";
 import { boardProgress } from "@/lib/judging/consolidate";
 import { eventIndexSummary, type EventIndexRow } from "@/lib/judging/event-index";
 import { EVENT_JUDGING_LABEL } from "@/lib/judging/sheet-state";
+import {
+  TABULATION_COLUMNS,
+  tabulationCell,
+  tabulationSummary,
+} from "@/lib/judging/tabulation";
+import type { TabulationRow as SheetRow } from "@/lib/judging/types";
 
 import { borderRow } from "./borders";
 
@@ -440,5 +446,186 @@ export function buildTabulatorsWorkbook(
   const workbook = new ExcelJS.Workbook();
   aboutSheet(workbook, "tabulators", generatedAt);
   tabulationSheet(workbook, rows);
+  return workbook;
+}
+
+/**
+ * One event's identified results sheet, as a workbook.
+ *
+ * The third builder, and the odd one out: the two above are the index — every
+ * event, one line each — while this is a single event's sheet, the same rows
+ * `/admin/tabulators/[eventId]` renders. A tabulator wants both. The index says
+ * which events are done; the sheet is what gets checked, initialled and filed for
+ * one contest, and it is the one that has to leave the building.
+ *
+ * ## Why it takes the loaded sheet rather than the event id
+ *
+ * `lib/` does not import from `app/`, so this cannot fetch. `EventSheetExportInput`
+ * is structurally what `loadEventSheet` already returns, which means the route
+ * hands its loaded sheet straight over and the file and the page are built from
+ * one read of one query. A builder with a query of its own is a builder that can
+ * disagree with the screen it was downloaded from.
+ */
+export interface EventSheetExportInput {
+  row: EventIndexRow;
+  /** The sheet in placement order, identities joined on. Empty when nothing is ranked. */
+  rows: SheetRow[];
+  /** Codes whose identity could not be joined — printed, never dropped. */
+  unidentified: string[];
+}
+
+/**
+ * The sheet's header, taken from `TABULATION_COLUMNS` rather than written out.
+ *
+ * That array is the one list of what a tabulator's sheet contains and in which
+ * order, and the comment on it says why it is shared: the spreadsheet must not have
+ * different columns in a different order from the page it was downloaded from. A
+ * literal here is precisely how that would come apart.
+ */
+export const EVENT_SHEET_HEADER = TABULATION_COLUMNS.map((column) => column.label);
+
+/**
+ * The sheet's rows.
+ *
+ * Every cell goes through `tabulationCell`, the same function the on-screen table
+ * calls, so an absent rank is an em dash in both places and a blank never means two
+ * different things. The one departure: a numeric column that *has* a figure carries
+ * it as a number rather than as its text, because a rank stored as text sorts
+ * 1, 10, 11, 2 in a spreadsheet — and sorting the sheet is most of what a tabulator
+ * opens it to do. The em dash is untouched by that, so the absence still reads
+ * identically to the page.
+ */
+export function toEventSheetRows(rows: SheetRow[]): Record<string, Cell>[] {
+  return rows.map((row) => {
+    const record: Record<string, Cell> = {};
+    for (const column of TABULATION_COLUMNS) {
+      const value = column.key === "coach" ? null : row[column.key];
+      record[column.label] =
+        column.numeric && typeof value === "number" ? value : tabulationCell(row, column.key);
+    }
+    return record;
+  });
+}
+
+/**
+ * What this sheet is a sheet of, and how to read it.
+ *
+ * The index workbooks explain how to read a figure. This one has to say which
+ * contest it belongs to first: a results sheet with no event on it is a page of
+ * numbers, and it is the half of the file that gets printed and signed.
+ *
+ * The unidentified count sits here rather than only on the sheet because it is a
+ * fault, and a fault has to be met before the numbers it qualifies. The rows are
+ * kept either way — see `attachIdentities` for why a dropped row would be worse.
+ */
+function eventAboutSheet(
+  workbook: ExcelJS.Workbook,
+  { row, rows, unidentified }: EventSheetExportInput,
+  generatedAt: string
+): ExcelJS.Worksheet {
+  const summary = tabulationSummary(rows);
+  const sheet = workbook.addWorksheet("About this export");
+  sheet.pageSetup = { ...sheet.pageSetup, orientation: "portrait" };
+  sheet.columns = [{ width: 16 }, { width: 82 }];
+
+  const unidentifiedLine =
+    unidentified.length === 0
+      ? "None. Every contestant on this sheet was joined back to a school."
+      : `${unidentified.length} — ${unidentified.join(", ")}. Their ranks are correct and their rows are kept, marked Unidentified. A dropped row would read as a contestant who never entered.`;
+
+  writeAoa(
+    sheet,
+    [
+      ["Press Link — results sheet"],
+      [],
+      ["Event", row.typeNameEn],
+      ["Filipino name", filipinoName(row) || row.typeNameEn],
+      ["Level · Language", row.slotLabel],
+      ["Category", CATEGORY_LABEL[row.category]],
+      ["Entries", row.entries],
+      ["Round 2 cut", row.round2Cut === null ? XL_CUT_NOT_SET : row.round2Cut],
+      ["Status", EVENT_JUDGING_LABEL[row.state.status]],
+      ["Why", row.state.reason],
+      [],
+      ["Generated", generatedAt],
+      ["Source", `/admin/tabulators/${row.eventId} — this event's results sheet`],
+      [],
+      ["Contestants", summary.contestants],
+      ["Qualifiers", summary.qualifiers],
+      ["Placed", summary.placed],
+      ["Unidentified", unidentifiedLine],
+      [],
+      ["How to read a rank"],
+      ["", "Rank R1 is the round-1 judge's own placement, verbatim: a tie stands as it"],
+      ["", "was typed and is not renumbered. Rank R2 is the panel's placement of the"],
+      ["", "round-2 points beside it. Final points is Rank R1 plus Points R2, and Final"],
+      ["", "rank is the placement of that sum — the official one."],
+      [],
+      ["How to read a dash"],
+      ["", "An em dash is not a nought and not a missing cell. It means the figure does"],
+      ["", "not exist for that contestant: a non-qualifier has no round-2 anything and no"],
+      ["", "final placement at all, and every final rank stays blank until round 2 is"],
+      ["", "complete. A 0 in its place would sort as a winning score."],
+      [],
+      ["Why the points are printed beside the ranks"],
+      ["", "So a placement can be checked without going to the database. Points are the"],
+      ["", "judges' ranks added; the rank is the placement of those points."],
+    ],
+    1
+  );
+  return sheet;
+}
+
+/**
+ * The sheet itself, or the one sentence that stands in for it.
+ *
+ * Written either way, for the reason `rosterSheet` gives: dropping it would leave a
+ * reader to conclude the sheet was never part of this export. The two absences are
+ * different and are worded differently — no cut on file means no field was divided
+ * and nothing was computed; no contestants means the event has nobody to rank.
+ */
+function eventSheet(
+  workbook: ExcelJS.Workbook,
+  { row, rows }: EventSheetExportInput
+): ExcelJS.Worksheet {
+  const sheet = workbook.addWorksheet("Results sheet");
+  sheet.pageSetup = { ...sheet.pageSetup, orientation: "landscape" };
+
+  if (rows.length === 0) {
+    sheet.columns = [{ width: 110 }];
+    writeAoa(
+      sheet,
+      [
+        ["Results sheet"],
+        [
+          row.round2Cut === null
+            ? XL_CUT_NOT_SET
+            : "This event has no contestants on file, so there is no sheet to draw.",
+        ],
+      ],
+      1
+    );
+    borderRow(sheet, 1, 1);
+    borderRow(sheet, 2, 1);
+    return sheet;
+  }
+
+  sheet.columns = [10, 30, 34, 30, 34, 22, 10, 11, 10, 11, 13, 11].map((width) => ({ width }));
+  writeTable(sheet, EVENT_SHEET_HEADER, toEventSheetRows(rows), 1);
+  return sheet;
+}
+
+/**
+ * `generatedAt` is the caller's to supply, for the reason the two builders above
+ * give: a pure builder that stamps itself cannot be asserted on, and the route
+ * already needs the date for the filename.
+ */
+export function buildEventSheetWorkbook(
+  input: EventSheetExportInput,
+  generatedAt: string
+): ExcelJS.Workbook {
+  const workbook = new ExcelJS.Workbook();
+  eventAboutSheet(workbook, input, generatedAt);
+  eventSheet(workbook, input);
   return workbook;
 }
