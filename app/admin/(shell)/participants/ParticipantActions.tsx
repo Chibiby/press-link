@@ -101,6 +101,26 @@ export function ParticipantActions({
   const [history, setHistory] = useState<ParticipantHistoryRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, startLoading] = useTransition();
+  const [, startRefresh] = useTransition();
+
+  /**
+   * Close the dialog and re-read the table.
+   *
+   * The refresh is owned by **this** component, which stays mounted, and not by the
+   * dialog that asked for it. A write's `startTransition` runs in the dialog body,
+   * and the first thing this function does is unmount that body — so a
+   * `router.refresh()` called inside that transition was scheduled by an owner that
+   * no longer exists, and React would drop the refetch. The symptom was a row whose
+   * Events column still read 0 after a contestant had just been entered, and which
+   * only corrected itself on a manual reload: the write had landed, the table had
+   * not been told.
+   */
+  const finish = useCallback(() => {
+    setOpen(null);
+    startRefresh(() => {
+      router.refresh();
+    });
+  }, [router]);
 
   const load = useCallback(
     (next: "view" | "move" | "assign" | "history") => {
@@ -195,10 +215,7 @@ export function ParticipantActions({
               detail={detail}
               isLoading={isLoading}
               loadError={loadError}
-              onDone={() => {
-                setOpen(null);
-                router.refresh();
-              }}
+              onDone={finish}
             />
           ) : open === "view" ? (
             <ViewBody
@@ -214,10 +231,7 @@ export function ParticipantActions({
               detail={detail}
               isLoading={isLoading}
               loadError={loadError}
-              onDone={() => {
-                setOpen(null);
-                router.refresh();
-              }}
+              onDone={finish}
             />
           )}
         </DialogContent>
