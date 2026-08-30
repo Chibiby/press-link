@@ -50,6 +50,18 @@ describe("toAdminParticipantRows", () => {
     expect(row.isMultiEvent).toBe(false);
   });
 
+  it("reads the entry status off the entries and nothing else", () => {
+    // Not off who filed them. A learner an administrator entered is entered, the
+    // same as one their school entered — a status that told the two apart would be
+    // reporting this console's history where the roster needs the division's.
+    expect(toAdminParticipantRows([raw({ entry_participants: [] })])[0].entryStatus).toBe("none");
+    expect(toAdminParticipantRows([raw()])[0].entryStatus).toBe("entered");
+    expect(
+      toAdminParticipantRows([raw({ entry_participants: [{ entry_id: "e1" }, { entry_id: "e2" }] })])[0]
+        .entryStatus
+    ).toBe("entered");
+  });
+
   it("includes the middle name when present", () => {
     const [row] = toAdminParticipantRows([raw({ middle_name: "Mercado" })]);
     expect(row.fullName).toBe("Dela Cruz, Ana Mercado");

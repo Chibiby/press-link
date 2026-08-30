@@ -6,6 +6,7 @@ import { ParticipantFilterBar } from "./ParticipantFilterBar";
 import { ResetPaperButton } from "./ResetPaperButton";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import {
+  PARTICIPANT_ENTRY_STATUS_LABEL,
   toAdminParticipantRows,
   type RawAdminParticipant,
 } from "@/lib/roster/admin-rows";
@@ -128,6 +129,7 @@ export default async function AdminParticipantsPage({
               <TableHead>School</TableHead>
               <TableHead>District</TableHead>
               <TableHead className="w-20">Events</TableHead>
+              <TableHead className="w-28">Entry</TableHead>
               <TableHead className="w-44">School paper</TableHead>
               {/* No label. The column is one icon button per row, and a heading over
                   it would be read as a data column that happens to be empty. */}
@@ -153,6 +155,20 @@ export default async function AdminParticipantsPage({
                       Multi
                     </Badge>
                   )}
+                </TableCell>
+                <TableCell>
+                  {/* Read off the entries on file, whoever filed them — a learner an
+                      administrator entered is entered, the same as one their school
+                      entered. */}
+                  <Badge
+                    variant={row.entryStatus === "entered" ? "secondary" : "outline"}
+                    className={cn(
+                      "text-[10px]",
+                      row.entryStatus === "none" && "text-muted-foreground"
+                    )}
+                  >
+                    {PARTICIPANT_ENTRY_STATUS_LABEL[row.entryStatus]}
+                  </Badge>
                 </TableCell>
                 <TableCell>
                   {row.paperStatus === "incomplete" ? (
@@ -195,7 +211,7 @@ export default async function AdminParticipantsPage({
                     `whitespace-nowrap` in its base and this cell quotes back
                     whatever was typed — a pasted line would otherwise stretch the
                     table into a sideways scroll instead of wrapping. */}
-                <TableCell colSpan={8} className="py-10 text-center whitespace-normal">
+                <TableCell colSpan={9} className="py-10 text-center whitespace-normal">
                   <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
                     {empty.message}
                   </p>

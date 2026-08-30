@@ -27,6 +27,7 @@ import {
 } from "@/lib/schools/school-registry-filters";
 import { fetchAll } from "@/lib/supabase/fetch-all";
 
+import { SchoolActions } from "./SchoolActions";
 import { SchoolRegistryFilter } from "./SchoolRegistryFilter";
 
 interface DistrictRow {
@@ -124,6 +125,11 @@ export default async function AdminSchoolsPage({
                 <TableHead className="text-right">Ind. Coaches</TableHead>
                 <TableHead className="text-right">Grp. Learners</TableHead>
                 <TableHead className="text-right">Grp. Coaches</TableHead>
+                {/* No label. The column is one icon button per row, and a heading
+                    over it would be read as a data column that happens to be empty. */}
+                <TableHead className="w-12">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -133,7 +139,7 @@ export default async function AdminSchoolsPage({
                       in its base and this cell quotes back whatever was typed — a
                       pasted line would otherwise stretch the table into a sideways
                       scroll instead of wrapping. */}
-                  <TableCell colSpan={6} className="py-8 text-center whitespace-normal">
+                  <TableCell colSpan={7} className="py-8 text-center whitespace-normal">
                     <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
                       {empty.message}
                     </p>
@@ -191,6 +197,9 @@ export default async function AdminSchoolsPage({
                     <TableCell className="text-right tabular-nums">
                       {row.groupCoaches}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <SchoolActions schoolId={row.schoolId} schoolName={row.schoolName} />
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -213,6 +222,7 @@ export default async function AdminSchoolsPage({
                   <TableCell className="text-right tabular-nums">
                     {summary.totals.groupCoaches}
                   </TableCell>
+                  <TableCell />
                 </TableRow>
               </TableFooter>
             ) : null}
