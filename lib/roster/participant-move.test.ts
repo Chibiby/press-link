@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assignConsequences,
+  assignDestinations,
   eventOptionLabel,
   moveConsequences,
   moveDestinations,
@@ -17,6 +19,8 @@ function event(id: string, overrides: Partial<MoveEventOption> = {}): MoveEventO
     category: "individual",
     level: "elementary",
     language: "english",
+    minParticipants: 1,
+    maxParticipants: 3,
     ...overrides,
   };
 }
@@ -164,5 +168,97 @@ describe("moveConsequences", () => {
   it("says when an entry will be created for the destination", () => {
     const notes = moveConsequences({ ...base, destinationEntryExists: false });
     expect(notes.some((note) => note.includes("will be created"))).toBe(true);
+  });
+});
+
+describe("assignDestinations", () => {
+  const SOLO = event("ev-a", { name: "News Writing", minParticipants: 1, maxParticipants: 3 });
+  const TEAM = event("ev-t", {
+    name: "Radio Broadcasting",
+    category: "group",
+    minParticipants: 7,
+    maxParticipants: 7,
+  });
+  const OPEN_TEAM = event("ev-o", {
+    name: "Online Publishing",
+    category: "group",
+    minParticipants: 2,
+    maxParticipants: null,
+  });
+
+  it("offers an individual event to a contestant with nothing on file", () => {
+    const rows = assignDestinations([SOLO], [], []);
+    expect(rows[0].disabledReason).toBeNull();
+  });
+
+  it("refuses to start a team of seven with one contestant", () => {
+    // The entry would exist below its own minimum from the moment it was created,
+    // and every later edit the school made would be refused for a reason nobody
+    // typed. Assembling a team is the school's work.
+    const rows = assignDestinations([TEAM], [], []);
+    expect(rows[0].disabledReason).toContain("A team of 7");
+    expect(rows[0].disabledReason).toContain("school files this entry itself");
+  });
+
+  it("offers a team the school already has room on", () => {
+    const rows = assignDestinations([TEAM], [], [{ eventId: "ev-t", memberCount: 6 }]);
+    expect(rows[0].disabledReason).toBeNull();
+  });
+
+  it("refuses a team that is already full", () => {
+    const rows = assignDestinations([TEAM], [], [{ eventId: "ev-t", memberCount: 7 }]);
+    expect(rows[0].disabledReason).toBe("That entry is full (7)");
+  });
+
+  it("never calls an unbounded entry full", () => {
+    // Online Publishing has no maximum, so no member count can close it.
+    const rows = assignDestinations([OPEN_TEAM], [], [{ eventId: "ev-o", memberCount: 40 }]);
+    expect(rows[0].disabledReason).toBeNull();
+  });
+
+  it("refuses a full individual entry, which caps at three", () => {
+    const rows = assignDestinations([SOLO], [], [{ eventId: "ev-a", memberCount: 3 }]);
+    expect(rows[0].disabledReason).toBe("That entry is full (3)");
+  });
+
+  it("counts every entry the contestant holds against the caps", () => {
+    // Unlike a move, nothing is being vacated here, so the participation caps are
+    // counted over all of them.
+    const held = [entry("x", { eventId: "ev-1" }), entry("y", { eventId: "ev-2" })];
+    const rows = assignDestinations([SOLO], held, []);
+    expect(rows[0].disabledReason).toBeTruthy();
+  });
+
+  it("marks an event they are already in rather than hiding it", () => {
+    const rows = assignDestinations([SOLO], [entry("x", { eventId: "ev-a" })], []);
+    expect(rows[0].disabledReason).toBe("Already entered in this event");
+  });
+});
+
+describe("assignConsequences", () => {
+  const destination = event("ev-b", { name: "Editorial Writing" });
+
+  it("says nothing when joining an entry that already exists and is unjudged", () => {
+    expect(
+      assignConsequences({ destination, destinationEntryExists: true, destinationJudged: false })
+    ).toEqual([]);
+  });
+
+  it("says when the school's entry will be created", () => {
+    const notes = assignConsequences({
+      destination,
+      destinationEntryExists: false,
+      destinationJudged: false,
+    });
+    expect(notes[0]).toContain("will be created");
+  });
+
+  it("warns that they arrive unranked in a judged event", () => {
+    const notes = assignConsequences({
+      destination,
+      destinationEntryExists: true,
+      destinationJudged: true,
+    });
+    expect(notes[0]).toContain("unranked");
   });
 });

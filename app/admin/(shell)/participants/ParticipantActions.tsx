@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowRightLeft,
+  CalendarPlus,
   Eye,
   Gavel,
   History,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 
 import {
+  assignParticipantEventAction,
   loadParticipantDetailAction,
   loadParticipantHistoryAction,
   moveParticipantEventAction,
@@ -46,6 +48,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  assignConsequences,
+  assignDestinations,
   eventOptionLabel,
   moveConsequences,
   moveDestinations,
@@ -78,19 +82,28 @@ import {
 export function ParticipantActions({
   participantId,
   fullName,
+  eventCount,
 }: {
   participantId: string;
   fullName: string;
+  /**
+   * How many entries this contestant holds, from the row the table already has.
+   *
+   * It decides which of the two writing actions the menu offers: nothing on file is
+   * an entry to file, anything on file is an entry to move. Read from the row rather
+   * than from the detail load, so the menu is right the moment it opens.
+   */
+  eventCount: number;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState<"view" | "move" | "history" | null>(null);
+  const [open, setOpen] = useState<"view" | "move" | "assign" | "history" | null>(null);
   const [detail, setDetail] = useState<ParticipantDetail | null>(null);
   const [history, setHistory] = useState<ParticipantHistoryRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, startLoading] = useTransition();
 
   const load = useCallback(
-    (next: "view" | "move" | "history") => {
+    (next: "view" | "move" | "assign" | "history") => {
       setOpen(next);
       setLoadError(null);
       // Re-read on every open rather than caching the first one. Another admin may
@@ -134,10 +147,19 @@ export function ParticipantActions({
             <Eye />
             View entries
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => load("move")}>
-            <ArrowRightLeft />
-            Move to another event
-          </DropdownMenuItem>
+          {/* One or the other, never both. A contestant with nothing on file has no
+              entry to move; one who is entered has no entry to file. */}
+          {eventCount === 0 ? (
+            <DropdownMenuItem onSelect={() => load("assign")}>
+              <CalendarPlus />
+              Enter in an event
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onSelect={() => load("move")}>
+              <ArrowRightLeft />
+              Move to another event
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={() => load("history")}>
             <History />
             View change history
@@ -165,6 +187,18 @@ export function ParticipantActions({
               rows={history}
               isLoading={isLoading}
               loadError={loadError}
+            />
+          ) : open === "assign" ? (
+            <AssignBody
+              participantId={participantId}
+              fullName={fullName}
+              detail={detail}
+              isLoading={isLoading}
+              loadError={loadError}
+              onDone={() => {
+                setOpen(null);
+                router.refresh();
+              }}
             />
           ) : open === "view" ? (
             <ViewBody
@@ -363,6 +397,214 @@ function ViewBody({
   );
 }
 
+/**
+ * Enter a contestant who is in nothing at all.
+ *
+ * The admin doing what a school does in its own entry form, for one learner. Offered
+ * only on a row with no events, because a contestant who is already entered has the
+ * move dialog instead — and the two would otherwise be one form asking the same
+ * question twice.
+ *
+ * Deliberately not a second entry wizard. A team of seven is the school's to
+ * assemble; this puts one name on one entry, and says so where it cannot.
+ */
+function AssignBody({
+  participantId,
+  fullName,
+  detail,
+  isLoading,
+  loadError,
+  onDone,
+}: {
+  participantId: string;
+  fullName: string;
+  detail: ParticipantDetail | null;
+  isLoading: boolean;
+  loadError: string | null;
+  onDone: () => void;
+}) {
+  const [eventId, setEventId] = useState<string>("");
+  const [coachId, setCoachId] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const entries = useMemo(() => detail?.entries ?? [], [detail]);
+
+  const destinations = useMemo(
+    () => (detail ? assignDestinations(detail.events, entries, detail.schoolEntries) : []),
+    [detail, entries]
+  );
+
+  const destination = destinations.find((row) => row.event.id === eventId)?.event;
+
+  const notes = useMemo(() => {
+    if (!detail || !destination) return [];
+    return assignConsequences({
+      destination,
+      destinationEntryExists: detail.schoolEntries.some((e) => e.eventId === destination.id),
+      destinationJudged: detail.judgedEventIds.includes(destination.id),
+    });
+  }, [detail, destination]);
+
+  function submit() {
+    if (!destination) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await assignParticipantEventAction({
+        participantId,
+        eventId: destination.id,
+        coachId: coachId || null,
+      });
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      toast.success(`${fullName} is entered in ${destination.name}.`, {
+        description: result.notes.length ? result.notes.join(" ") : undefined,
+      });
+      onDone();
+    });
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Enter {fullName}</DialogTitle>
+        <DialogDescription>
+          For a learner on the roster whose school never entered them. This files one
+          entry for one contestant, the way the school&rsquo;s own form would.
+        </DialogDescription>
+      </DialogHeader>
+
+      {/* The only part that scrolls. Header and footer stay put, so the buttons
+          are always reachable however long the form grows. */}
+      <div className="min-h-0 space-y-4 overflow-y-auto py-4">
+        <Pending isLoading={isLoading} loadError={loadError} />
+
+        {detail ? (
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <School className="size-4 shrink-0 text-muted-foreground" />
+              <span className="font-medium">{detail.schoolName || "School not recorded"}</span>
+              {detail.districtName ? (
+                <span className="text-muted-foreground">· {detail.districtName}</span>
+              ) : null}
+              <span className="text-muted-foreground">· No. {detail.numberLabel}</span>
+            </div>
+          </div>
+        ) : null}
+
+        {detail ? (
+          <div className="flex gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+            <TriangleAlert className="size-4 shrink-0 translate-y-0.5 text-amber-600 dark:text-amber-500" />
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                This files an entry in a school&rsquo;s name.
+              </span>{" "}
+              The school is not asked and is not notified, and the entry is recorded against
+              this contestant under your name. Where the school can still file its own
+              entries, ask them to do it instead.
+            </p>
+          </div>
+        ) : null}
+
+        {detail ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="assign-event">Enter them in</Label>
+              <Select
+                value={eventId}
+                onValueChange={(value) => {
+                  setEventId(value);
+                  setError(null);
+                }}
+              >
+                <SelectTrigger id="assign-event" className="w-full">
+                  <SelectValue placeholder="Choose an event" />
+                </SelectTrigger>
+                <SelectContent>
+                  {destinations.map((row) => (
+                    <SelectItem
+                      key={row.event.id}
+                      value={row.event.id}
+                      disabled={row.disabledReason !== null}
+                    >
+                      <span className="flex flex-col items-start gap-0.5">
+                        <span>{row.label}</span>
+                        {row.disabledReason ? (
+                          <span className="text-xs">{row.disabledReason}</span>
+                        ) : null}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                A team contest can only take one more contestant onto an entry the school
+                has already filed. Starting one is the school&rsquo;s to do.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assign-coach">Coach</Label>
+              <Select
+                value={coachId}
+                onValueChange={setCoachId}
+                disabled={detail.coaches.length === 0}
+              >
+                <SelectTrigger id="assign-coach" className="w-full">
+                  <SelectValue placeholder="Choose a coach" />
+                </SelectTrigger>
+                <SelectContent>
+                  {detail.coaches.map((coach) => (
+                    <SelectItem key={coach.id} value={coach.id}>
+                      {coach.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {detail.coaches.length === 0
+                  ? "This school has nobody on its coach roster, so there is nobody to name. It can add one when it next opens its entries."
+                  : destination?.category === "group"
+                    ? "A team shares its coaches, so this one is only added if that entry has none yet."
+                    : "One coach per contestant. An entry with no coach is one the school has to finish."}
+              </p>
+            </div>
+
+            {notes.length > 0 && (
+              <div className="space-y-2 rounded-md border p-3">
+                <p className="text-sm font-medium">What this will do</p>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                  {notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" disabled={isPending} onClick={onDone}>
+          Cancel
+        </Button>
+        <Button disabled={isPending || !destination} onClick={submit}>
+          {isPending && <Loader2 className="size-4 animate-spin" />}
+          Enter contestant
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
 function MoveBody({
   participantId,
   fullName,
@@ -420,7 +662,7 @@ function MoveBody({
     return moveConsequences({
       source,
       destination,
-      destinationEntryExists: detail.schoolEventIds.includes(destination.id),
+      destinationEntryExists: detail.schoolEntries.some((e) => e.eventId === destination.id),
       destinationJudged: detail.judgedEventIds.includes(destination.id),
       sourceMemberCount: source.teammates.length + 1,
       sourceMinParticipants: source.minParticipants,

@@ -48,6 +48,8 @@ export type ActivityEventKind =
   | "participant-removed"
   /** An admin moved a contestant from one event to another (0035). */
   | "participant-moved"
+  /** An admin entered a contestant in an event on a school's behalf (0037). */
+  | "participant-entered"
   | "coach-added"
   | "coach-removed"
   | "entry-submitted"
@@ -119,6 +121,7 @@ const UNGROUPED_KIND: Record<ActivityEventKind, ActivityKind> = {
   "participant-added": "participant",
   "participant-removed": "participant",
   "participant-moved": "participant",
+  "participant-entered": "participant",
   "coach-added": "coach",
   "coach-removed": "coach",
   "entry-submitted": "entry",
@@ -137,6 +140,7 @@ const KIND_HREF: Record<ActivityEventKind, string> = {
   "participant-added": "/admin/participants",
   "participant-removed": "/admin/participants",
   "participant-moved": "/admin/participants",
+  "participant-entered": "/admin/participants",
   "coach-added": "/admin/coaches",
   "coach-removed": "/admin/coaches",
   "entry-submitted": "/admin/entries",
@@ -231,6 +235,14 @@ export function describeSession(counts: KindCounts, school: string, atLeast: boo
     // keeps deleted people and deleted entries in predicates of their own instead
     // of one list mixing learners with events.
     predicates.push(`withdrew ${count(tally("entry-withdrawn"), "entry", "entries", atLeast)}`);
+  }
+  if (tally("participant-entered") > 0) {
+    // Also an administrator's write, and also neither an addition to the roster nor
+    // a removal from it: the learner was already on file, and what changed is that
+    // somebody entered them in a contest.
+    predicates.push(
+      `entered ${count(tally("participant-entered"), "contestant", "contestants", atLeast)} in an event`
+    );
   }
   if (tally("participant-moved") > 0) {
     // Its own predicate rather than a line in `added` or `removed`: a move is

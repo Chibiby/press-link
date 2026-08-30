@@ -24,13 +24,23 @@ import { capReason, type ParticipantUsage } from "./limits";
  * consequence *before* the admin commits to it.
  */
 
-/** One contest a participant could be moved into. */
+/** One contest a participant could be moved into, or entered in. */
 export interface MoveEventOption {
   id: string;
   name: string;
   category: EventCategory;
   level: EventLevel;
   language: EventLanguage;
+  /** From `event_types`. A team of seven cannot be started with one contestant. */
+  minParticipants: number;
+  /** null means unbounded — Online Publishing is the only one. */
+  maxParticipants: number | null;
+}
+
+/** One entry a school already holds, as `assignDestinations` needs to weigh it. */
+export interface SchoolEntrySummary {
+  eventId: string;
+  memberCount: number;
 }
 
 /** One entry a participant currently sits in, as the menu shows it. */
@@ -226,6 +236,107 @@ export function moveConsequences(input: MoveConsequenceInput): string[] {
   if (!destinationEntryExists) {
     notes.push(
       `This school has no ${destination.name} entry yet, so one will be created for it.`
+    );
+  }
+
+  return notes;
+}
+
+/**
+ * Every contest a contestant with no entry could be put into, with the ones that
+ * cannot take them marked and the reason attached.
+ *
+ * This is the admin doing what a school does in its own entry form, for one
+ * learner — the school having closed, or never having entered somebody it meant
+ * to. The rules are the school's rules, read from the same catalog and the same
+ * caps, because an entry an admin creates has to be one the school's own form
+ * would still accept when it reopens.
+ *
+ * ## Why a group event is usually refused
+ *
+ * Every group contest in the catalog is a team of seven, bar Online Publishing at
+ * two or more. One contestant cannot start one: the entry would exist below its
+ * own minimum from the moment it was created, and every later edit the school
+ * made would be refused for a reason nobody typed. So a group event is offered
+ * only where the school **already** has that entry with room in it — the case
+ * where this is genuinely "add one more to the team" — and refused otherwise with
+ * a sentence saying the school files the team itself.
+ *
+ * That is a real limit and not an oversight: assembling a team of seven is the
+ * school's work, and a form that let an admin start one for them would be a
+ * second entry wizard, not a correction.
+ */
+export function assignDestinations(
+  events: MoveEventOption[],
+  /** What this contestant already holds. Empty is the case this is built for. */
+  entries: ParticipantEntrySummary[],
+  /** What their school already holds, whoever is on it. */
+  schoolEntries: SchoolEntrySummary[]
+): MoveDestination[] {
+  const usage = usageExcluding(entries, "");
+  const enteredEventIds = new Set(entries.map((entry) => entry.eventId));
+  const bySchoolEvent = new Map(schoolEntries.map((entry) => [entry.eventId, entry]));
+
+  return events.map((event) => ({
+    event,
+    label: eventOptionLabel(event),
+    disabledReason: assignReason(event, enteredEventIds, bySchoolEvent, usage),
+  }));
+}
+
+function assignReason(
+  event: MoveEventOption,
+  enteredEventIds: Set<string>,
+  bySchoolEvent: Map<string, SchoolEntrySummary>,
+  usage: ParticipantUsage
+): string | null {
+  if (enteredEventIds.has(event.id)) return "Already entered in this event";
+
+  const cap = capReason(usage, event.category);
+  if (cap) return cap;
+
+  const existing = bySchoolEvent.get(event.id);
+
+  if (!existing) {
+    // Nothing to join, so this would create the entry. Fine for a contest one
+    // person can hold; not for a team.
+    return event.minParticipants > 1
+      ? `A team of ${event.minParticipants} — the school files this entry itself`
+      : null;
+  }
+
+  if (event.maxParticipants !== null && existing.memberCount >= event.maxParticipants) {
+    return `That entry is full (${event.maxParticipants})`;
+  }
+
+  return null;
+}
+
+/**
+ * What entering this contestant here will do, in the words the move dialog uses
+ * for the same facts.
+ *
+ * Shorter than {@link moveConsequences} because nothing is being taken away: no
+ * entry empties, no rank is discarded, nobody drops below a minimum. What is left
+ * is the one thing an admin cannot see from the row — whether they are creating
+ * this school's entry for the contest or adding to one that exists — and whether
+ * a judge has already ranked the field they are joining.
+ */
+export function assignConsequences(input: {
+  destination: MoveEventOption;
+  destinationEntryExists: boolean;
+  destinationJudged: boolean;
+}): string[] {
+  const { destination, destinationEntryExists, destinationJudged } = input;
+  const notes: string[] = [];
+
+  if (!destinationEntryExists) {
+    notes.push(`This school has no ${destination.name} entry yet, so one will be created for it.`);
+  }
+
+  if (destinationJudged) {
+    notes.push(
+      `A judge has already ranked in ${destination.name}. This contestant joins it unranked, so that sheet will be incomplete until it is reopened and ranked again.`
     );
   }
 

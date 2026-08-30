@@ -10,6 +10,7 @@ import { surnameFirst } from "@/lib/roster/names";
 import type {
   MoveEventOption,
   ParticipantEntrySummary,
+  SchoolEntrySummary,
 } from "@/lib/roster/participant-move";
 
 export async function resetPaperParticipationAction(
@@ -67,10 +68,29 @@ export interface ParticipantDetail {
    * corrected, which is why the RPC checks it again.
    */
   coaches: { id: string; name: string }[];
-  /** Events this school already has an entry in — not only this participant's. */
-  schoolEventIds: string[];
+  /**
+   * The entries this school already holds, whoever is on them, with how many
+   * contestants each carries.
+   *
+   * The count is what tells a full entry from one with room, which is the only thing
+   * that makes a group event assignable at all — see `assignDestinations`.
+   */
+  schoolEntries: SchoolEntrySummary[];
   /** Events a judge has ranked in, so a move can say what it will cost. */
   judgedEventIds: string[];
+}
+
+/**
+ * The catalog row as PostgREST returns it, with the limits still nested under the
+ * event type. `MoveEventOption` is the flat shape the pure module wants.
+ */
+interface RawEventOption {
+  id: string;
+  name: string;
+  category: EventCategory;
+  level: EventLevel;
+  language: EventLanguage;
+  event_types: { min_participants: number; max_participants: number | null } | null;
 }
 
 /** One `entry_coaches` row as the detail query selects it. */
@@ -166,9 +186,12 @@ export async function loadParticipantDetailAction(
         .overrideTypes<RawDetailEntry[]>(),
       supabase
         .from("events")
-        .select("id, name, category, level, language")
+        // The team sizes come with the catalog: they decide which contests one
+        // contestant can be entered in at all, and reading them here means the
+        // dialog never has to ask a second question to grey an option out.
+        .select("id, name, category, level, language, event_types(min_participants, max_participants)")
         .order("sort_order")
-        .overrideTypes<MoveEventOption[]>(),
+        .overrideTypes<RawEventOption[]>(),
     ]);
 
   if (entriesError || eventsError) {
@@ -181,7 +204,11 @@ export async function loadParticipantDetailAction(
   // whether this move creates one.
   const [{ data: schoolEntries }, { data: judgedSheets }, { data: schoolCoaches }] =
     await Promise.all([
-    supabase.from("entries").select("event_id").eq("school_id", participant.school_id),
+    supabase
+      .from("entries")
+      .select("event_id, entry_participants(count)")
+      .eq("school_id", participant.school_id)
+      .overrideTypes<{ event_id: string; entry_participants: { count: number }[] }[]>(),
     // Which events have been ranked. A submitted sheet is exactly a sheet with ranks
     // on it — writing a sheet is what submits it (N6) — so this answers the question
     // without joining judge_ranks. One row per judge per round, small enough to read
@@ -245,8 +272,25 @@ export async function loadParticipantDetailAction(
       schoolName: participant.schools?.name ?? "",
       districtName: participant.schools?.districts?.name ?? "",
       entries,
-      events: events ?? [],
-      schoolEventIds: (schoolEntries ?? []).map((row) => row.event_id as string),
+      events: (events ?? []).map((event) => ({
+        id: event.id,
+        name: event.name,
+        category: event.category,
+        level: event.level,
+        language: event.language,
+        // 1 and null when the catalog row cannot be read: a minimum of 1 offers the
+        // contest rather than hiding it, and an absent maximum never calls an entry
+        // full. Both fail toward the RPC, which checks the real numbers.
+        minParticipants: event.event_types?.min_participants ?? 1,
+        maxParticipants: event.event_types?.max_participants ?? null,
+      })),
+      // `entry_participants(count)` arrives as a one-element array, unwrapped here
+      // rather than in the pure module — the same shape the page's own roster query
+      // flattens for `school_papers(count)`.
+      schoolEntries: (schoolEntries ?? []).map((row) => ({
+        eventId: row.event_id,
+        memberCount: row.entry_participants?.[0]?.count ?? 0,
+      })),
       judgedEventIds,
       coaches: (schoolCoaches ?? []).map((coach) => ({
         id: coach.id,
@@ -325,6 +369,63 @@ export async function moveParticipantEventAction(input: {
 
   // Every surface that reads entries. The judging pages are included because a moved
   // contestant changes the field an event is ranked over.
+  revalidatePath("/admin/participants");
+  revalidatePath("/admin/entries");
+  revalidatePath("/admin/judges");
+  revalidatePath("/admin/tabulators");
+  revalidatePath("/entry");
+
+  return { success: true as const, notes };
+}
+
+/**
+ * Enter a contestant in an event on their school's behalf.
+ *
+ * The sibling of `moveParticipantEventAction`, for the learner who is on the roster
+ * and in nothing at all. Everything that decides whether it is allowed lives in
+ * `admin_assign_participant_event` (migration 0037) — the participation caps, the
+ * entry maximum, the coach's school, and the refusal to start a team of seven with
+ * one contestant. This function is not the boundary; it carries the RPC's sentence
+ * to somebody who did not write it.
+ */
+export async function assignParticipantEventAction(input: {
+  participantId: string;
+  eventId: string;
+  /** null enters them with no coach named, which the school can fill in later. */
+  coachId: string | null;
+}): Promise<{ error: string } | { success: true; notes: string[] }> {
+  const check = await checkAdmin();
+  if (!check.isAdmin) {
+    return {
+      error:
+        check.reason === "unauthenticated"
+          ? "Not authenticated."
+          : "You are not authorized to enter a contestant in an event.",
+    };
+  }
+
+  const { data, error } = await check.supabase.rpc("admin_assign_participant_event", {
+    p_participant_id: input.participantId,
+    p_event_id: input.eventId,
+    p_coach_id: input.coachId,
+  });
+
+  if (error) {
+    console.error("assignParticipantEventAction", error);
+    return { error: `That contestant was not entered: ${error.message}` };
+  }
+
+  const result = (data ?? {}) as {
+    entryCreated?: boolean;
+    coachSet?: boolean;
+  };
+
+  const notes: string[] = [];
+  if (result.entryCreated) notes.push("A new entry was created for that event.");
+  if (!result.coachSet) {
+    notes.push("No coach was named on that entry — the school will need to add one.");
+  }
+
   revalidatePath("/admin/participants");
   revalidatePath("/admin/entries");
   revalidatePath("/admin/judges");

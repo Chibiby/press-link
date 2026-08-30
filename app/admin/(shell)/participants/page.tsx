@@ -181,7 +181,11 @@ export default async function AdminParticipantsPage({
                   )}
                 </TableCell>
                 <TableCell className="text-right">
-                  <ParticipantActions participantId={row.id} fullName={row.fullName} />
+                  <ParticipantActions
+                    participantId={row.id}
+                    fullName={row.fullName}
+                    eventCount={row.eventCount}
+                  />
                 </TableCell>
               </TableRow>
             ))}

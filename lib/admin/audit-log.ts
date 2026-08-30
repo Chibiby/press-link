@@ -93,7 +93,7 @@ const DAY = new Intl.DateTimeFormat("en-PH", {
 });
 
 /**
- * The ten `activity_events_kind_check` values in a reader's words.
+ * The eleven `activity_events_kind_check` values in a reader's words.
  *
  * Subject-less, because the school is its own column and "Bagong Silang ES —
  * Bagong Silang ES added a learner" is what a sentence per row would give.
@@ -104,6 +104,7 @@ const ACTION: Record<string, string> = {
   "participant-added": "Learner added",
   "participant-removed": "Learner removed",
   "participant-moved": "Contestant moved to another event",
+  "participant-entered": "Contestant entered in an event",
   "coach-added": "Coach added",
   "coach-removed": "Coach removed",
   "entry-submitted": "Entry submitted",
