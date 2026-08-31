@@ -180,10 +180,11 @@ export interface SchoolRegistryFilters {
    * What the two individual columns count: everybody entered, or only those through
    * to round 2. Read by {@link individualCountMode}.
    *
-   * It narrows a *reading*, not the roll: no school disappears when it is set, and a
-   * school that got nobody through shows two noughts rather than dropping out. That
-   * is why it is not in the filter bar's `FILTER_KEYS` — the Clear button counts
-   * controls that hide rows.
+   * Under `qualifiers` it also narrows the table to the schools that have somebody
+   * in round 2. It did not at first — it kept every school and printed two noughts,
+   * on the reasoning that a measured nought is an answer — but the answer a reader
+   * wants from "Round 2 qualifiers" is the list of schools with a qualifier on it,
+   * and three hundred rows of noughts buries that list rather than reporting it.
    */
   individual?: string;
 }
@@ -271,9 +272,25 @@ export function summariseSchoolRegistry(
   // districts". Nor is the "Integrated" badge, which is one of the status
   // dropdown's own options, nor the Learners/Coaches/Entries counts — a search box
   // that matched "12" against three unrelated columns would be noise.
-  const matched = rows.filter((row) =>
+  const searched = rows.filter((row) =>
     matchesQuery([row.schoolName, row.schoolIdNumber], query)
   );
+
+  // The round-2 view hides a school that got nobody through. It was built to keep
+  // every school and show two noughts, on the reasoning that a measured nought is
+  // an answer — but the answer a reader wants from "Round 2 qualifiers" is the list
+  // of schools that have somebody in round 2, and three hundred rows of noughts
+  // buries it. So it narrows the table like the controls beside it.
+  //
+  // Individual only, and that is the whole of it: a school here has at least one
+  // learner on a qualifier list. Its group columns still print whatever it has,
+  // because a group contest has no second round to be counted against
+  // (non-negotiable 6) — but a school with only group entries does not appear at
+  // all, because nothing of it reached round 2.
+  const matched =
+    individualCountMode(filters) === "qualifiers"
+      ? searched.filter((row) => row.individualLearners > 0)
+      : searched;
 
   const status = schoolRegistryStatus(filters);
   const view = summariseRegistry(matched, { status, districtId });
@@ -315,7 +332,22 @@ export function schoolRegistryEmptyState(
   // and neither is a junk value, which `selectedStatus` has already turned into
   // "all". Otherwise `?status=nonsense` would offer a way back from a filter that
   // is off.
-  const otherFilters = Boolean(filters.district) || schoolRegistryStatus(filters) !== "all";
+  const otherFilters =
+    Boolean(filters.district) ||
+    schoolRegistryStatus(filters) !== "all" ||
+    individualCountMode(filters) === "qualifiers";
+
+  // Named before the generic sentences below, because it is the one narrowing whose
+  // empty table is most likely to be the truth rather than a mistake: nobody has
+  // been through round 1 yet. "No schools match these filters" would send an
+  // officer looking for a control to undo.
+  if (individualCountMode(filters) === "qualifiers" && !query && !filters.district) {
+    return {
+      message:
+        "No school has anybody through to round 2 yet. A qualifier list is drawn when an administrator closes an event's round 1.",
+      narrowed: true,
+    };
+  }
 
   if (query && otherFilters) {
     return {
@@ -376,6 +408,9 @@ export function schoolRegistryFiltersFromParams(params: {
 export function schoolRegistryFiltersActive(filters: SchoolRegistryFilters): boolean {
   if (schoolRegistrySearchQuery(filters) !== null) return true;
   if (filters.district) return true;
+  // It hides schools now, so a workbook taken under it is a filtered workbook and
+  // its filename has to say so.
+  if (individualCountMode(filters) === "qualifiers") return true;
   return schoolRegistryStatus(filters) !== "all";
 }
 
@@ -504,9 +539,13 @@ export function qualifierCountsBySchool(
  *
  * The group columns are untouched, which is not an omission: a group contest has no
  * second round to qualify for (non-negotiable 6), so "group qualifiers" is not a
- * quantity that exists. A school absent from the map had nobody go through and gets
- * two noughts — a measured nought, which is the honest answer for a division that
- * has drawn its cut.
+ * quantity that exists.
+ *
+ * A school absent from the map had nobody go through and gets two noughts here. It
+ * does not stay on the table with them: `summariseSchoolRegistry` drops a row whose
+ * qualifier count is nought under this mode. The nought is set rather than left
+ * undefined because this function's job is to state the figure, and the decision to
+ * hide the row belongs to the one place every other narrowing is decided.
  */
 export function applyQualifierCounts(
   rows: RegistryRow[],

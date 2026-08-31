@@ -34,7 +34,7 @@ const STATUS_OPTIONS: SchoolStatus[] = [
  * back. This replaces the `district || status` test the Clear button used to make,
  * which would have gone on ignoring the search box.
  */
-const FILTER_KEYS = [SEARCH_PARAM, "district", "status"] as const;
+const FILTER_KEYS = [SEARCH_PARAM, "district", "status", "individual"] as const;
 
 export function SchoolRegistryFilter({
   districts,
@@ -85,11 +85,10 @@ export function SchoolRegistryFilter({
         </div>
 
         <div className="min-w-56">
-          {/* Not a filter, and deliberately not in FILTER_KEYS: it hides no school.
-              It changes what two of the columns count — everybody on an individual
-              entry, or only those through to round 2 — and a school that got nobody
-              through stays on the table showing two noughts. The Clear button counts
-              controls that take rows away, and this one never does. */}
+          {/* In FILTER_KEYS with the other three, because it narrows like them: it
+              changes what the two individual columns count and drops the schools
+              that got nobody through. A reader who lands on a short table needs the
+              same one control to get the whole roll back. */}
           <FilterSelect
             label="Individual columns"
             value={searchParams.get("individual") ?? ANY}

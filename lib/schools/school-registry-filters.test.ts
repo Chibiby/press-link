@@ -598,3 +598,77 @@ describe("individualCountMode", () => {
     expect(individualCountMode({ individual: "QUALIFIERS" })).toBe("all");
   });
 });
+
+describe("the round 2 qualifiers view narrows the table", () => {
+  // s1 and s3 have individual counts in the fixture; s2 has none at all. Under this
+  // mode the counts are the qualifier counts, so a nought means nobody went through.
+  const qualifying = applyQualifierCounts(
+    rows,
+    new Map([["s1", { individualLearners: 2, individualCoaches: 1 }]])
+  );
+
+  it("shows only the schools with somebody in round 2", () => {
+    // The behaviour this replaced kept every school and printed two noughts. The
+    // answer a reader wants from "Round 2 qualifiers" is the list of schools that
+    // have somebody in round 2, and three hundred rows of noughts buries it.
+    const summary = summariseSchoolRegistry(qualifying, {
+      status: "all",
+      individual: "qualifiers",
+    });
+    expect(summary.rows.map((row) => row.schoolId)).toEqual(["s1"]);
+    expect(summary.shown).toBe(1);
+  });
+
+  it("keeps the denominator on the whole roll, so the heading still says 1 of 3", () => {
+    // `registered` is the population the district selects, not what this view left
+    // of it — otherwise the subtitle would read "1 of 1" and say nothing.
+    const summary = summariseSchoolRegistry(qualifying, {
+      status: "all",
+      individual: "qualifiers",
+    });
+    expect(summary.registered).toBe(3);
+  });
+
+  it("totals only the schools it shows", () => {
+    const summary = summariseSchoolRegistry(qualifying, {
+      status: "all",
+      individual: "qualifiers",
+    });
+    expect(summary.totals.individualLearners).toBe(2);
+    expect(summary.totals.individualCoaches).toBe(1);
+    // s1's group figures, which this view never touches: a group contest has no
+    // second round, so those columns print what the school has.
+    expect(summary.totals.groupLearners).toBe(3);
+    expect(summary.totals.groupCoaches).toBe(1);
+  });
+
+  it("leaves every school on the table when the view is off", () => {
+    expect(summariseSchoolRegistry(rows, { status: "all" }).shown).toBe(3);
+  });
+
+  it("narrows within a district rather than instead of it", () => {
+    const summary = summariseSchoolRegistry(qualifying, {
+      status: "all",
+      district: "d2",
+      individual: "qualifiers",
+    });
+    // s2 is the only school in d2 and it has no qualifiers.
+    expect(summary.rows).toEqual([]);
+  });
+
+  it("says nobody is through rather than blaming the filters", () => {
+    // The one narrowing whose empty table is most likely to be the truth: no round 1
+    // has been closed yet. "No schools match these filters" would send an officer
+    // looking for a control to undo.
+    const empty = schoolRegistryEmptyState({ individual: "qualifiers" });
+    expect(empty.message).toContain("through to round 2");
+    expect(empty.narrowed).toBe(true);
+  });
+
+  it("counts as an active filter, so the workbook is named a filtered one", () => {
+    expect(schoolRegistryFiltersActive({ status: "all", individual: "qualifiers" })).toBe(true);
+    // `status: "all"` is spelled out because an unset status is itself a narrowing —
+    // the registry defaults to "Has entries" — so it would carry this assertion.
+    expect(schoolRegistryFiltersActive({ status: "all", individual: "all" })).toBe(false);
+  });
+});
