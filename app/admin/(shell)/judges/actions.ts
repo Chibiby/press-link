@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { checkAdmin } from "@/app/admin/guard";
-import { loadJudgingEvent, loadSheetEntry } from "../judging-data";
+import { loadJudgingEvent, loadJudgingEventIndex, loadSheetEntry } from "../judging-data";
+import {
+  bulkLockPlan,
+  bulkLockScope,
+  bulkLockSummary,
+} from "@/lib/judging/bulk-lock";
 import { MAX_ROUND2_CUT, round1Qualifiers } from "@/lib/judging/cut";
 import {
   toRankPayload,
@@ -593,4 +598,123 @@ export async function deleteJudgeAction(judgeId: string): Promise<ActionResult> 
       };
     }
   });
+}
+
+export interface BulkLockPreview {
+  scopeId: string;
+  steps: { eventId: string; eventName: string; control: string }[];
+  skipped: { eventId: string; eventName: string; reason: string }[];
+  /** Set when the scope cannot run at all — the two group scopes. */
+  unavailable: string | null;
+}
+
+/**
+ * What a bulk run would do, without doing any of it.
+ *
+ * Read before the dialog offers the button, because the whole point of a bulk
+ * action is that the admin cannot see the forty events it covers. A toast
+ * afterwards saying "31 of 40 locked" is a report on work already done; this is
+ * the same information in the one place it can still change the decision.
+ */
+export async function previewBulkLockAction(
+  scopeId: string
+): Promise<{ error: string } | { preview: BulkLockPreview }> {
+  const check = await checkAdmin();
+  if (!check.isAdmin) {
+    return {
+      error:
+        check.reason === "unauthenticated"
+          ? "Not authenticated."
+          : "You are not authorized to close a round.",
+    };
+  }
+
+  const scope = bulkLockScope(scopeId);
+  if (!scope) return { error: "That is not a lock this console offers." };
+
+  const { rows, error } = await loadJudgingEventIndex();
+  // A failed catalog read must not become an empty plan. "Nothing to lock" and "the
+  // catalog could not be read" are different answers, and only one of them means an
+  // admin can go home (non-negotiable 5).
+  if (error) return { error: `The event catalog could not be read: ${error}` };
+
+  const plan = bulkLockPlan(rows, scope);
+  return { preview: { scopeId: scope.id, ...plan } };
+}
+
+/**
+ * Run a bulk lock.
+ *
+ * The plan is drawn again here rather than taken from the client. A preview is a
+ * screen an admin may have been looking at for ten minutes while a judge submitted
+ * one more sheet, and a payload of event ids would lock whatever was ready *then* —
+ * including, in the worst case, an event a colleague has since reopened. The list
+ * is derived from the catalog as it is at the moment of the click, and each step
+ * still goes through the same per-event action the panel page uses, so every rule
+ * is checked by the RPC exactly as it is for a single lock.
+ *
+ * Sequential, not `Promise.all`. Each of these is several statements against the
+ * same few tables and one of them rewrites a qualifier list; running forty at once
+ * to save a few seconds would trade a wholly predictable order for lock contention
+ * on the rows the next step reads.
+ */
+export async function runBulkLockAction(scopeId: string): Promise<
+  | { error: string }
+  | {
+      success: true;
+      locked: { eventName: string }[];
+      failed: { eventName: string; reason: string }[];
+      skipped: number;
+      summary: string;
+    }
+> {
+  const check = await checkAdmin();
+  if (!check.isAdmin) {
+    return {
+      error:
+        check.reason === "unauthenticated"
+          ? "Not authenticated."
+          : "You are not authorized to close a round.",
+    };
+  }
+
+  const scope = bulkLockScope(scopeId);
+  if (!scope) return { error: "That is not a lock this console offers." };
+  if (scope.controls.length === 0) return { error: scope.detail };
+
+  const { rows, error } = await loadJudgingEventIndex();
+  if (error) return { error: `The event catalog could not be read: ${error}` };
+
+  const plan = bulkLockPlan(rows, scope);
+
+  const locked: { eventName: string }[] = [];
+  const failed: { eventName: string; reason: string }[] = [];
+
+  for (const step of plan.steps) {
+    const result =
+      step.control === "lock-round1"
+        ? await lockRound1Action(step.eventId)
+        : await lockResultsAction(step.eventId);
+
+    // A refusal stops that event and nothing else. Forty events are forty separate
+    // contests, and one that cannot be closed is no reason to leave the other
+    // thirty-nine open — which is exactly what a throw here would do.
+    if (result && "error" in result) {
+      failed.push({ eventName: step.eventName, reason: result.error });
+      continue;
+    }
+    locked.push({ eventName: step.eventName });
+  }
+
+  return {
+    success: true as const,
+    locked,
+    failed,
+    skipped: plan.skipped.length,
+    summary: bulkLockSummary({
+      locked: locked.length,
+      failed: failed.length,
+      skipped: plan.skipped.length,
+    }),
+  };
 }

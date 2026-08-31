@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { eventIndexSummary } from "@/lib/judging/event-index";
 
 import { loadJudgingEventIndex, seatableEvents } from "../judging-data";
+import { BulkLockDialog } from "./BulkLockDialog";
 import { AddJudgeDialog, JudgeRowActions } from "./JudgeControls";
 
 /**
@@ -68,6 +69,7 @@ export default async function JudgesPage() {
         actions={
           <>
             <AddJudgeDialog />
+            <BulkLockDialog />
             <Button asChild size="sm" variant="outline">
               {/* A route handler, so a plain anchor: next/link would prefetch, and
                   prefetching this URL builds a workbook on every hover. The
