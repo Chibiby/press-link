@@ -70,6 +70,7 @@ const summary = (over: Partial<RegistrySummary> = {}): RegistrySummary => ({
     individualCoaches: 4,
     groupLearners: 11,
     groupCoaches: 3,
+    delegates: 28,
   },
   ...over,
 });
@@ -85,6 +86,7 @@ describe("toSchoolRegistryExportRows", () => {
         District: "Alabel",
         Individual: "Learners: 8\nCoaches: 3",
         Group: "Learners: 7\nCoaches: 2",
+        Total: 20,
       },
       {
         School: "Malapatan Central",
@@ -92,6 +94,7 @@ describe("toSchoolRegistryExportRows", () => {
         District: "Malapatan",
         Individual: "Learners: 2\nCoaches: 1",
         Group: "Learners: 0\nCoaches: 0",
+        Total: 3,
       },
       {
         School: "Maasim Central ES",
@@ -99,6 +102,7 @@ describe("toSchoolRegistryExportRows", () => {
         District: "Maasim",
         Individual: "Learners: 0\nCoaches: 0",
         Group: "Learners: 4\nCoaches: 1",
+        Total: 5,
       },
     ]);
   });
@@ -112,6 +116,8 @@ describe("toSchoolRegistryExportRows", () => {
       District: "3 of 332 schools",
       Individual: "Learners: 10\nCoaches: 4",
       Group: "Learners: 11\nCoaches: 3",
+      // The four columns of the total row, added.
+      Total: 28,
     });
   });
 
@@ -120,7 +126,7 @@ describe("toSchoolRegistryExportRows", () => {
       summary({
         rows: [],
         shown: 0,
-        totals: { individualLearners: 0, individualCoaches: 0, groupLearners: 0, groupCoaches: 0 },
+        totals: { individualLearners: 0, individualCoaches: 0, groupLearners: 0, groupCoaches: 0, delegates: 0 },
       })
     );
 
@@ -136,6 +142,7 @@ describe("toSchoolRegistryExportRows", () => {
       "District",
       "Individual",
       "Group",
+      "Total",
     ]);
   });
 });
@@ -154,6 +161,7 @@ describe("buildSchoolRegistryWorkbook", () => {
       "District",
       "Individual",
       "Group",
+      "Total",
     ]);
 
     expect(rowValues(sheet, headerRowIndex + 1)).toEqual([
@@ -162,6 +170,8 @@ describe("buildSchoolRegistryWorkbook", () => {
       "Alabel",
       "Learners: 8\nCoaches: 3",
       "Learners: 7\nCoaches: 2",
+      // A number, because this is the one cell anybody will sort or sum on.
+      20,
     ]);
 
     // Row 4 is DIVISION TOTAL, after the three schools.
@@ -171,6 +181,7 @@ describe("buildSchoolRegistryWorkbook", () => {
       "3 of 332 schools",
       "Learners: 10\nCoaches: 4",
       "Learners: 11\nCoaches: 3",
+      28,
     ]);
   });
 
@@ -179,7 +190,7 @@ describe("buildSchoolRegistryWorkbook", () => {
       summary({
         rows: [],
         shown: 0,
-        totals: { individualLearners: 0, individualCoaches: 0, groupLearners: 0, groupCoaches: 0 },
+        totals: { individualLearners: 0, individualCoaches: 0, groupLearners: 0, groupCoaches: 0, delegates: 0 },
       })
     );
     const sheet = book.getWorksheet("Schools")!;

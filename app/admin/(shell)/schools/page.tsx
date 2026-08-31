@@ -14,14 +14,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SCHOOL_STATUS_LABEL } from "@/lib/dashboard/school-registry";
+import { registryRowTotal, SCHOOL_STATUS_LABEL } from "@/lib/dashboard/school-registry";
 import {
+  applyQualifierCounts,
   categoryCountsBySchool,
+  individualCountMode,
+  INDIVIDUAL_COLUMN_NOTE,
+  qualifierCountsBySchool,
   schoolRegistryEmptyState,
   schoolRegistryStatus,
   summariseSchoolRegistry,
   toRegistryRows,
+  type QualifierCounts,
   type RawRegistryEntry,
+  type RawRegistryQualifier,
+  type RawRegistryQualifierCoach,
   type RawRegistrySchool,
   type SchoolRegistryFilters,
 } from "@/lib/schools/school-registry-filters";
@@ -81,11 +88,52 @@ export default async function AdminSchoolsPage({
   ]);
 
   const districts = districtResult.data ?? [];
+  const mode = individualCountMode(params);
+
+  // Read only when the table is actually showing round-2 figures. `round2_qualifiers`
+  // and the coach links behind it are two more paged reads, and there is no reason to
+  // pay for them on every load of a page that usually counts everybody entered.
+  //
+  // Individual by construction: the two-stage rounds cover individual events only
+  // (non-negotiable 6), which is why this narrows the two individual columns and the
+  // group ones are left exactly as they were.
+  let qualifierCounts = new Map<string, QualifierCounts>();
+  if (mode === "qualifiers") {
+    const qualifierRows = await fetchAll<RawRegistryQualifier>("Round 2 qualifiers", (from, to) =>
+      supabase
+        .from("round2_qualifiers")
+        .select("participant_id, entry_id, entries(school_id)")
+        .order("entry_id")
+        .order("participant_id")
+        .range(from, to)
+        .overrideTypes<RawRegistryQualifier[]>()
+    );
+
+    const entryIds = [...new Set(qualifierRows.map((row) => row.entry_id))];
+    // Only the entries that have a qualifier on them. The division's whole
+    // `entry_coaches` table is an order of magnitude larger and every extra row would
+    // be discarded by `qualifierCountsBySchool` anyway.
+    const coachRows = entryIds.length
+      ? await fetchAll<RawRegistryQualifierCoach>("Qualifying entries' coaches", (from, to) =>
+          supabase
+            .from("entry_coaches")
+            .select("entry_id, coach_id, participant_id")
+            .in("entry_id", entryIds)
+            .order("entry_id")
+            .order("coach_id")
+            .range(from, to)
+            .overrideTypes<RawRegistryQualifierCoach[]>()
+        )
+      : [];
+
+    qualifierCounts = qualifierCountsBySchool(qualifierRows, coachRows);
+  }
 
   // Every part of this now lives in `lib/schools/school-registry-filters.ts`, tested
   // there: the row mapper, the district and status filters plus the search box, and
   // the sentence to print when nothing survives.
-  const rows = toRegistryRows(schoolRows, categoryCountsBySchool(entryRows));
+  const allRows = toRegistryRows(schoolRows, categoryCountsBySchool(entryRows));
+  const rows = mode === "qualifiers" ? applyQualifierCounts(allRows, qualifierCounts) : allRows;
   const status = schoolRegistryStatus(params);
   const districtId = params.district ?? null;
   const summary = summariseSchoolRegistry(rows, params);
@@ -121,10 +169,25 @@ export default async function AdminSchoolsPage({
               <TableRow>
                 <TableHead>School</TableHead>
                 <TableHead>District</TableHead>
-                <TableHead className="text-right">Ind. Learners</TableHead>
-                <TableHead className="text-right">Ind. Coaches</TableHead>
+                {/* The individual pair is titled, not renamed: the column stays where
+                    a reader last saw it, and the tooltip says which population it is
+                    counting now. The group pair carries no title because it never
+                    changes — there is no second round to qualify for in a team
+                    contest. */}
+                <TableHead className="text-right" title={INDIVIDUAL_COLUMN_NOTE[mode]}>
+                  {mode === "qualifiers" ? "R2 Learners" : "Ind. Learners"}
+                </TableHead>
+                <TableHead className="text-right" title={INDIVIDUAL_COLUMN_NOTE[mode]}>
+                  {mode === "qualifiers" ? "R2 Coaches" : "Ind. Coaches"}
+                </TableHead>
                 <TableHead className="text-right">Grp. Learners</TableHead>
                 <TableHead className="text-right">Grp. Coaches</TableHead>
+                <TableHead
+                  className="text-right"
+                  title="The four columns to the left, added. Somebody who competes individually and is also on a team is counted in each."
+                >
+                  Total
+                </TableHead>
                 {/* No label. The column is one icon button per row, and a heading
                     over it would be read as a data column that happens to be empty. */}
                 <TableHead className="w-12">
@@ -139,7 +202,7 @@ export default async function AdminSchoolsPage({
                       in its base and this cell quotes back whatever was typed — a
                       pasted line would otherwise stretch the table into a sideways
                       scroll instead of wrapping. */}
-                  <TableCell colSpan={7} className="py-8 text-center whitespace-normal">
+                  <TableCell colSpan={8} className="py-8 text-center whitespace-normal">
                     <p className="mx-auto max-w-[60ch] text-sm text-balance break-words text-muted-foreground">
                       {empty.message}
                     </p>
@@ -197,6 +260,9 @@ export default async function AdminSchoolsPage({
                     <TableCell className="text-right tabular-nums">
                       {row.groupCoaches}
                     </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {registryRowTotal(row)}
+                    </TableCell>
                     <TableCell className="text-right">
                       <SchoolActions schoolId={row.schoolId} schoolName={row.schoolName} />
                     </TableCell>
@@ -221,6 +287,9 @@ export default async function AdminSchoolsPage({
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {summary.totals.groupCoaches}
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    {summary.totals.delegates}
                   </TableCell>
                   <TableCell />
                 </TableRow>

@@ -176,6 +176,16 @@ export interface SchoolRegistryFilters {
   [SEARCH_PARAM]?: string | string[];
   district?: string;
   status?: string;
+  /**
+   * What the two individual columns count: everybody entered, or only those through
+   * to round 2. Read by {@link individualCountMode}.
+   *
+   * It narrows a *reading*, not the roll: no school disappears when it is set, and a
+   * school that got nobody through shows two noughts rather than dropping out. That
+   * is why it is not in the filter bar's `FILTER_KEYS` — the Clear button counts
+   * controls that hide rows.
+   */
+  individual?: string;
 }
 
 /**
@@ -347,6 +357,10 @@ export function schoolRegistryFiltersFromParams(params: {
     [SEARCH_PARAM]: value(SEARCH_PARAM),
     district: value("district"),
     status: value("status"),
+    // Carried so a workbook taken while the table is showing round-2 figures holds
+    // round-2 figures. A file that answered a different question from the screen it
+    // came from is the failure this whole function exists against.
+    individual: value("individual"),
   };
 }
 
@@ -382,4 +396,154 @@ export function schoolRegistryExportFilename(
 ): string {
   const scope = schoolRegistryFiltersActive(filters) ? "filtered-" : "";
   return `press-link-schools-${scope}${date}.xlsx`;
+}
+
+/**
+ * One `round2_qualifiers` row, joined to the school that entered it.
+ *
+ * Individual by construction: the two-stage rounds cover individual events only
+ * (non-negotiable 6), so a qualifier row can only ever belong to an individual
+ * entry. That is why this narrows the *individual* columns and leaves the group
+ * ones alone — there is no such thing as a group qualifier to count.
+ */
+export interface RawRegistryQualifier {
+  participant_id: string;
+  entry_id: string;
+  entries: { school_id: string } | null;
+}
+
+/** One `entry_coaches` row on an entry that has qualifiers on it. */
+export interface RawRegistryQualifierCoach {
+  entry_id: string;
+  coach_id: string;
+  /** The contestant this coach is for; null on a pre-0019 entry. */
+  participant_id: string | null;
+}
+
+export interface QualifierCounts {
+  individualLearners: number;
+  individualCoaches: number;
+}
+
+/**
+ * Who from each school reached round 2, and who coaches them.
+ *
+ * A learner is counted once however many events they qualified in — the columns
+ * count people, the way `categoryCountsBySchool` does, so a contestant through in
+ * two contests is one learner going to round 2 and not two.
+ *
+ * A coach counts when they are paired with a contestant who qualified. The pairing
+ * is 0019's `entry_coaches.participant_id`, which on an individual entry names
+ * exactly one contestant per coach — so a school whose three contestants share one
+ * adviser and whose one qualifier is coached by them reports one coach, not three.
+ *
+ * A row with no pairing at all is the exception, and it is counted for any qualifier
+ * on its entry. Those are pre-0019 rows that never recorded who the coach was for;
+ * dropping them would report a qualifying contestant as having no coach at all,
+ * which is a worse answer than naming the coach their entry does carry.
+ */
+export function qualifierCountsBySchool(
+  qualifiers: RawRegistryQualifier[],
+  coachLinks: RawRegistryQualifierCoach[]
+): Map<string, QualifierCounts> {
+  interface Accumulator {
+    learners: Set<string>;
+    coaches: Set<string>;
+  }
+
+  const bySchool = new Map<string, Accumulator>();
+  /** Which entries have a qualifier on them, and which of their contestants. */
+  const qualifyingByEntry = new Map<string, Set<string>>();
+  const schoolByEntry = new Map<string, string>();
+
+  for (const row of qualifiers) {
+    const schoolId = row.entries?.school_id;
+    // A qualifier whose entry join came back null has no school to be counted
+    // against — the same treatment a dangling event join gets in
+    // `categoryCountsBySchool`, and for the same reason: it must not crash the
+    // aggregation and must not be attributed to an arbitrary school.
+    if (!schoolId) continue;
+
+    let acc = bySchool.get(schoolId);
+    if (!acc) {
+      acc = { learners: new Set(), coaches: new Set() };
+      bySchool.set(schoolId, acc);
+    }
+    acc.learners.add(row.participant_id);
+
+    schoolByEntry.set(row.entry_id, schoolId);
+    const onEntry = qualifyingByEntry.get(row.entry_id) ?? new Set<string>();
+    onEntry.add(row.participant_id);
+    qualifyingByEntry.set(row.entry_id, onEntry);
+  }
+
+  for (const link of coachLinks) {
+    const schoolId = schoolByEntry.get(link.entry_id);
+    if (!schoolId) continue;
+    const qualifying = qualifyingByEntry.get(link.entry_id);
+    if (!qualifying) continue;
+
+    // Paired with somebody who did not qualify: that coach is not going to round 2
+    // on this entry, and counting them would report the whole entry's advisers as
+    // qualifying because one of their contestants did.
+    if (link.participant_id !== null && !qualifying.has(link.participant_id)) continue;
+
+    bySchool.get(schoolId)?.coaches.add(link.coach_id);
+  }
+
+  return new Map(
+    [...bySchool.entries()].map(([schoolId, acc]) => [
+      schoolId,
+      { individualLearners: acc.learners.size, individualCoaches: acc.coaches.size },
+    ])
+  );
+}
+
+/**
+ * The rows with their individual columns replaced by the round-2 figures.
+ *
+ * The group columns are untouched, which is not an omission: a group contest has no
+ * second round to qualify for (non-negotiable 6), so "group qualifiers" is not a
+ * quantity that exists. A school absent from the map had nobody go through and gets
+ * two noughts — a measured nought, which is the honest answer for a division that
+ * has drawn its cut.
+ */
+export function applyQualifierCounts(
+  rows: RegistryRow[],
+  qualifierCounts: Map<string, QualifierCounts>
+): RegistryRow[] {
+  return rows.map((row) => {
+    const counts = qualifierCounts.get(row.schoolId);
+    return {
+      ...row,
+      individualLearners: counts?.individualLearners ?? 0,
+      individualCoaches: counts?.individualCoaches ?? 0,
+    };
+  });
+}
+
+/** What the individual columns are counting. */
+export type IndividualCountMode = "all" | "qualifiers";
+
+/** The dropdown's two options, and the tooltip the columns carry under each. */
+export const INDIVIDUAL_COUNT_LABEL: Record<IndividualCountMode, string> = {
+  all: "Everyone entered",
+  qualifiers: "Round 2 qualifiers",
+};
+
+export const INDIVIDUAL_COLUMN_NOTE: Record<IndividualCountMode, string> = {
+  all: "Every learner and coach this school has on an individual entry.",
+  qualifiers:
+    "Only those through to round 2: the learners on this school's qualifier list, and the coaches paired with them. Group contests have no second round, so those two columns are unchanged.",
+};
+
+/**
+ * Which of the two the URL is asking for.
+ *
+ * Anything unrecognised is "all", the same fail-safe `schoolRegistryStatus` uses: a
+ * mistyped param must not quietly narrow a roll to the schools that got somebody
+ * through round 1.
+ */
+export function individualCountMode(filters: SchoolRegistryFilters): IndividualCountMode {
+  return filters.individual === "qualifiers" ? "qualifiers" : "all";
 }

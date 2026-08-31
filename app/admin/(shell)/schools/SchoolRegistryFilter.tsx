@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams } from "@/hooks/use-filter-params";
 import { SEARCH_PARAM } from "@/lib/search/filter-params";
 import { SCHOOL_STATUS_LABEL, type SchoolStatus } from "@/lib/dashboard/school-registry";
+import { INDIVIDUAL_COUNT_LABEL } from "@/lib/schools/school-registry-filters";
 
 /**
  * "entered" ("Has entries") is the placeholder now — an unset `?status=` falls
@@ -80,6 +81,23 @@ export function SchoolRegistryFilter({
               value,
               label: SCHOOL_STATUS_LABEL[value],
             }))}
+          />
+        </div>
+
+        <div className="min-w-56">
+          {/* Not a filter, and deliberately not in FILTER_KEYS: it hides no school.
+              It changes what two of the columns count — everybody on an individual
+              entry, or only those through to round 2 — and a school that got nobody
+              through stays on the table showing two noughts. The Clear button counts
+              controls that take rows away, and this one never does. */}
+          <FilterSelect
+            label="Individual columns"
+            value={searchParams.get("individual") ?? ANY}
+            onChange={(value) => setParam("individual", value)}
+            placeholder={INDIVIDUAL_COUNT_LABEL.all}
+            options={[
+              { value: "qualifiers", label: INDIVIDUAL_COUNT_LABEL.qualifiers },
+            ]}
           />
         </div>
 

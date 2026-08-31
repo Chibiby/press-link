@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 
+import { registryRowTotal } from "@/lib/dashboard/school-registry";
 import type { RegistrySummary } from "@/lib/dashboard/school-registry";
 
 import { borderRow } from "./borders";
@@ -10,11 +11,12 @@ export interface SchoolRegistryExportRow {
   District: string;
   Individual: string;
   Group: string;
+  Total: number;
 }
 
-const HEADERS = ["School", "School ID", "District", "Individual", "Group"] as const;
+const HEADERS = ["School", "School ID", "District", "Individual", "Group", "Total"] as const;
 
-const COLUMN_WIDTHS = [55, 16, 24, 16, 16];
+const COLUMN_WIDTHS = [55, 16, 24, 16, 16, 10];
 
 /** Columns (1-based) whose cells hold the two-line "Learners: N\nCoaches: N" strings. */
 const WRAPPED_COLUMNS = [4, 5];
@@ -27,6 +29,11 @@ const WRAPPED_COLUMNS = [4, 5];
  * footnote, and `summary.totals` is a sum over the shown rows, not the whole
  * division roll.
  */
+/**
+ * The Total column is the four figures beside it added — the columns, not the
+ * people. Somebody who competes individually and is also on a team is counted in
+ * each, which is the only reading under which the number totals the row it sits on.
+ */
 export function toSchoolRegistryExportRows(
   summary: RegistrySummary
 ): SchoolRegistryExportRow[] {
@@ -36,6 +43,10 @@ export function toSchoolRegistryExportRows(
     District: row.districtName,
     Individual: `Learners: ${row.individualLearners}\nCoaches: ${row.individualCoaches}`,
     Group: `Learners: ${row.groupLearners}\nCoaches: ${row.groupCoaches}`,
+    // A number, not the two-line string its neighbours carry: this is the one cell
+    // on the sheet somebody will sort or sum on, and a spreadsheet cannot do either
+    // to text.
+    Total: registryRowTotal(row),
   }));
 
   rows.push({
@@ -44,6 +55,7 @@ export function toSchoolRegistryExportRows(
     District: `${summary.shown} of ${summary.registered} schools`,
     Individual: `Learners: ${summary.totals.individualLearners}\nCoaches: ${summary.totals.individualCoaches}`,
     Group: `Learners: ${summary.totals.groupLearners}\nCoaches: ${summary.totals.groupCoaches}`,
+    Total: summary.totals.delegates,
   });
 
   return rows;

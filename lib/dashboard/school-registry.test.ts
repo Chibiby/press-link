@@ -72,6 +72,8 @@ describe("summariseRegistry", () => {
       individualCoaches: 4,
       groupLearners: 14,
       groupCoaches: 6,
+      // The four columns added, which is what the total column totals.
+      delegates: 34,
     });
   });
 
@@ -137,6 +139,8 @@ describe("summariseRegistry", () => {
       individualCoaches: 4,
       groupLearners: 14,
       groupCoaches: 6,
+      // The four columns added, which is what the total column totals.
+      delegates: 34,
     });
   });
 

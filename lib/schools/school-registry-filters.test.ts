@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyQualifierCounts,
   categoryCountsBySchool,
+  individualCountMode,
+  qualifierCountsBySchool,
   schoolRegistryEmptyState,
   schoolRegistryExportFilename,
   schoolRegistryFiltersActive,
@@ -172,6 +175,8 @@ describe("summariseSchoolRegistry", () => {
       individualCoaches: 4,
       groupLearners: 3,
       groupCoaches: 1,
+      // The four columns added, which is what a total column totals.
+      delegates: 21,
     });
   });
 
@@ -265,6 +270,7 @@ describe("summariseSchoolRegistry", () => {
       individualCoaches: 2,
       groupLearners: 0,
       groupCoaches: 0,
+      delegates: 10,
     });
   });
 
@@ -460,5 +466,135 @@ describe("schoolRegistryExportFilename", () => {
     expect(
       schoolRegistryExportFilename({ district: "d1", status: "all" }, "2026-08-24")
     ).toBe("press-link-schools-filtered-2026-08-24.xlsx");
+  });
+});
+
+describe("qualifierCountsBySchool", () => {
+  const q = (participantId: string, entryId: string, schoolId: string | null) => ({
+    participant_id: participantId,
+    entry_id: entryId,
+    entries: schoolId ? { school_id: schoolId } : null,
+  });
+
+  it("counts a learner once however many events they qualified in", () => {
+    // The column counts people. A contestant through in two contests is one learner
+    // going to round 2, not two.
+    const counts = qualifierCountsBySchool([q("p1", "e1", "s1"), q("p1", "e2", "s1")], []);
+    expect(counts.get("s1")?.individualLearners).toBe(1);
+  });
+
+  it("counts the coach paired with a qualifier", () => {
+    const counts = qualifierCountsBySchool(
+      [q("p1", "e1", "s1")],
+      [{ entry_id: "e1", coach_id: "c1", participant_id: "p1" }]
+    );
+    expect(counts.get("s1")?.individualCoaches).toBe(1);
+  });
+
+  it("does not count a coach whose contestant was eliminated", () => {
+    // Three contestants on one entry, one through. Counting the whole entry's
+    // advisers would report coaches as qualifying because somebody else did.
+    const counts = qualifierCountsBySchool(
+      [q("p1", "e1", "s1")],
+      [
+        { entry_id: "e1", coach_id: "c1", participant_id: "p1" },
+        { entry_id: "e1", coach_id: "c2", participant_id: "p2" },
+      ]
+    );
+    expect(counts.get("s1")?.individualCoaches).toBe(1);
+  });
+
+  it("counts one adviser once when they coach two qualifiers", () => {
+    const counts = qualifierCountsBySchool(
+      [q("p1", "e1", "s1"), q("p2", "e1", "s1")],
+      [
+        { entry_id: "e1", coach_id: "c1", participant_id: "p1" },
+        { entry_id: "e1", coach_id: "c1", participant_id: "p2" },
+      ]
+    );
+    expect(counts.get("s1")).toEqual({ individualLearners: 2, individualCoaches: 1 });
+  });
+
+  it("counts an unpaired coach on a qualifying entry", () => {
+    // A pre-0019 row that never recorded who the coach was for. Dropping it would
+    // report a qualifying contestant as having no coach at all.
+    const counts = qualifierCountsBySchool(
+      [q("p1", "e1", "s1")],
+      [{ entry_id: "e1", coach_id: "c1", participant_id: null }]
+    );
+    expect(counts.get("s1")?.individualCoaches).toBe(1);
+  });
+
+  it("ignores a coach on an entry nobody qualified from", () => {
+    const counts = qualifierCountsBySchool(
+      [q("p1", "e1", "s1")],
+      [{ entry_id: "e9", coach_id: "c9", participant_id: "p9" }]
+    );
+    expect(counts.get("s1")?.individualCoaches).toBe(0);
+  });
+
+  it("drops a qualifier whose entry join came back null rather than crashing", () => {
+    // The same treatment a dangling event join gets in categoryCountsBySchool: it
+    // must not be attributed to an arbitrary school.
+    const counts = qualifierCountsBySchool([q("p1", "e1", null)], []);
+    expect(counts.size).toBe(0);
+  });
+
+  it("keeps schools apart", () => {
+    const counts = qualifierCountsBySchool([q("p1", "e1", "s1"), q("p2", "e2", "s2")], []);
+    expect(counts.get("s1")?.individualLearners).toBe(1);
+    expect(counts.get("s2")?.individualLearners).toBe(1);
+  });
+});
+
+describe("applyQualifierCounts", () => {
+  const row = {
+    schoolId: "s1",
+    schoolName: "Bagong Silang ES",
+    schoolIdNumber: "123456",
+    districtId: "d1",
+    districtName: "Alabel",
+    isIntegrated: false,
+    learners: 10,
+    coaches: 4,
+    entries: 3,
+    individualLearners: 8,
+    individualCoaches: 3,
+    groupLearners: 7,
+    groupCoaches: 2,
+    lockedAt: null,
+  };
+
+  it("replaces the individual figures and leaves the group ones alone", () => {
+    // A group contest has no second round to qualify for, so "group qualifiers" is
+    // not a quantity that exists.
+    const [out] = applyQualifierCounts(
+      [row],
+      new Map([["s1", { individualLearners: 2, individualCoaches: 1 }]])
+    );
+    expect(out.individualLearners).toBe(2);
+    expect(out.individualCoaches).toBe(1);
+    expect(out.groupLearners).toBe(7);
+    expect(out.groupCoaches).toBe(2);
+  });
+
+  it("gives a school that got nobody through a measured nought", () => {
+    const [out] = applyQualifierCounts([row], new Map());
+    expect(out.individualLearners).toBe(0);
+    expect(out.individualCoaches).toBe(0);
+  });
+});
+
+describe("individualCountMode", () => {
+  it("reads the round-2 view off the param", () => {
+    expect(individualCountMode({ individual: "qualifiers" })).toBe("qualifiers");
+  });
+
+  it("falls back to everybody entered on anything else", () => {
+    // A mistyped param must not quietly narrow the roll to schools that got somebody
+    // through round 1.
+    expect(individualCountMode({})).toBe("all");
+    expect(individualCountMode({ individual: "all" })).toBe("all");
+    expect(individualCountMode({ individual: "QUALIFIERS" })).toBe("all");
   });
 });

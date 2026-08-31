@@ -38,6 +38,24 @@ export function isSchoolStatus(value: string | undefined): value is SchoolStatus
 }
 
 /** One school as the registry table prints it. */
+/**
+ * One school's row added up: individual learners and coaches, group learners and
+ * coaches.
+ *
+ * The columns, not the people. Somebody who competes individually and is also on a
+ * team appears in two of the four figures and is counted twice here, which is the
+ * only reading under which the total is the total *of the row* — and the row is what
+ * a reader is adding up when their eye runs across it.
+ */
+export function registryRowTotal(row: {
+  individualLearners: number;
+  individualCoaches: number;
+  groupLearners: number;
+  groupCoaches: number;
+}): number {
+  return row.individualLearners + row.individualCoaches + row.groupLearners + row.groupCoaches;
+}
+
 export interface RegistryRow {
   schoolId: string;
   schoolName: string;
@@ -84,6 +102,16 @@ export interface RegistrySummary {
     individualCoaches: number;
     groupLearners: number;
     groupCoaches: number;
+    /**
+     * The four figures above, added.
+     *
+     * A delegation size as the four columns state it, and it is the *columns* it
+     * totals rather than the people: a learner in both an individual and a group
+     * contest is counted once in each, so they are counted twice here. That is the
+     * only reading under which a row's total is the row, which is what a total
+     * column is for.
+     */
+    delegates: number;
   };
 }
 
@@ -140,6 +168,7 @@ export function summariseRegistry(
       individualCoaches: shown.reduce((sum, row) => sum + row.individualCoaches, 0),
       groupLearners: shown.reduce((sum, row) => sum + row.groupLearners, 0),
       groupCoaches: shown.reduce((sum, row) => sum + row.groupCoaches, 0),
+      delegates: shown.reduce((sum, row) => sum + registryRowTotal(row), 0),
     },
   };
 }
