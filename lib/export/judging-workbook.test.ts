@@ -492,14 +492,54 @@ describe("buildEventSheetWorkbook", () => {
     expect(first[TABULATION_COLUMNS.findIndex((c) => c.key === "finalRank")]).toBe(1);
   });
 
-  it("prints an absent placement as an em dash, never as a nought", () => {
-    // 0 would sort as a winning place. The eliminated contestant has no round-2
-    // anything and no final rank at all — that is an absence, not a score.
+  it("lists the qualifiers and leaves the eliminated contestant out", () => {
+    // The screen keeps them — it is the event's whole working. This is the sheet a
+    // division circulates, and a name followed by a row of dashes reads as a gap
+    // rather than as somebody who did not go through.
     const sheet = book.getWorksheet("Results sheet")!;
-    const eliminated = rowValues(sheet, HEADER_ROW + 3);
-    expect(eliminated[0]).toBe("0003");
-    expect(eliminated[TABULATION_COLUMNS.findIndex((c) => c.key === "finalRank")]).toBe("—");
-    expect(eliminated[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Points")]).toBe("—");
+    expect(rowValues(sheet, HEADER_ROW + 1)[0]).toBe("0001");
+    expect(rowValues(sheet, HEADER_ROW + 2)[0]).toBe("0002");
+    // Row 3 is past the end: two qualifiers, and 0003 was eliminated.
+    expect(rowValues(sheet, HEADER_ROW + 3)).toEqual([]);
+    expect(sheetText(sheet)).not.toContain("0003");
+  });
+
+  it("prints an absent placement as an em dash, never as a nought", () => {
+    // 0 would sort as a winning place. A qualifier whose round 2 is still being
+    // judged has no placement yet, and that is an absence rather than a score.
+    const midRound2 = buildEventSheetWorkbook(
+      {
+        row,
+        rows: [sheetRow("0001", { round2Points: null, round2Rank: null, finalPoints: null, finalRank: null })],
+        unidentified: [],
+      },
+      AT
+    );
+    const cells = rowValues(midRound2.getWorksheet("Results sheet")!, HEADER_ROW + 1);
+    expect(cells[TABULATION_COLUMNS.findIndex((c) => c.key === "finalRank")]).toBe("—");
+    expect(cells[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Points")]).toBe("—");
+  });
+
+  it("says which absence it is when nobody has qualified yet", () => {
+    // Not an empty table: a field with nobody through is round 1 not yet closed,
+    // which is a different fact from an event nobody entered, and a spreadsheet
+    // carries no tooltip to tell them apart later.
+    const none = buildEventSheetWorkbook(
+      { row, rows: [sheetRow("0001", { qualified: false })], unidentified: [] },
+      AT
+    );
+    const text = sheetText(none.getWorksheet("Results sheet")!);
+    expect(text).toContain("No contestant has qualified");
+    expect(text).toContain("1 contestant is");
+  });
+
+  it("says on the About sheet what the file holds and how big the field was", () => {
+    // A reader who added up the rows and got a smaller number than "Contestants"
+    // would otherwise be right to think the file was short.
+    const text = sheetText(book.getWorksheet("About this export")!);
+    expect(text).toContain("What this sheet lists");
+    expect(text).toContain("through to round 2, and nobody else");
+    expect(text).toContain("Contestants,3");
   });
 
   it("joins coaches with semicolons, since a name may carry a comma", () => {

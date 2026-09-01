@@ -458,6 +458,16 @@ export function buildTabulatorsWorkbook(
  * which events are done; the sheet is what gets checked, initialled and filed for
  * one contest, and it is the one that has to leave the building.
  *
+ * ## Why it lists only the qualifiers
+ *
+ * The file carries the contestants through to round 2 and nobody else — see
+ * {@link qualifiedSheetRows}. The page it is downloaded from still shows the whole
+ * field, and that difference is deliberate rather than a drift: the screen is the
+ * event's working, ranks and eliminations together, while this is the sheet a
+ * division circulates. The About sheet states the coverage and prints the whole
+ * field's size beside it, so the file says what it holds instead of leaving a reader
+ * to add up rows and wonder.
+ *
  * ## Why it takes the loaded sheet rather than the event id
  *
  * `lib/` does not import from `app/`, so this cannot fetch. `EventSheetExportInput`
@@ -536,7 +546,7 @@ function eventAboutSheet(
   writeAoa(
     sheet,
     [
-      ["Press Link — results sheet"],
+      ["Press Link — results sheet (round 2 qualifiers)"],
       [],
       ["Event", row.typeNameEn],
       ["Filipino name", filipinoName(row) || row.typeNameEn],
@@ -554,6 +564,17 @@ function eventAboutSheet(
       ["Qualifiers", summary.qualifiers],
       ["Placed", summary.placed],
       ["Unidentified", unidentifiedLine],
+      [],
+      // Said plainly, and beside the counts it qualifies. Contestants is the whole
+      // field and the sheet lists a subset of it; a reader who added up the rows and
+      // got a smaller number would otherwise be right to think the file was short.
+      ["What this sheet lists"],
+      ["", `The ${summary.qualifiers} contestants through to round 2, and nobody else.`],
+      ["", "An eliminated contestant is not on it. Their round 1 rank is a fact about"],
+      ["", "round 1 and it is on the panel board; here it would be a name followed by a"],
+      ["", "row of dashes, which reads as a gap rather than as somebody who did not go"],
+      ["", "through. The Contestants figure above is the whole field, so the two numbers"],
+      ["", "together say how many were entered and how many advanced."],
       [],
       ["How to read a rank"],
       ["", "Rank R1 is the round-1 judge's own placement, verbatim: a tie stands as it"],
@@ -584,6 +605,24 @@ function eventAboutSheet(
  * different and are worded differently — no cut on file means no field was divided
  * and nothing was computed; no contestants means the event has nobody to rank.
  */
+/**
+ * The contestants this sheet carries: the ones through to round 2.
+ *
+ * `qualified` is `finalStandings`' own flag — a unit is on the round-2 qualifier
+ * list or it is not — so this asks the standings rather than re-deriving the cut,
+ * and a workbook cannot disagree with the board the cut was drawn from.
+ *
+ * An eliminated contestant is dropped from the file and not merely left blank. The
+ * screen keeps them because the tabulators' page is the event's whole field, ranks
+ * and eliminations together; this file is the sheet a division circulates, and on
+ * that sheet a row of em dashes under a name is a contestant a reader has to work
+ * out is not competing. Their round 1 rank is on the panel board, which is where an
+ * elimination is a fact about round 1 rather than an absence in round 2.
+ */
+export function qualifiedSheetRows(rows: SheetRow[]): SheetRow[] {
+  return rows.filter((row) => row.qualified);
+}
+
 function eventSheet(
   workbook: ExcelJS.Workbook,
   { row, rows }: EventSheetExportInput
@@ -591,16 +630,27 @@ function eventSheet(
   const sheet = workbook.addWorksheet("Results sheet");
   sheet.pageSetup = { ...sheet.pageSetup, orientation: "landscape" };
 
-  if (rows.length === 0) {
+  const qualified = qualifiedSheetRows(rows);
+
+  if (qualified.length === 0) {
     sheet.columns = [{ width: 110 }];
     writeAoa(
       sheet,
       [
         ["Results sheet"],
         [
-          row.round2Cut === null
-            ? XL_CUT_NOT_SET
-            : "This event has no contestants on file, so there is no sheet to draw.",
+          // Three absences, and they are not the same absence. No cut means nothing
+          // was computed; no contestants means nobody entered; a field with nobody
+          // through means round 1 has not been closed on it yet. A spreadsheet has
+          // no tooltip and outlives the click that made it, so each says which it is
+          // rather than arriving as an empty table.
+          rows.length === 0
+            ? row.round2Cut === null
+              ? XL_CUT_NOT_SET
+              : "This event has no contestants on file, so there is no sheet to draw."
+            : `No contestant has qualified for round 2 in this event, so there is nothing to list. ${rows.length} ${
+                rows.length === 1 ? "contestant is" : "contestants are"
+              } entered; the qualifier list is drawn when an administrator closes round 1.`,
         ],
       ],
       1
@@ -611,7 +661,7 @@ function eventSheet(
   }
 
   sheet.columns = [10, 30, 34, 30, 34, 22, 10, 11, 10, 11, 13, 11].map((width) => ({ width }));
-  writeTable(sheet, EVENT_SHEET_HEADER, toEventSheetRows(rows), 1);
+  writeTable(sheet, EVENT_SHEET_HEADER, toEventSheetRows(qualified), 1);
   return sheet;
 }
 

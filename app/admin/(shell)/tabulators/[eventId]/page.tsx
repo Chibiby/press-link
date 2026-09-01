@@ -102,7 +102,13 @@ export default async function EventSheetPage({
                 a status rather than with a redirect to a login page — which is what
                 would otherwise be saved under an .xlsx name. */}
             <Button asChild size="sm" variant="outline">
-              <a href={`/admin/tabulators/${row.eventId}/export`}>
+              {/* The title says what the file holds, because it is not what this page
+                  holds: the table below is the event's whole working and the workbook
+                  is the sheet a division circulates. */}
+              <a
+                href={`/admin/tabulators/${row.eventId}/export`}
+                title="The contestants through to round 2, with their placements. An eliminated contestant is on this page but not in the file."
+              >
                 <Download />
                 Export sheet
               </a>
