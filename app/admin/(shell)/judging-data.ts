@@ -74,7 +74,7 @@ interface RawEventRow {
     category: EventCategory;
     sort_order: number;
   } | null;
-  entries: { count: number; entry_participants: { count: number }[] }[];
+  entries: { id: string; entry_participants: { count: number }[] }[];
 }
 
 interface RawJudgeRow {
@@ -226,12 +226,20 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         supabase
           .from("events")
           .select(
-            // `entry_participants(count)` inside the entries embed: PostgREST returns
-            // one count per entry, and the sum across them is how many individuals are
-            // in the contest. There is no way to ask for that total directly, and a
-            // second read keyed by event id would cost a round trip to another
-            // continent for a number this one already has the rows for.
-            "id, level, language, round2_cut, event_types(name_en, name_fil, category, sort_order), entries(count, entry_participants(count))"
+            // One row per entry, each carrying its own participant count, and both
+            // figures are read off that: the entry count is the array's length and the
+            // contestant count is the sum. A second read keyed by event id would cost a
+            // round trip to another continent for numbers this query already has the
+            // rows for.
+            //
+            // `entries(count, entry_participants(count))` is what this looked like for
+            // one deploy, and PostgREST refuses it: an aggregate on the embed cannot
+            // sit beside a nested embed of its own, and the request comes back with
+            // "column entries_entry_participants_2 must appear in the GROUP BY clause".
+            // The whole judges portal failed to load. Asking for the rows instead of an
+            // aggregate is the shape that works — 1,118 entries across the division, so
+            // the payload is a rounding error either way.
+            "id, level, language, round2_cut, event_types(name_en, name_fil, category, sort_order), entries(id, entry_participants(count))"
           )
           .range(from, to)
           .overrideTypes<RawEventRow[]>()
@@ -434,10 +442,11 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         level: row.level,
         language: row.language,
         sortOrder: row.event_types.sort_order,
-        entries: row.entries?.[0]?.count ?? 0,
-        // The per-entry counts added. `entries(count)` is an aggregate and comes back
-        // as a one-element array; `entry_participants(count)` is an aggregate on each
-        // embedded entry, so the events row carries one per entry and this sums them.
+        // One embedded row per entry, so the length is the entry count.
+        entries: row.entries?.length ?? 0,
+        // ...and each of those carries its own `entry_participants(count)` aggregate,
+        // which arrives as a one-element array. Summed, that is how many individuals
+        // are competing in the event.
         contestants: (row.entries ?? []).reduce(
           (sum, entry) => sum + (entry.entry_participants?.[0]?.count ?? 0),
           0
