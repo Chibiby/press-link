@@ -242,11 +242,11 @@ describe("attachIdentities", () => {
 
 describe("TABULATION_COLUMNS", () => {
   it("is exactly the sheet the division asked for, in order", () => {
-    // Each round's points sit immediately after its rank, per D4: "Each round
-    // also shows its points (the judges' ranks added) beside the round rank, so
-    // a tabulator can see how a placement was produced without reading the
-    // database." Section 0 of the contract summarises the sheet without them;
-    // this order follows the decision record, which is the specific instruction.
+    // D4 had each round's points sitting beside its rank, "so a tabulator can see
+    // how a placement was produced without reading the database". The division
+    // withdrew that on 2026-09-01: the contest is decided by ranking, and the sums
+    // beside the ranks invited a reader to compare two numbers where only one of
+    // them settles anything.
     expect(TABULATION_COLUMNS.map((c) => c.key)).toEqual([
       "code",
       "name",
@@ -255,21 +255,25 @@ describe("TABULATION_COLUMNS", () => {
       "schoolName",
       "districtName",
       "round1Rank",
-      "round1Points",
       "round2Rank",
-      "round2Points",
-      "finalPoints",
       "finalRank",
     ]);
   });
 
-  it("prints the points that produced each round's rank", () => {
-    // The point of the D4 requirement: a rank with no points beside it is an
-    // answer with the working rubbed out, and a tabulator checking a disputed
-    // placement would have to read the database to verify it.
+  it("prints no points column at all", () => {
+    // The arithmetic is not gone — finalPoints still decides finalRank (N4) — but
+    // it is not on the sheet. It is in judge_ranks and on the panel board, which is
+    // where the working belongs.
     const keys = TABULATION_COLUMNS.map((c) => c.key);
-    expect(keys.indexOf("round1Points")).toBe(keys.indexOf("round1Rank") + 1);
-    expect(keys.indexOf("round2Points")).toBe(keys.indexOf("round2Rank") + 1);
+    expect(keys).not.toContain("round1Points");
+    expect(keys).not.toContain("round2Points");
+    expect(keys).not.toContain("finalPoints");
+  });
+
+  it("keeps the three ranks in the order the contest produces them", () => {
+    const keys = TABULATION_COLUMNS.map((c) => c.key);
+    expect(keys.indexOf("round2Rank")).toBe(keys.indexOf("round1Rank") + 1);
+    expect(keys.indexOf("finalRank")).toBe(keys.indexOf("round2Rank") + 1);
   });
 
   it("labels every column", () => {
@@ -286,10 +290,6 @@ describe("TABULATION_COLUMNS", () => {
     expect(TABULATION_COLUMNS.filter((c) => c.note)).toEqual([]);
   });
 
-  it("puts the deciding sum beside the placement it produces", () => {
-    const keys = TABULATION_COLUMNS.map((c) => c.key);
-    expect(keys.indexOf("finalPoints")).toBe(keys.indexOf("finalRank") - 1);
-  });
 
   it("puts final rank last, where the eye lands", () => {
     expect(TABULATION_COLUMNS.at(-1)?.key).toBe("finalRank");

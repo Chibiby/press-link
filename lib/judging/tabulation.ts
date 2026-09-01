@@ -118,21 +118,24 @@ export interface TabulationColumn {
  * spreadsheet a tabulator downloads cannot have different columns in a different
  * order from the page they downloaded it from.
  *
- * Each round's **points** sit beside its rank, which the design contract requires
- * in as many words: "so a tabulator can see how a placement was produced without
- * reading the database". Points are the judges' ranks added (D1) and the rank is
- * the placement of those points, so a sheet printing the rank alone shows the
- * answer with the working rubbed out — and a tabulator querying a disputed
- * placement would have to go to the database to check it. The summary list in
- * section 0 of the contract omits them; D4's decision record is the specific
- * instruction and wins.
+ * ## Why the points columns are gone
  *
- * No column carries a note any more. The one that did was total rank, which the
- * 2026-08-21 contract required to be labelled informational; N4 withdrew that and
- * the column is now `finalPoints`, the sum that decides the placement beside it.
- * The `note` field stays on the type because a future column may need one, and
- * because dropping it would make the tabulation test that asserts no column is
- * annotated impossible to write.
+ * Each round's points used to sit beside its rank, on the 2026-08-21 contract's
+ * reasoning: "so a tabulator can see how a placement was produced without reading
+ * the database". The division withdrew that on 2026-09-01. The contest is decided
+ * by ranking — what a judge typed, and where the sum of those placements puts a
+ * contestant — and a sheet that printed the sums beside the ranks invited a reader
+ * to compare two numbers where only one of them settles anything. Six columns of
+ * arithmetic on a page a tabulator reads across is a cost paid every time the sheet
+ * is used, against a check that is made rarely and can still be made: the points
+ * are in `judge_ranks` and on the panel board, which is where the working belongs.
+ *
+ * `finalPoints` is still computed and still decides `finalRank` (N4). Dropping the
+ * column removes it from the page and the workbook, not from the arithmetic.
+ *
+ * No column carries a note. The `note` field stays on the type because a future
+ * column may need one, and because dropping it would make the tabulation test that
+ * asserts no column is annotated impossible to write.
  */
 export const TABULATION_COLUMNS: TabulationColumn[] = [
   { key: "code", label: "Code" },
@@ -142,10 +145,7 @@ export const TABULATION_COLUMNS: TabulationColumn[] = [
   { key: "schoolName", label: "School" },
   { key: "districtName", label: "District" },
   { key: "round1Rank", label: "Rank R1", numeric: true },
-  { key: "round1Points", label: "Points R1", numeric: true },
   { key: "round2Rank", label: "Rank R2", numeric: true },
-  { key: "round2Points", label: "Points R2", numeric: true },
-  { key: "finalPoints", label: "Final points", numeric: true },
   { key: "finalRank", label: "Final rank", numeric: true },
 ];
 

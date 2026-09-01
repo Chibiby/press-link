@@ -59,6 +59,20 @@ export interface RawIndexEvent {
    * this "contestants" on screen would understate every individual event.
    */
   entries: number;
+  /**
+   * Individuals competing in this event: every contestant named on every entry.
+   *
+   * The figure a tabulator counts heads with, and not the same question as
+   * {@link RawIndexEvent.entries}. One school files one entry and may put three
+   * contestants on it, so an entry count answers "how many schools are in this
+   * contest" — which is a fact about the paperwork, not about the field.
+   *
+   * Counted for both categories the same way, over `entry_participants`. A group
+   * event ranks the team rather than its members, so this is larger than its unit
+   * set; it is still the number of learners in the room, which is what the column
+   * is read for.
+   */
+  contestants: number;
 }
 
 /**
@@ -143,6 +157,8 @@ export interface EventIndexRow {
   /** "Elem · Eng" — the label the events matrix already prints for this pair. */
   slotLabel: string;
   entries: number;
+  /** Individuals on those entries — see {@link RawIndexEvent.contestants}. */
+  contestants: number;
   /** Seats filled on this event's panel. */
   panelSize: number;
   round1: ConsolidatedBoard;
@@ -304,6 +320,7 @@ export function buildEventIndex(
       language: event.language,
       slotLabel: eventSlotLabel(event.level, event.language),
       entries: event.entries,
+      contestants: event.contestants,
       panelSize: known.judgeIds.length,
       round1,
       round1Cut,

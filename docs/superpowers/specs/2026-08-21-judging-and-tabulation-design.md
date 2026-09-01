@@ -70,9 +70,20 @@ Round 1 selects who advances and nothing more.
   division asked for the column, and D4 means it does not decide anything. Every
   surface that prints it must say so. Do not sort by it, do not break ties with
   it, do not call it official.
-- Each round also shows its **points** (the judges' ranks added) beside the
+- ~~Each round also shows its **points** (the judges' ranks added) beside the
   round rank, so a tabulator can see how a placement was produced without
-  reading the database.
+  reading the database.~~
+
+  **Withdrawn, 2026-09-01.** The points columns are off the sheet, on screen and
+  in the workbook: `Points R1`, `Points R2` and `Final points` are gone and the
+  three rank columns remain. The contest is decided by ranking, and a sheet that
+  printed the sums beside the ranks invited a reader to compare two numbers where
+  only one of them settles anything — six columns of arithmetic on a page read
+  across, against a check made rarely. The check can still be made: the points are
+  in `judge_ranks` and on the event's panel board, which is where a disputed
+  placement is worked through. Nothing about the computation changed —
+  `finalPoints` is still `round1Rank + round2Points` and still decides
+  `finalRank`.
 
 ---
 

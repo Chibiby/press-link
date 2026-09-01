@@ -59,6 +59,7 @@ function event(eventId: string, overrides: Partial<RawIndexEvent> = {}): RawInde
     language: "english",
     sortOrder: 1,
     entries: 0,
+    contestants: 0,
     ...overrides,
   };
 }
@@ -529,8 +530,8 @@ describe("buildEventSheetWorkbook", () => {
     const row16 = rowValues(sheet, HEADER_ROW + 2);
     expect(row16[0]).toBe("0016");
     expect(row16[TABULATION_COLUMNS.findIndex((c) => c.key === "round1Rank")]).toBe(16);
-    // Ranked, not qualified: the round 2 columns are an absence, not a nought.
-    expect(row16[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Points")]).toBe("—");
+    // Ranked, not qualified: the round 2 column is an absence, not a nought.
+    expect(row16[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Rank")]).toBe("—");
     expect(sheetText(beyondCut.getWorksheet("About this export")!)).toContain(
       "ranked past the cut"
     );
@@ -549,7 +550,7 @@ describe("buildEventSheetWorkbook", () => {
     );
     const cells = rowValues(midRound2.getWorksheet("Results sheet")!, HEADER_ROW + 1);
     expect(cells[TABULATION_COLUMNS.findIndex((c) => c.key === "finalRank")]).toBe("—");
-    expect(cells[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Points")]).toBe("—");
+    expect(cells[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Rank")]).toBe("—");
   });
 
   it("says which absence it is when nobody has been ranked", () => {

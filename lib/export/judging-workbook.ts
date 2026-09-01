@@ -585,19 +585,20 @@ function eventAboutSheet(
       [],
       ["How to read a rank"],
       ["", "Rank R1 is the round-1 judge's own placement, verbatim: a tie stands as it"],
-      ["", "was typed and is not renumbered. Rank R2 is the panel's placement of the"],
-      ["", "round-2 points beside it. Final points is Rank R1 plus Points R2, and Final"],
-      ["", "rank is the placement of that sum — the official one."],
+      ["", "was typed and is not renumbered. Rank R2 is the panel's placement in round"],
+      ["", "2. Final rank is the official one, and it is the placement of Rank R1 added"],
+      ["", "to the round-2 judges' ranks."],
+      [],
+      ["", "The sums themselves are not printed. This contest is decided by ranking, and"],
+      ["", "a sheet carrying the arithmetic beside it invites a reader to compare two"],
+      ["", "numbers where only one of them settles anything. The working is on the"],
+      ["", "event's panel board, where a disputed placement is checked."],
       [],
       ["How to read a dash"],
       ["", "An em dash is not a nought and not a missing cell. It means the figure does"],
-      ["", "not exist for that contestant: a non-qualifier has no round-2 anything and no"],
-      ["", "final placement at all, and every final rank stays blank until round 2 is"],
-      ["", "complete. A 0 in its place would sort as a winning score."],
-      [],
-      ["Why the points are printed beside the ranks"],
-      ["", "So a placement can be checked without going to the database. Points are the"],
-      ["", "judges' ranks added; the rank is the placement of those points."],
+      ["", "not exist for that contestant: somebody ranked past the cut has no round-2"],
+      ["", "placement and no final rank at all, and every final rank stays blank until"],
+      ["", "round 2 is complete. A 0 in its place would sort as a winning place."],
     ],
     1
   );
@@ -676,7 +677,8 @@ function eventSheet(
     return sheet;
   }
 
-  sheet.columns = [10, 30, 34, 30, 34, 22, 10, 11, 10, 11, 13, 11].map((width) => ({ width }));
+  // Twelve columns became nine when the points came off; the widths follow.
+  sheet.columns = [10, 30, 34, 30, 34, 22, 10, 10, 11].map((width) => ({ width }));
   writeTable(sheet, EVENT_SHEET_HEADER, toEventSheetRows(ranked), 1);
   return sheet;
 }

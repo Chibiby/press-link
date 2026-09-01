@@ -74,7 +74,7 @@ interface RawEventRow {
     category: EventCategory;
     sort_order: number;
   } | null;
-  entries: { count: number }[];
+  entries: { count: number; entry_participants: { count: number }[] }[];
 }
 
 interface RawJudgeRow {
@@ -226,7 +226,12 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         supabase
           .from("events")
           .select(
-            "id, level, language, round2_cut, event_types(name_en, name_fil, category, sort_order), entries(count)"
+            // `entry_participants(count)` inside the entries embed: PostgREST returns
+            // one count per entry, and the sum across them is how many individuals are
+            // in the contest. There is no way to ask for that total directly, and a
+            // second read keyed by event id would cost a round trip to another
+            // continent for a number this one already has the rows for.
+            "id, level, language, round2_cut, event_types(name_en, name_fil, category, sort_order), entries(count, entry_participants(count))"
           )
           .range(from, to)
           .overrideTypes<RawEventRow[]>()
@@ -430,6 +435,13 @@ export const loadJudgingEventIndex = cache(async (): Promise<JudgingEventIndex> 
         language: row.language,
         sortOrder: row.event_types.sort_order,
         entries: row.entries?.[0]?.count ?? 0,
+        // The per-entry counts added. `entries(count)` is an aggregate and comes back
+        // as a one-element array; `entry_participants(count)` is an aggregate on each
+        // embedded entry, so the events row carries one per entry and this sums them.
+        contestants: (row.entries ?? []).reduce(
+          (sum, entry) => sum + (entry.entry_participants?.[0]?.count ?? 0),
+          0
+        ),
       });
 
       const { units, uncoded } = contestUnits(

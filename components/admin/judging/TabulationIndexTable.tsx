@@ -50,7 +50,12 @@ export function TabulationIndexTable({
           <TableRow>
             <TableHead>Event</TableHead>
             <TableHead className="whitespace-nowrap">Level · Language</TableHead>
-            <TableHead className="text-right">Entries</TableHead>
+            <TableHead
+              className="text-right"
+              title="Individuals competing: every contestant named on every entry, not the number of schools that filed one."
+            >
+              Contestants
+            </TableHead>
             <TableHead className="text-right whitespace-nowrap">Qualifiers</TableHead>
             <TableHead className="text-right whitespace-nowrap">Placed</TableHead>
             <TableHead>Status</TableHead>
@@ -75,11 +80,11 @@ export function TabulationIndexTable({
                     {row.category}
                   </Badge>
                 </TableCell>
-                {/* Real, and labelled "Entries" rather than "Contestants": an individual
-                    event ranks each participant on an entry separately, so its contestant
-                    count is higher than its entry count and only `contestUnits` can say by
-                    how much. */}
-                <TableCell className="text-right tabular-nums">{row.entries}</TableCell>
+                {/* People, not paperwork. One school files one entry and may put three
+                    contestants on it, so an entry count answers "how many schools are in
+                    this contest" — which is not what a tabulator is counting when they
+                    look down this column. */}
+                <TableCell className="text-right tabular-nums">{row.contestants}</TableCell>
                 {/* The qualifier set as stored, read back through round 1's codes —
                     not the field the current cut would draw. Those differ the moment
                     an admin moves the cut after round 1 closed, and this column

@@ -23,6 +23,7 @@ function event(
     language: "english",
     sortOrder: 1,
     entries: 0,
+    contestants: 0,
     ...overrides,
   };
 }
