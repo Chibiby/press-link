@@ -22,7 +22,14 @@ import { SidebarToggle } from "./SidebarToggle";
  * `actions` is a slot for right-aligned, page-independent controls — the layout
  * fills it with the attention bell in phase 2.
  */
-export function Topbar({ actions }: { actions?: React.ReactNode }) {
+export function Topbar({
+  actions,
+  badges,
+}: {
+  actions?: React.ReactNode;
+  /** Passed through to the drawer, so the narrow rail carries the same counts. */
+  badges?: Record<string, number>;
+}) {
   return (
     // The bar is full-bleed so its border and blur reach both edges of the shell, while
     // the row inside it takes the same inset as the page content — that shared inset is
@@ -30,7 +37,7 @@ export function Topbar({ actions }: { actions?: React.ReactNode }) {
     <header className="sticky top-0 z-30 shrink-0 border-b bg-background/85 backdrop-blur">
       <div className={cn(SHELL_INSET, "flex h-14 items-center gap-2")}>
         <SidebarToggle />
-        <MobileNav />
+        <MobileNav badges={badges} />
         {/* The wordmark is in the rail on desktop, so it only shows here on narrow screens. */}
         <div className="min-w-0 flex-1 lg:hidden">
           <Wordmark />

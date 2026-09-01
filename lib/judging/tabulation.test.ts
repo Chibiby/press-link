@@ -376,15 +376,43 @@ describe("tabulationSummary", () => {
     );
     expect(tabulationSummary(rows)).toEqual({
       contestants: 4,
+      // The three who qualified all carry a round 1 rank; the fourth was left blank
+      // by the judge, which under N2 is an elimination rather than an unanswered row.
+      ranked: 3,
       qualifiers: 3,
       placed: 3,
       unidentified: 1,
     });
   });
 
+  it("counts a contestant ranked past the cut as ranked but not qualified", () => {
+    // The two numbers are free to disagree since 0032: a judge ranks as far down the
+    // field as they mean to, and the cut decides who advances. This is the case the
+    // Ranked figure exists for — twenty placed under a cut of fifteen.
+    const { rows } = attachIdentities(
+      [
+        standing("0001", { qualified: true, round1Rank: 1 }),
+        standing("0002", {
+          qualified: false,
+          round1Rank: 16,
+          round1Points: 16,
+          round2Points: null,
+          round2Rank: null,
+          finalPoints: null,
+          finalRank: null,
+        }),
+      ],
+      [identity("0001"), identity("0002")]
+    );
+    const summary = tabulationSummary(rows);
+    expect(summary.ranked).toBe(2);
+    expect(summary.qualifiers).toBe(1);
+  });
+
   it("is all zeroes for an empty event", () => {
     expect(tabulationSummary([])).toEqual({
       contestants: 0,
+      ranked: 0,
       qualifiers: 0,
       placed: 0,
       unidentified: 0,

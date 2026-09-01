@@ -115,10 +115,19 @@ export function AdminNav({
   id,
   onNavigate,
   collapsed = false,
+  badges,
 }: {
   id?: string;
   onNavigate?: () => void;
   collapsed?: boolean;
+  /**
+   * A count to show against a nav item, keyed by href.
+   *
+   * Passed in from the server rather than fetched here: this component is a client
+   * one and the rail renders on every admin page, so a query of its own would be a
+   * round trip per navigation for a number that is the same on all of them.
+   */
+  badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
   /**
@@ -240,6 +249,26 @@ export function AdminNav({
                 // highlight — and `aria-current` with it — on click rather than
                 // on arrival.
                 const active = isNavActive(navPath, item.href);
+                const count = badges?.[item.href] ?? 0;
+                /**
+                 * The count, and what it is for a screen reader.
+                 *
+                 * Collapsed there is no room beside the label, so it becomes a dot on
+                 * the icon: the rail at 4rem still has to be able to say something is
+                 * waiting, and a number that small is unreadable anyway. The sr-only
+                 * text carries the figure in both states, because a coloured dot is
+                 * not information to somebody who cannot see it.
+                 */
+                const badge =
+                  count > 0 ? (
+                    collapsed ? (
+                      <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-sidebar-primary" />
+                    ) : (
+                      <span className="shrink-0 rounded-full bg-sidebar-primary/15 px-1.5 py-px text-[10px] font-semibold tabular-nums text-sidebar-primary">
+                        {count > 99 ? "99+" : count}
+                      </span>
+                    )
+                  ) : null;
                 // A stub's tooltip says so; a finished page's is just its name.
                 const hint = item.stub ? `${item.label} — coming soon` : item.label;
 
@@ -258,7 +287,9 @@ export function AdminNav({
                       aria-current={active ? "page" : undefined}
                       title={collapsed ? hint : undefined}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
+                        // `relative`, for the collapsed dot: at 4rem the rail has no
+                        // room beside the label, so the mark sits on the icon.
+                        "relative flex items-center gap-2.5 rounded-md py-2 text-sm transition-colors",
                         collapsed ? "justify-center px-2" : "px-3",
                         active
                           ? "bg-sidebar-primary/15 font-medium text-sidebar-primary"
@@ -271,6 +302,13 @@ export function AdminNav({
                       ) : (
                         <span className="min-w-0 flex-1 truncate">{item.label}</span>
                       )}
+                      {count > 0 ? (
+                        <span className="sr-only">
+                          {count} {count === 1 ? "event has" : "events have"} a judge&rsquo;s
+                          sheet waiting
+                        </span>
+                      ) : null}
+                      {badge}
                       {item.stub ? pill : null}
                     </Link>
                   </li>
@@ -412,7 +450,7 @@ export function useSidebarCollapse() {
  * it holds the rail's identity at 4rem, and it leaves the header the same height in
  * both states so the nav beneath it does not jump when the rail is toggled.
  */
-export function Sidebar() {
+export function Sidebar({ badges }: { badges?: Record<string, number> }) {
   const { collapsed } = useSidebarCollapse();
 
   return (
@@ -426,7 +464,7 @@ export function Sidebar() {
       <div className={cn("flex items-center py-4", collapsed ? "justify-center px-2" : "px-4")}>
         {collapsed ? <Wordmark markOnly /> : <Wordmark subtitle="Division Admin" />}
       </div>
-      <AdminNav id="admin-nav" collapsed={collapsed} />
+      <AdminNav id="admin-nav" collapsed={collapsed} badges={badges} />
       <SidebarFooter collapsed={collapsed} />
     </aside>
   );

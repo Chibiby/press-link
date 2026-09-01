@@ -6,7 +6,7 @@ import { Topbar } from "@/components/admin/shell/Topbar";
 import { UserChip } from "@/components/admin/shell/UserChip";
 import { cn } from "@/lib/utils";
 
-import { loadAdminName } from "./dashboard-data";
+import { loadAdminName, loadPendingJudgeReviews } from "./dashboard-data";
 
 /**
  * The chip on its own async unit, wrapped in Suspense by the layout so the shell and
@@ -27,16 +27,26 @@ async function ShellActions() {
  * layout. ShellActions reaches it through getAdminClient(), so an expired session in the
  * chrome redirects exactly as it does in the page.
  */
-export default function AdminShellLayout({ children }: { children: ReactNode }) {
+export default async function AdminShellLayout({ children }: { children: ReactNode }) {
+  // The one number the chrome carries: how many events have a judge's sheet nobody
+  // has acted on. Awaited here rather than streamed, because it is two small indexed
+  // reads and a nav item that gains a badge a beat after the page paints reads as a
+  // notification arriving, which is precisely what it is not.
+  //
+  // Keyed by href so the rail needs no knowledge of what the number means, and so a
+  // second badge later is a second entry rather than a second prop.
+  const badges = { "/admin/tabulators": await loadPendingJudgeReviews() };
+
   // The provider wraps the whole shell because the rail reads the collapse state and
   // the topbar's hamburger writes it, and those two are siblings — this is the deepest
   // node that contains both. {children} stays server-rendered either way.
   return (
     <SidebarCollapseProvider>
       <div className="flex min-h-svh">
-        <Sidebar />
+        <Sidebar badges={badges} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar
+            badges={badges}
             actions={
               <Suspense fallback={null}>
                 <ShellActions />

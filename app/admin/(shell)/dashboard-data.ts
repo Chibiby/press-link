@@ -10,6 +10,11 @@ import {
 } from "@/lib/dashboard/attention";
 import { buildKpis, type Kpi } from "@/lib/dashboard/kpis";
 import {
+  pendingJudgeReviewCount,
+  type PendingRound,
+  type PendingSheet,
+} from "@/lib/judging/pending-review";
+import {
   summarisePerEvent,
   type EventTypeCount,
   type PerEventSummary,
@@ -135,6 +140,43 @@ export const loadAdminName = cache(async (): Promise<string> => {
 
   return data?.full_name?.trim() || "Division Admin";
 });
+/**
+ * How many events have a judge's sheet the office has not acted on.
+ *
+ * The number on the sidebar's Tabulators item. Two small reads and no join: the
+ * whole division has at most four sheets per event, and `event_rounds` one row per
+ * event, so this is a fraction of what the judges index costs — which matters
+ * because the shell renders it on every admin page, not just the judging ones.
+ *
+ * `cache()` for the same reason every loader here has it: the layout and a page can
+ * both ask within one request and pay once.
+ *
+ * Fails soft, deliberately. This is a convenience on a nav item, and a badge that
+ * could break the whole console would be a bad trade for it — a failed read shows no
+ * badge, which is what an admin sees when there is nothing waiting anyway. The
+ * judges portal remains the place where the state is reported properly.
+ */
+export const loadPendingJudgeReviews = cache(async (): Promise<number> => {
+  try {
+    const supabase = await getAdminClient();
+    const [{ data: sheets }, { data: rounds }] = await Promise.all([
+      supabase
+        .from("judge_sheets")
+        .select("event_id, round, submitted_at")
+        .not("submitted_at", "is", null)
+        .overrideTypes<PendingSheet[]>(),
+      supabase
+        .from("event_rounds")
+        .select("event_id, round1_locked_at, results_locked_at")
+        .overrideTypes<PendingRound[]>(),
+    ]);
+
+    return pendingJudgeReviewCount(sheets ?? [], rounds ?? []);
+  } catch {
+    return 0;
+  }
+});
+
 
 /**
  * The division-wide submissions switch: `app_settings`, one row, `id = true`.

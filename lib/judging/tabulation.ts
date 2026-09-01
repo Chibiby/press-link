@@ -180,12 +180,20 @@ export function tabulationCell(row: TabulationRow, key: TabulationColumn["key"])
  */
 export function tabulationSummary(rows: TabulationRow[]): {
   contestants: number;
+  ranked: number;
   qualifiers: number;
   placed: number;
   unidentified: number;
 } {
   return {
     contestants: rows.length,
+    // Everyone the round 1 judge placed, which since 0032 is its own figure and not
+    // a synonym for the qualifiers. A judge ranks as far down the field as they mean
+    // to and the cut decides who advances, so a sheet of twenty under a cut of
+    // fifteen is twenty ranked and fifteen through — and a page that printed only
+    // the second would report an administrative setting as though it were the
+    // judging. It is also exactly what the exported workbook lists.
+    ranked: rows.filter((row) => row.round1Rank !== null).length,
     qualifiers: rows.filter((row) => row.qualified).length,
     placed: rows.filter((row) => row.finalRank !== null).length,
     unidentified: rows.filter((row) => row.schoolName === UNIDENTIFIED).length,

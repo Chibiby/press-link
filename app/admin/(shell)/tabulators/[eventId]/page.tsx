@@ -1,4 +1,13 @@
-import { ArrowLeft, CircleSlash, Download, Gavel, Medal, Scissors, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  CircleSlash,
+  Download,
+  Gavel,
+  ListOrdered,
+  Medal,
+  Scissors,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -137,7 +146,7 @@ export default async function EventSheetPage({
         </Alert>
       ) : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           icon={Users}
           label="Contestants"
@@ -146,12 +155,29 @@ export default async function EventSheetPage({
             "The unit set drawn when round 1 opened. Individual events rank each participant, group events rank the entry."
           )}
         />
+        {/* Its own tile, beside the qualifiers rather than instead of them. A judge
+            ranks as far down the field as they mean to and the cut decides who
+            advances, so the two numbers are free to disagree — and where they do, the
+            difference is a contestant the judge placed and the round eliminated.
+            Printing only the cut's number reports an administrative setting as though
+            it were the judging, and leaves an officer counting the exported sheet to
+            find out why it holds more rows. */}
+        <StatCard
+          icon={ListOrdered}
+          label="Ranked"
+          {...tile(
+            summary.ranked,
+            "Contestants the round 1 judge placed. Everyone here is on the exported sheet; a blank on the judge's sheet is an elimination and is not."
+          )}
+        />
         <StatCard
           icon={Scissors}
           label="Qualifiers"
           {...tile(
             summary.qualifiers,
-            "Round 1's cut. Contestants tied at the line all go through, so a cut of ten can send eleven."
+            summary.ranked > summary.qualifiers
+              ? `Through to round 2. The other ${summary.ranked - summary.qualifiers} the judge ranked fell outside the cut this round was closed under.`
+              : "Round 1's cut. Contestants tied at the line all go through, so a cut of ten can send eleven."
           )}
         />
         <StatCard

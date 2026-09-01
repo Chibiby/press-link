@@ -33,7 +33,7 @@ import { AdminNav, SidebarFooter } from "./Sidebar";
  * this back to an inline `fixed`: it would work only for as long as no ancestor
  * of the topbar gains a filter, transform, perspective or `contain`.
  */
-export function MobileNav() {
+export function MobileNav({ badges }: { badges?: Record<string, number> }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -115,7 +115,7 @@ export function MobileNav() {
                     <X className="size-4" />
                   </Button>
                 </div>
-                <AdminNav onNavigate={() => setOpen(false)} />
+                <AdminNav onNavigate={() => setOpen(false)} badges={badges} />
                 <SidebarFooter />
               </div>
             </div>,
