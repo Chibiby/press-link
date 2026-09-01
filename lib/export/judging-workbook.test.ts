@@ -492,16 +492,48 @@ describe("buildEventSheetWorkbook", () => {
     expect(first[TABULATION_COLUMNS.findIndex((c) => c.key === "finalRank")]).toBe(1);
   });
 
-  it("lists the qualifiers and leaves the eliminated contestant out", () => {
-    // The screen keeps them — it is the event's whole working. This is the sheet a
-    // division circulates, and a name followed by a row of dashes reads as a gap
-    // rather than as somebody who did not go through.
+  it("leaves out a contestant the judge left blank", () => {
+    // Under N2 a blank is not an unanswered row, it is a decision: they were seen
+    // and not placed. They carry no figure on this sheet at all.
     const sheet = book.getWorksheet("Results sheet")!;
     expect(rowValues(sheet, HEADER_ROW + 1)[0]).toBe("0001");
     expect(rowValues(sheet, HEADER_ROW + 2)[0]).toBe("0002");
-    // Row 3 is past the end: two qualifiers, and 0003 was eliminated.
     expect(rowValues(sheet, HEADER_ROW + 3)).toEqual([]);
     expect(sheetText(sheet)).not.toContain("0003");
+  });
+
+  it("keeps a contestant the judge ranked past the cut", () => {
+    // The regression this guards: the file listed the qualifier list alone, which
+    // dropped somebody ranked 16th under a cut of 15 — placed by the judge, absent
+    // from the file, and nothing on either to say why.
+    const beyondCut = buildEventSheetWorkbook(
+      {
+        row,
+        rows: [
+          sheetRow("0001"),
+          sheetRow("0016", {
+            qualified: false,
+            round1Rank: 16,
+            round1Points: 16,
+            round2Points: null,
+            round2Rank: null,
+            finalPoints: null,
+            finalRank: null,
+          }),
+        ],
+        unidentified: [],
+      },
+      AT
+    );
+    const sheet = beyondCut.getWorksheet("Results sheet")!;
+    const row16 = rowValues(sheet, HEADER_ROW + 2);
+    expect(row16[0]).toBe("0016");
+    expect(row16[TABULATION_COLUMNS.findIndex((c) => c.key === "round1Rank")]).toBe(16);
+    // Ranked, not qualified: the round 2 columns are an absence, not a nought.
+    expect(row16[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Points")]).toBe("—");
+    expect(sheetText(beyondCut.getWorksheet("About this export")!)).toContain(
+      "ranked past the cut"
+    );
   });
 
   it("prints an absent placement as an em dash, never as a nought", () => {
@@ -520,25 +552,29 @@ describe("buildEventSheetWorkbook", () => {
     expect(cells[TABULATION_COLUMNS.findIndex((c) => c.key === "round2Points")]).toBe("—");
   });
 
-  it("says which absence it is when nobody has qualified yet", () => {
-    // Not an empty table: a field with nobody through is round 1 not yet closed,
-    // which is a different fact from an event nobody entered, and a spreadsheet
-    // carries no tooltip to tell them apart later.
+  it("says which absence it is when nobody has been ranked", () => {
+    // Not an empty table: an unranked field is a judge who has not filed, which is a
+    // different fact from an event nobody entered, and a spreadsheet carries no
+    // tooltip to tell them apart later.
     const none = buildEventSheetWorkbook(
-      { row, rows: [sheetRow("0001", { qualified: false })], unidentified: [] },
+      {
+        row,
+        rows: [sheetRow("0001", { qualified: false, round1Rank: null, round1Points: null })],
+        unidentified: [],
+      },
       AT
     );
     const text = sheetText(none.getWorksheet("Results sheet")!);
-    expect(text).toContain("No contestant has qualified");
+    expect(text).toContain("No contestant has been ranked");
     expect(text).toContain("1 contestant is");
   });
 
-  it("says on the About sheet what the file holds and how big the field was", () => {
-    // A reader who added up the rows and got a smaller number than "Contestants"
-    // would otherwise be right to think the file was short.
+  it("counts the three groups against each other on the About sheet", () => {
+    // Entered, placed, through. A reader who added up the rows and got a different
+    // number from "Contestants" would otherwise be right to wonder which was wrong.
     const text = sheetText(book.getWorksheet("About this export")!);
     expect(text).toContain("What this sheet lists");
-    expect(text).toContain("through to round 2, and nobody else");
+    expect(text).toContain("Every contestant the round 1 judge placed");
     expect(text).toContain("Contestants,3");
   });
 

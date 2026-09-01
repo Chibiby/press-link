@@ -107,7 +107,7 @@ export default async function EventSheetPage({
                   is the sheet a division circulates. */}
               <a
                 href={`/admin/tabulators/${row.eventId}/export`}
-                title="The contestants through to round 2, with their placements. An eliminated contestant is on this page but not in the file."
+                title="Every contestant the round 1 judge ranked, with their placements — the qualifiers and anyone ranked past the cut. A contestant the judge left blank is on this page but not in the file."
               >
                 <Download />
                 Export sheet
