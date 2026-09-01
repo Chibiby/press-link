@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Save, Send } from "lucide-react";
 
 import {
   AlertDialog,
@@ -78,6 +78,7 @@ export function RankingSheetForm({
   initialDraft,
   editable,
   onSubmit,
+  onSave,
   submitLabel,
   confirmTitle,
   confirmLead,
@@ -93,6 +94,15 @@ export function RankingSheetForm({
    * before it ever reaches the RPC.
    */
   onSubmit: (draft: RankDraft) => Promise<{ error: string } | void>;
+  /**
+   * The write that keeps a sheet without taking it, bound like `onSubmit`.
+   *
+   * Optional, and its absence is what tells this form there is no draft on this
+   * surface: the judge's own sheet has one, and an admin encoding from paper does
+   * not — they are typing a verdict that already exists on the page in front of
+   * them, and a half-typed copy of it helps nobody.
+   */
+  onSave?: (draft: RankDraft) => Promise<{ error: string } | void>;
   /** The button. "Submit sheet" for a judge, "Save sheet" for an admin encoding one. */
   submitLabel: string;
   confirmTitle: string;
@@ -107,6 +117,9 @@ export function RankingSheetForm({
   const [draft, setDraft] = useState<RankDraft>(initialDraft);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isSaving, startSaving] = useTransition();
+  /** Whether the last save landed, so the note under the form can say so. */
+  const [saved, setSaved] = useState(false);
 
   const invalid = useMemo(
     () => validateSheetDraft(spec, units, draft),
@@ -117,10 +130,32 @@ export function RankingSheetForm({
 
   function setRank(unitKey: string, value: string) {
     setError(null);
+    // The note under the form says "Saved", and it stops being true the moment a
+    // rank moves. Leaving it up would tell a judge their latest change is on file
+    // when it is sitting in a browser.
+    setSaved(false);
     setDraft((current) => ({
       ...current,
       [unitKey]: value === BLANK ? null : Number(value),
     }));
+  }
+
+  function save() {
+    if (!onSave) return;
+    setError(null);
+    startSaving(async () => {
+      const result = await onSave(draft);
+      if (result?.error) {
+        setError(result.error);
+        setSaved(false);
+        return;
+      }
+      // No `router.refresh()`. The sheet is unchanged in every way this page
+      // renders — still open, still editable, still holding what was typed — and a
+      // refresh would replace the form under a judge mid-sheet to tell them nothing
+      // has changed.
+      setSaved(true);
+    });
   }
 
   function submit() {
@@ -208,6 +243,18 @@ export function RankingSheetForm({
             {spec.allowsBlank ? ", the rest eliminated" : ""}.
           </p>
 
+          <div className="flex flex-wrap items-center gap-2">
+            {/* No confirmation, on purpose. Saving takes nothing away: the sheet
+                stays open, stays editable, and can be saved again. A dialog in front
+                of it would teach a judge to click through the one in front of the
+                submit, which is the click that cannot be undone. */}
+            {onSave ? (
+              <Button type="button" variant="outline" disabled={isPending} onClick={save}>
+                {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                Save for later
+              </Button>
+            ) : null}
+
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button disabled={isPending || invalid !== null}>
@@ -240,7 +287,16 @@ export function RankingSheetForm({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          </div>
         </div>
+      ) : null}
+
+      {editable && onSave ? (
+        <p className="text-sm text-muted-foreground">
+          {saved
+            ? "Saved. This sheet is not submitted — come back and change it as often as you like, then submit when it is final."
+            : "Saving keeps what you have typed without submitting it. Only submitting locks the sheet."}
+        </p>
       ) : null}
 
       {editable && invalid ? (

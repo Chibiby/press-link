@@ -359,6 +359,8 @@ export function buildEventIndex(
  */
 export function eventIndexSummary(rows: EventIndexRow[]): {
   events: number;
+  /** Individuals competing across the whole catalog — see `EventIndexRow.contestants`. */
+  contestants: number;
   entries: number;
   withPanel: number;
   /** Events where the panel has finished and an admin has to act. */
@@ -387,6 +389,7 @@ export function eventIndexSummary(rows: EventIndexRow[]): {
   return {
     events: rows.length,
     entries: rows.reduce((sum, row) => sum + row.entries, 0),
+    contestants: rows.reduce((sum, row) => sum + row.contestants, 0),
     withPanel: rows.filter((row) => row.panelSize > 0).length,
     awaitingAction: rows.filter(
       (row) =>

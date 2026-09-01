@@ -83,9 +83,9 @@ export default async function TabulatorsPage() {
         />
         <StatCard
           icon={Users}
-          label="Entries on file"
-          value={summary.entries}
-          subtitle="Individual events rank each participant separately, so contestants outnumber entries."
+          label="Contestants"
+          value={summary.contestants}
+          subtitle="Individuals competing across every event, counted from the entries their schools filed."
         />
         <StatCard
           icon={Scissors}

@@ -303,7 +303,11 @@ describe("buildEventIndex ordering", () => {
 describe("eventIndexSummary", () => {
   it("counts off the rows the table renders", () => {
     const rows = buildEventIndex(
-      [event("e1", { entries: 3 }), event("e2", { entries: 4 }), event("e3", { entries: 0 })],
+      [
+        event("e1", { entries: 3, contestants: 5 }),
+        event("e2", { entries: 4, contestants: 9 }),
+        event("e3", { entries: 0, contestants: 0 }),
+      ],
       {
         e1: facts({
           judgeIds: ["j1"],
@@ -331,6 +335,8 @@ describe("eventIndexSummary", () => {
     expect(eventIndexSummary(rows)).toEqual({
       events: 3,
       entries: 7,
+      // 5 + 9 + 0. Individuals, which is not the entry total beside it.
+      contestants: 14,
       withPanel: 2,
       awaitingAction: 1,
       // e2 drew its one unit into round 2 and locked it; e1 has not closed round 1.
@@ -369,6 +375,7 @@ describe("eventIndexSummary", () => {
     expect(eventIndexSummary([])).toEqual({
       events: 0,
       entries: 0,
+      contestants: 0,
       withPanel: 0,
       awaitingAction: 0,
       qualifiers: 0,

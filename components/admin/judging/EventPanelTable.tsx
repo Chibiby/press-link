@@ -75,7 +75,12 @@ export function EventPanelTable({
           <TableRow>
             <TableHead>Event</TableHead>
             <TableHead className="whitespace-nowrap">Level · Language</TableHead>
-            <TableHead className="text-right">Entries</TableHead>
+            <TableHead
+              className="text-right"
+              title="Individuals competing: every contestant named on every entry, not the number of schools that filed one."
+            >
+              Contestants
+            </TableHead>
             <TableHead className="text-right whitespace-nowrap">Panel</TableHead>
             <TableHead className="whitespace-nowrap">Round 1</TableHead>
             <TableHead className="whitespace-nowrap">Round 2</TableHead>
@@ -105,7 +110,11 @@ export function EventPanelTable({
                     {row.category}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{row.entries}</TableCell>
+                {/* People, not paperwork — the same figure the sheets index prints.
+                    One school files one entry and may put three contestants on it, so
+                    an entry count answers a question about the filing rather than
+                    about the field a panel has to rank. */}
+                <TableCell className="text-right tabular-nums">{row.contestants}</TableCell>
                 <TableCell className="text-right">
                   {row.panelSize === 0 ? (
                     <NotYetCell reason="No judge is assigned to this event." />

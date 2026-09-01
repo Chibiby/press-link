@@ -64,3 +64,58 @@ export async function submitJudgeSheetAction(
   revalidatePath("/judge");
   revalidatePath(`/judge/${eventId}`);
 }
+
+/**
+ * Save a part-finished sheet without submitting it.
+ *
+ * The sibling of {@link submitJudgeSheetAction}, and the difference is the whole
+ * point: this one does not lock. A judge reading fifteen contestants off paper can
+ * put the tablet down after eight and come back to the eight already there.
+ *
+ * ## Why it validates less
+ *
+ * `validateSheetDraft` is not called. It enforces the rules a *finished* sheet has
+ * to satisfy — every qualifier placed in round 2, at least one contestant ranked in
+ * round 1 — and a draft is by definition the state before those hold. What is still
+ * checked, by `judge_save_draft` itself, is everything structural: the seat, the
+ * round, whether the sheet is already submitted, that every key is a contestant in
+ * this event, and that every rank is inside the round's bounds. A draft may be
+ * incomplete; it may not be wrong.
+ *
+ * The sheet is still re-read here rather than trusted from the form, for the reason
+ * the submit action gives: a form open while an admin closed the round would
+ * otherwise write against numbers that stopped being true while it sat there.
+ */
+export async function saveJudgeSheetDraftAction(
+  eventId: string,
+  draft: RankDraft
+): Promise<{ error: string } | void> {
+  const check = await checkJudge();
+  if (!check.isJudge) {
+    return { error: "You are not signed in as a judge. Sign in again and retry." };
+  }
+
+  const { sheet, error } = await loadJudgeSheet(eventId);
+  if (error) {
+    return { error: `${error} Your sheet was not saved. Please try again.` };
+  }
+  if (!sheet) {
+    return { error: "You are not assigned to this event." };
+  }
+  if (!sheetEditable(sheet.state)) {
+    return { error: sheet.state.reason };
+  }
+
+  const { error: rpcError } = await check.supabase.rpc("judge_save_draft", {
+    p_event_id: eventId,
+    p_round: sheet.round,
+    p_ranks: toRankPayload(draft),
+  });
+
+  if (rpcError) {
+    return { error: `Your sheet was not saved: ${rpcError.message}` };
+  }
+
+  revalidatePath("/judge");
+  revalidatePath(`/judge/${eventId}`);
+}

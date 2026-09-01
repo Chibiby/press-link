@@ -86,7 +86,7 @@ export const PANEL_HEADER = [
   "Filipino name",
   "Level · Language",
   "Category",
-  "Entries",
+  "Contestants",
   "Panel",
   "Round 1",
   "Round 2",
@@ -100,7 +100,7 @@ export const TABULATION_HEADER = [
   "Filipino name",
   "Level · Language",
   "Category",
-  "Entries",
+  "Contestants",
   "Qualifiers",
   "Placed",
   "Status",
@@ -196,7 +196,7 @@ export function toPanelRows(rows: EventIndexRow[]): PanelRow[] {
     "Filipino name": filipinoName(row),
     "Level · Language": row.slotLabel,
     Category: CATEGORY_LABEL[row.category],
-    Entries: row.entries,
+    Contestants: row.contestants,
     Panel: row.panelSize === 0 ? XL_NO_PANEL : row.panelSize,
     "Round 1": roundCell(row.round1, row.panelSize),
     "Round 2": roundCell(row.round2, row.panelSize),
@@ -226,7 +226,7 @@ function panelTotal(rows: EventIndexRow[]): PanelRow {
     "Filipino name": "",
     "Level · Language": `${summary.events} events in the catalog`,
     Category: "",
-    Entries: summary.entries,
+    Contestants: summary.contestants,
     Panel: `${summary.withPanel} of ${summary.events} events have a panel`,
     "Round 1": `${summary.awaitingAction} awaiting an admin action`,
     "Round 2": `${summary.locked} locked`,
@@ -243,7 +243,7 @@ export function toTabulationRows(rows: EventIndexRow[]): TabulationRow[] {
     "Filipino name": filipinoName(row),
     "Level · Language": row.slotLabel,
     Category: CATEGORY_LABEL[row.category],
-    Entries: row.entries,
+    Contestants: row.contestants,
     // Both are read, and both mirror the cell `TabulationIndexTable` renders.
     // Qualifiers is counted off the round-2 board, so 0 means none has been drawn;
     // Placed is null only when the cut behind it could not be read, which is the one
@@ -264,7 +264,7 @@ export function toTabulationRows(rows: EventIndexRow[]): TabulationRow[] {
       "Filipino name": "",
       "Level · Language": `${summary.events} events in the catalog`,
       Category: "",
-      Entries: summary.entries,
+      Contestants: summary.contestants,
       Qualifiers: summary.qualifiers,
       // A sum of what was measured. Events with no cut on file are named rather than
       // folded in as noughts, which would put a smaller total here than the division

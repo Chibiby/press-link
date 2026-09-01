@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Info, Lock } from "lucide-react";
 
 import { RankingSheetForm } from "@/components/judging/RankingSheetForm";
-import { submitJudgeSheetAction } from "../../actions";
+import { saveJudgeSheetDraftAction, submitJudgeSheetAction } from "../../actions";
 import { loadJudgeSheet } from "../../judge-data";
 import { PageHeading } from "@/components/admin/shell/PageHeading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -109,6 +109,10 @@ export default async function JudgeSheetPage({
               // its identity across the boundary through `bind`, and the event id
               // is then fixed on the server instead of arriving from the form.
               onSubmit={submitJudgeSheetAction.bind(null, sheet.eventId)}
+              // Bound the same way, and only on this surface: an admin encoding from
+              // paper is copying a verdict that already exists, so a half-typed copy
+              // of it helps nobody.
+              onSave={saveJudgeSheetDraftAction.bind(null, sheet.eventId)}
               submitLabel="Submit sheet"
               confirmTitle="Submit this sheet?"
               confirmLead="Submitting locks your sheet. You will not be able to change a rank afterwards — an administrator has to unlock it for you."

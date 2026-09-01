@@ -103,19 +103,20 @@ const B = unit("0002", "b");
  */
 const UNJUDGED = buildEventIndex(
   [
-    event("e1", { entries: 4 }),
+    event("e1", { entries: 4, contestants: 9 }),
     event("e2", {
       sortOrder: 2,
       typeNameEn: "Editorial Writing",
       typeNameFil: "Pagsulat ng Editoryal",
       entries: 6,
+      contestants: 13,
     }),
   ],
   { e1: facts(), e2: facts() }
 );
 
 /** The one absence left: a cut that could not be read. */
-const NO_CUT: EventIndexRow[] = buildEventIndex([event("e1", { entries: 4 })], {
+const NO_CUT: EventIndexRow[] = buildEventIndex([event("e1", { entries: 4, contestants: 9 })], {
   e1: facts({ round2Cut: null }),
 });
 
@@ -156,8 +157,10 @@ describe("toPanelRows on an event nobody has begun judging", () => {
     expect(unread["R2 cut"]).not.toBe(10);
   });
 
-  it("keeps the entry count a number, because that one is measured", () => {
-    expect(first.Entries).toBe(4);
+  it("keeps the contestant count a number, because that one is measured", () => {
+    // 9 and not 4: the column counts individuals, and the fixture gives the event
+    // four entries carrying nine contestants so the two cannot be confused.
+    expect(first.Contestants).toBe(9);
   });
 
   it("takes its status wording from the state machine, not from a literal", () => {
@@ -199,9 +202,9 @@ describe("toPanelRows on an event nobody has begun judging", () => {
 describe("the panel total row", () => {
   const total = toPanelRows(UNJUDGED).at(-1);
 
-  it("sums the entries", () => {
+  it("sums the contestants", () => {
     expect(total?.Event).toBe("ALL EVENTS");
-    expect(total?.Entries).toBe(10);
+    expect(total?.Contestants).toBe(22);
   });
 
   it("counts events with a panel instead of totalling seats", () => {
@@ -304,7 +307,7 @@ describe("toTabulationRows", () => {
 
   it("totals the entries and counts published sheets", () => {
     const total = rows.at(-1);
-    expect(total?.Entries).toBe(10);
+    expect(total?.Contestants).toBe(22);
     expect(total?.Placed).toBe(0);
     expect(total?.Status).toBe("0 of 2 sheets published");
   });
