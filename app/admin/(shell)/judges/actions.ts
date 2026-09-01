@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { checkAdmin } from "@/app/admin/guard";
 import { loadJudgingEvent, loadJudgingEventIndex, loadSheetEntry } from "../judging-data";
+import { bulkCutPlan, bulkCutSummary } from "@/lib/judging/bulk-cut";
 import {
   bulkLockPlan,
   bulkLockScope,
@@ -715,6 +716,188 @@ export async function runBulkLockAction(scopeId: string): Promise<
       locked: locked.length,
       failed: failed.length,
       skipped: plan.skipped.length,
+    }),
+  };
+}
+
+export interface BulkCutPreview {
+  steps: {
+    eventId: string;
+    eventName: string;
+    from: number | null;
+    to: number;
+    qualifiers: number;
+    wasLocked: boolean;
+  }[];
+  skipped: { eventId: string; eventName: string; reason: string }[];
+  unchanged: number;
+}
+
+/**
+ * Which events have a cut standing below the number their judge ranked.
+ *
+ * Read before anything is offered, because every event this touches is one whose
+ * round has to be reopened and closed again, and an admin cannot see forty events
+ * to know which those are.
+ */
+export async function previewBulkCutAction(): Promise<
+  { error: string } | { preview: BulkCutPreview }
+> {
+  const check = await checkAdmin();
+  if (!check.isAdmin) {
+    return {
+      error:
+        check.reason === "unauthenticated"
+          ? "Not authenticated."
+          : "You are not authorized to change an event's cut.",
+    };
+  }
+
+  const { rows, error } = await loadJudgingEventIndex();
+  if (error) return { error: `The event catalog could not be read: ${error}` };
+
+  const plan = bulkCutPlan(rows);
+  return {
+    preview: {
+      // The judge id is dropped rather than sent: the client never needs it, and the
+      // run re-derives the whole plan for itself anyway.
+      steps: plan.steps.map((step) => ({
+        eventId: step.eventId,
+        eventName: step.eventName,
+        from: step.from,
+        to: step.to,
+        qualifiers: step.qualifiers,
+        wasLocked: step.wasLocked,
+      })),
+      skipped: plan.skipped,
+      unchanged: plan.unchanged,
+    },
+  };
+}
+
+/**
+ * Raise each event's cut to the number its judge ranked, so nobody placed in round
+ * 1 is left out of round 2.
+ *
+ * ## The five steps, and why they are all necessary
+ *
+ * The cut cannot simply be updated. On a closed round the qualifier list has
+ * already been drawn from it, and `admin_set_round2_cut` refuses while seat 1's
+ * sheet stands submitted (migration 0030). So each event goes:
+ *
+ *   1. reopen round 1, where it was closed — this discards the qualifier list
+ *   2. reopen seat 1's round 1 sheet, which keeps every rank and clears only the
+ *      submission
+ *   3. set the cut to the number ranked
+ *   4. re-submit that same sheet, unchanged, which `loadSheetEntry` hands back
+ *      as the draft it saved
+ *   5. close round 1 again, where it was closed — redrawing the list under the
+ *      new cut
+ *
+ * Nothing is retyped and no rank moves. The sheet that comes back out is the sheet
+ * that went in; what changes is the number the list is drawn against.
+ *
+ * ## Where it stops
+ *
+ * A step that fails abandons that event and moves to the next, and the event is
+ * reported by name. Two of the five steps leave an event mid-sequence if they fail
+ * — a round reopened but not closed again, most likely — and that is a state the
+ * panel page shows plainly and an admin can finish by hand. The alternative, a
+ * blanket rollback, would mean re-locking a round this function had just failed to
+ * lock, which is not a recovery.
+ *
+ * The plan is drawn here rather than taken from the client, for the reason
+ * `runBulkLockAction` gives: a preview may have been on screen while a judge
+ * submitted one more sheet.
+ */
+export async function runBulkCutAction(): Promise<
+  | { error: string }
+  | {
+      success: true;
+      changed: { eventName: string; from: number | null; to: number }[];
+      failed: { eventName: string; reason: string }[];
+      unchanged: number;
+      summary: string;
+    }
+> {
+  const check = await checkAdmin();
+  if (!check.isAdmin) {
+    return {
+      error:
+        check.reason === "unauthenticated"
+          ? "Not authenticated."
+          : "You are not authorized to change an event's cut.",
+    };
+  }
+
+  const { rows, error } = await loadJudgingEventIndex();
+  if (error) return { error: `The event catalog could not be read: ${error}` };
+
+  const plan = bulkCutPlan(rows);
+  const changed: { eventName: string; from: number | null; to: number }[] = [];
+  const failed: { eventName: string; reason: string }[] = [];
+
+  for (const step of plan.steps) {
+    const fail = (reason: string) => {
+      failed.push({ eventName: step.eventName, reason });
+    };
+
+    if (step.wasLocked) {
+      const unlocked = await unlockRound1Action(step.eventId);
+      if (unlocked && "error" in unlocked) {
+        fail(unlocked.error);
+        continue;
+      }
+    }
+
+    const reopened = await unlockJudgeSheetAction(step.eventId, step.judgeId, 1);
+    if (reopened && "error" in reopened) {
+      fail(reopened.error);
+      continue;
+    }
+
+    const cutSet = await setRound2CutAction(step.eventId, step.to);
+    if (cutSet && "error" in cutSet) {
+      fail(cutSet.error);
+      continue;
+    }
+
+    // The judge's own ranks, read back from the sheet they are still on. Handing
+    // them straight to the writer re-submits what was already there rather than
+    // composing a payload of our own — the only version of this that cannot alter
+    // a placement while claiming to preserve it.
+    const { entry, error: entryError } = await loadSheetEntry(step.eventId, step.judgeId);
+    if (entryError || !entry) {
+      fail(entryError ?? "That judge's sheet could not be read.");
+      continue;
+    }
+
+    const resubmitted = await enterJudgeSheetAction(step.eventId, step.judgeId, entry.draft);
+    if (resubmitted && "error" in resubmitted) {
+      fail(resubmitted.error);
+      continue;
+    }
+
+    if (step.wasLocked) {
+      const relocked = await lockRound1Action(step.eventId);
+      if (relocked && "error" in relocked) {
+        fail(relocked.error);
+        continue;
+      }
+    }
+
+    changed.push({ eventName: step.eventName, from: step.from, to: step.to });
+  }
+
+  return {
+    success: true as const,
+    changed,
+    failed,
+    unchanged: plan.unchanged,
+    summary: bulkCutSummary({
+      changed: changed.length,
+      failed: failed.length,
+      unchanged: plan.unchanged,
     }),
   };
 }

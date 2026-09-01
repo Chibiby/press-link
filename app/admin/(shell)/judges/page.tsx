@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { eventIndexSummary } from "@/lib/judging/event-index";
 
 import { loadJudgingEventIndex, seatableEvents } from "../judging-data";
+import { BulkCutDialog } from "./BulkCutDialog";
 import { BulkLockDialog } from "./BulkLockDialog";
 import { AddJudgeDialog, JudgeRowActions } from "./JudgeControls";
 
@@ -69,6 +70,7 @@ export default async function JudgesPage() {
         actions={
           <>
             <AddJudgeDialog />
+            <BulkCutDialog />
             <BulkLockDialog />
             <Button asChild size="sm" variant="outline">
               {/* A route handler, so a plain anchor: next/link would prefetch, and
